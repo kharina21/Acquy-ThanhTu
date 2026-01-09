@@ -1,0 +1,52 @@
+[
+    {
+        "username": "admin",
+        "password": "admin123",
+        "email": "admin@example.com",
+        "firstName": "Nguyễn",
+        "lastName": "Văn Admin",
+        "phoneNumber": "0912345678",
+        "address": "123 Đường Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+        "isVerified": true
+    },
+    {
+        "username": "user001",
+        "password": "password123",
+        "email": "user001@example.com",
+        "firstName": "Trần",
+        "lastName": "Thị Hoa",
+        "phoneNumber": "0987654321",
+        "address": "Số 45, Ngõ 12, Phố Trần Phú, Phường Điện Biên, Thành phố Hà Nội",
+        "isVerified": false
+    },
+    {
+        "username": "john_doe",
+        "password": "john123456",
+        "email": "john.doe@example.com",
+        "firstName": "John",
+        "lastName": "Doe",
+        "phoneNumber": "+84987654321",
+        "address": "Thôn 5, Xã An Phú, Huyện Tân Phú, Tỉnh Đồng Nai",
+        "isVerified": true
+    },
+    {
+        "username": "test_user",
+        "password": "test123",
+        "email": "test@example.com",
+        "firstName": "Test",
+        "lastName": "User",
+        "phoneNumber": "",
+        "address": "",
+        "isVerified": false
+    },
+    {
+        "username": "minh_nguyen",
+        "password": "minh123",
+        "email": "minh.nguyen@example.com",
+        "firstName": "Minh",
+        "lastName": "Nguyễn",
+        "phoneNumber": "0901234567",
+        "address": "123/45 Đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+        "isVerified": true
+    }
+]
