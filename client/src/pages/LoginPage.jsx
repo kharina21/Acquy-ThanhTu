@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/stores/useAuthStore';
 import React, { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 
 //
 import { z } from 'zod';
