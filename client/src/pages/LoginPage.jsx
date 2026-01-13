@@ -43,6 +43,11 @@ const LoginPage = () => {
             const { username, password } = data;
             const rs = await login(username, password);
             if (rs.success) {
+                // Sau khi login, fetchUser sẽ được gọi tự động trong login function
+                // Đợi một chút để user được fetch xong
+                await new Promise((resolve) => setTimeout(resolve, 300));
+
+                // ProtectedRoute sẽ tự động redirect dựa trên role
                 navigate('/', { replace: true });
             } else {
                 setValue('password', '');
