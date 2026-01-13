@@ -5,7 +5,7 @@ import React from 'react';
 const ThemeSwitcherButton = () => {
     const { theme, setTheme } = useAuthTheme();
     return (
-        <div className='fixed top-4 right-4'>
+        <div className='fixed top-4 right-4 z-1'>
             <label className='toggle toggle-md text-base-content/90 bg-transparent'>
                 <input
                     type='checkbox'
