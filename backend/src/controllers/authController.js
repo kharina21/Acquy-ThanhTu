@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import Session from '../models/Session.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
+import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 
 //jwt
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -36,9 +37,27 @@ export const registerUser = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await User.create({ username, password: hashedPassword, email, firstName, lastName, phoneNumber, address });
+        const user = await User.create({
+            username,
+            password: hashedPassword,
+            email,
+            firstName,
+            lastName,
+            phoneNumber,
+            address,
+        });
         //gán role mặc định cho user
         await assignDefaultRole(user);
+
+        // Log activity
+        await logAuthActivity({
+            userId: user._id,
+            action: 'register',
+            description: `User ${username} đã đăng ký thành công`,
+            ipAddress: getClientIp(req),
+            userAgent: getUserAgent(req),
+            status: 'success',
+        });
 
         res.status(201).json({ user });
     } catch (error) {
@@ -69,7 +88,11 @@ export const login = async (req, res) => {
         const refreshToken = generateRefreshToken(user);
 
         //lưu session vào database
-        await Session.create({ userId: user._id, refreshToken, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
+        await Session.create({
+            userId: user._id,
+            refreshToken,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
 
         //lưu refresh token vào cookie
         res.cookie('refreshToken', refreshToken, {
@@ -79,9 +102,55 @@ export const login = async (req, res) => {
             secure: process.env.NODE_ENV === 'production', //chỉ gửi cookie trên https trong production
         });
 
-        return res.status(200).json({ message: `user ${user.username} đã đăng nhập thành công`, accessToken });
+        // Log activity
+        await logAuthActivity({
+            userId: user._id,
+            action: 'login',
+            description: `User ${user.username} đã đăng nhập thành công`,
+            ipAddress: getClientIp(req),
+            userAgent: getUserAgent(req),
+            status: 'success',
+        });
+
+        return res
+            .status(200)
+            .json({ message: `user ${user.username} đã đăng nhập thành công`, accessToken });
     } catch (error) {
         console.log('Lỗi khi gọi login: ' + error.message);
+
+        // Log failed login attempt
+        const failedUser = await User.findOne({ username: req.body.username });
+        if (failedUser) {
+            await logAuthActivity({
+                userId: failedUser._id,
+                action: 'login',
+                description: `Đăng nhập thất bại cho user ${req.body.username}`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'failed',
+                errorMessage: error.message,
+            });
+        }
+
         res.status(500).json({ message: 'Lỗi khi gọi login', error: error.message });
+    }
+};
+
+// Lấy thông tin user hiện tại (với roles)
+export const getCurrentUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('-password').populate({
+            path: 'roles',
+            select: 'name description',
+        });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.status(200).json({ user });
+    } catch (error) {
+        console.log('Lỗi khi lấy thông tin user: ' + error.message);
+        res.status(500).json({ message: 'Lỗi khi lấy thông tin user', error: error.message });
     }
 };
