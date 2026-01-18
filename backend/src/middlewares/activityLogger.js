@@ -1,4 +1,8 @@
-import { logActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
+import {
+    logActivity,
+    getClientIp,
+    getUserAgent,
+} from "../libs/activityLogger.js";
 
 export const activityLogger = (options = {}) => {
     return async (req, res, next) => {
@@ -21,7 +25,7 @@ export const activityLogger = (options = {}) => {
         };
 
         // Chờ response xong mới log
-        res.on('finish', async () => {
+        res.on("finish", async () => {
             try {
                 // Chỉ log nếu có user authenticated
                 if (!req.user || !req.user._id) {
@@ -40,21 +44,21 @@ export const activityLogger = (options = {}) => {
                 if (!logAction) {
                     const method = req.method.toLowerCase();
                     const actionMap = {
-                        get: 'read',
-                        post: 'create',
-                        put: 'update',
-                        patch: 'update',
-                        delete: 'delete',
+                        get: "read",
+                        post: "create",
+                        put: "update",
+                        patch: "update",
+                        delete: "delete",
                     };
-                    logAction = actionMap[method] || 'other';
+                    logAction = actionMap[method] || "other";
                 }
 
                 // Xác định resource từ route nếu không được chỉ định
                 let logResource = resource;
                 if (!logResource) {
                     // Lấy resource từ route path (ví dụ: /api/users -> users)
-                    const pathParts = req.path.split('/').filter(Boolean);
-                    logResource = pathParts[pathParts.length - 1] || 'unknown';
+                    const pathParts = req.path.split("/").filter(Boolean);
+                    logResource = pathParts[pathParts.length - 1] || "unknown";
                 }
 
                 // Xác định resourceId từ params hoặc body
@@ -63,16 +67,20 @@ export const activityLogger = (options = {}) => {
                 // Xác định status từ response
                 const status =
                     res.statusCode >= 200 && res.statusCode < 300
-                        ? 'success'
+                        ? "success"
                         : res.statusCode >= 400
-                        ? 'failed'
-                        : 'error';
+                        ? "failed"
+                        : "error";
                 const errorMessage =
-                    status !== 'success' && responseData?.message ? responseData.message : '';
+                    status !== "success" && responseData?.message
+                        ? responseData.message
+                        : "";
 
                 // Chuẩn bị data để log
                 const oldData = logRequestBody ? req.body : null;
-                const newData = logResponseBody ? responseData || responseBody : null;
+                const newData = logResponseBody
+                    ? responseData || responseBody
+                    : null;
 
                 // Ghi log
                 await logActivity({
@@ -81,7 +89,7 @@ export const activityLogger = (options = {}) => {
                     resource: logResource,
                     resourceId,
                     description: `${logAction} ${logResource}${
-                        resourceId ? ` (${resourceId})` : ''
+                        resourceId ? ` (${resourceId})` : ""
                     }`,
                     oldData,
                     newData,
@@ -96,7 +104,7 @@ export const activityLogger = (options = {}) => {
                     },
                 });
             } catch (error) {
-                console.error('Error in activityLogger middleware:', error);
+                console.error("Error in activityLogger middleware:", error);
             }
         });
 
