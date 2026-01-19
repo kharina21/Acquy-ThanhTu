@@ -154,3 +154,59 @@ export const getCurrentUser = async (req, res) => {
         res.status(500).json({ message: 'Lỗi khi lấy thông tin user', error: error.message });
     }
 };
+
+
+export const logout = async (req, res) => {
+    try {
+        const { refreshToken } = req.cookies;
+        if (!refreshToken) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const session = await Session.findOne({ refreshToken });
+        if (!session) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        await Session.findOneAndDelete({ refreshToken });
+        res.clearCookie('refreshToken');
+        res.status(200).json({ message: 'Đăng xuất thành công' });
+        await logAuthActivity({
+            userId: req.user._id,
+            action: 'logout',
+            description: `User ${req.user.username} đã đăng xuất thành công`,
+            ipAddress: getClientIp(req),
+            userAgent: getUserAgent(req),
+            status: 'success',
+        });
+    } catch (error) {
+        console.log('Lỗi khi gọi logout: ' + error.message);
+        res.status(500).json({ message: 'Lỗi khi gọi logout', error: error.message });
+    }
+};
+
+export const refreshToken = async (req, res) => {
+     try {
+        //lấy refresh token từ cookie
+        const token = req.cookies?.refreshToken;
+        if (!token) {
+            return res.status(401).json({ message: 'Token không tồn tại!' });
+        }
+
+        //so với refresh token trong db
+        const session = await Session.findOne({ refreshToken: token });
+        if (!session)
+            return res
+                .status(403)
+                .json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
+
+        //kiểm tra hết hạn hay chưa
+        if (session.expiresAt < new Date())
+            return res.status(403).json({ message: 'Token đã hết hạn' });
+
+        //taọ access token mới
+        const accessToken = generateAccessToken(session.userId);
+        //return
+        return res.status(200).json({ accessToken });
+    } catch (e) {
+        return res.status(500).json({ message: e });
+    }
+}

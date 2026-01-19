@@ -3,6 +3,8 @@ import {
     registerUser,
     login,
     getCurrentUser,
+    logout,
+    refreshToken,
 } from "../controllers/authController.js";
 import {
     registerValidation,
@@ -21,6 +23,8 @@ router.post(
 router.post("/login", login);
 
 router.get("/me", authenticate, getCurrentUser); // Lấy thông tin user hiện tại
+router.post("/logout", logout);
+router.get("/refresh", refreshToken);
 
 // router.post('/logout', logout);
 // router.post('/refresh', refresh);
