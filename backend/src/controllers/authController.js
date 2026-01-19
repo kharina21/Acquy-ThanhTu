@@ -184,7 +184,7 @@ export const logout = async (req, res) => {
 };
 
 export const refreshToken = async (req, res) => {
-     try {
+    try {
         //lấy refresh token từ cookie
         const token = req.cookies?.refreshToken;
         if (!token) {

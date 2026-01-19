@@ -16,6 +16,10 @@ export const useAuthStore = create(
             accessToken: null,
             loading: false,
 
+            setAccessToken: (newAccessToken) => {
+                set({ accessToken: newAccessToken });
+            },
+
             clearState: () => {
                 set({ user: null, accessToken: null });
                 localStorage.clear();
@@ -59,6 +63,37 @@ export const useAuthStore = create(
                     set({ loading: false });
                 }
             },
+
+            refresh: async () => {
+                try {
+                    set({ loading: true });
+                    const res = await api.get('/auth/refresh', { withCredentials: true });
+                    if (res?.data?.accessToken) {
+                        set({ accessToken: res.data.accessToken });
+                    }
+                } catch (error) {
+                    get().clearState();
+                    toast.error('Lỗi xảy ra khi lấy access token mới');
+                } finally {
+                    set({ loading: false });
+                }
+            },
+
+            logout: async () => {
+                try {
+                    localStorage.clear();
+                    set(initState);
+                    await api.post('/auth/logout', { withCredentials: true });
+                    toast.success('Đăng xuất thành công');
+                    navigate('/', { replace: true });
+                } catch (error) {
+                    get().clearState();
+                    toast.error('Lỗi xảy ra khi đăng xuất');
+                } finally {
+                    set({ loading: false });
+                }
+
+            }
         }),
         {
             name: 'auth-store',

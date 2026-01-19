@@ -16,8 +16,7 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-//todo: implement refresh token
-//tự động gọi refresh api khi accessToken hết hạn
+// Tự động gọi refresh api khi accessToken hết hạn
 api.interceptors.response.use(
     (res) => res,
     async (err) => {
@@ -34,7 +33,13 @@ api.interceptors.response.use(
 
         originalRequest._retryCount = originalRequest._retryCount || 0;
 
-        if (err.response?.status === 403 && originalRequest._retryCount < 4) {
+        // Chỉ refresh khi có accessToken trong store (đã đăng nhập) và nhận 401/403
+        const hasAccessToken = useAuthStore.getState().accessToken;
+        if (
+            hasAccessToken &&
+            (err.response?.status === 401 || err.response?.status === 403) &&
+            originalRequest._retryCount < 4
+        ) {
             //thử 4 lần k được => refreshToken hết hạn => đăng nhập lại
             originalRequest._retryCount += 1;
             try {

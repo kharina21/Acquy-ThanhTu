@@ -39,7 +39,7 @@ const NotificationBell = () => {
         <div className='relative'>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className='btn btn-ghost btn-circle relative'
+                className='btn btn-sm btn-ghost btn-circle relative'
                 aria-label='Notifications'
             >
                 <Bell className='w-5 h-5' />

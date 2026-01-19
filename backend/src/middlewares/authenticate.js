@@ -12,7 +12,7 @@ export const authenticate = async (req, res, next) => {
         // Lấy token từ header Authorization
         const authHeader = req.headers.authorization;
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader || !authHeader.split(' ')[1]) {
             return res.status(401).json({ message: 'Unauthorized: No token provided' });
         }
 

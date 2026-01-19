@@ -10,7 +10,7 @@ const AdminDashboard = () => {
     return (
         <div className='h-full bg-base-300 overflow-hidden flex flex-col'>
             <h1 className='text-xl font-semibold px-4 py-2 bg-white sticky top-1 z-10 border-b border-base-content/20 shrink-0'>
-                Admin Dashboard
+                Admin Menu
             </h1>
             <div className='h-full w-full p-4 rounded-md overflow-y-auto space-y-4 flex flex-col flex-1'>
                 {/* Nghiệp vụ kho */}
