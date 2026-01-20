@@ -13,10 +13,11 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
 import RegisterPage from './pages/RegisterPage';
 import { useAuthTheme } from './stores/useAuthTheme';
-import ThemeSwitcherButton from './components/ThemeSwitcherButton';
 import NotFoundPage from './pages/error/NotFoundPage';
 import ForbiddenPage from './pages/error/ForbiddenPage';
 import RoleBasedLayout from './components/layouts/RoleBasedLayout';
+import ProfilePage from './pages/ProfilePage';
+import DefaultRoute from './components/auth/DefaultRoute';
 
 function App() {
     const { theme } = useAuthTheme();
@@ -36,42 +37,50 @@ function App() {
                         </Route>
 
                         {/* Protected Routes - Redirect based on role */}
-                        <Route path='/' element={<ProtectedRoute />} />
+                        <Route path='/' element={<DefaultRoute />} />
 
                         {/* Role-based Routes with Layout */}
-                        <Route element={<RoleBasedLayout />}>
-                            {/* Admin Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
-                                <Route path='/admin/dashboard' element={<AdminDashboard />} />
-                            </Route>
+                        <Route element={<ProtectedRoute />}>
+                            <Route element={<RoleBasedLayout />}>
 
-                            {/* Owner Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['owner']} />}>
-                                <Route path='/owner/dashboard' element={<OwnerDashboard />} />
-                            </Route>
 
-                            {/* Manager Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
-                                <Route path='/manager/dashboard' element={<ManagerDashboard />} />
-                            </Route>
+                                {/* Profile Route - Available for all authenticated users */}
+                                <Route path='/profile' element={<ProfilePage />} />
 
-                            {/* Agency Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['agency']} />}>
-                                <Route path='/agency/dashboard' element={<AgencyDashboard />} />
-                            </Route>
+                                {/* Admin Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
+                                    <Route path='/admin/dashboard' element={<AdminDashboard />} />
+                                </Route>
 
-                            {/* Seller Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['seller']} />}>
-                                <Route path='/seller/dashboard' element={<SellerDashboard />} />
-                            </Route>
+                                {/* Owner Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['owner']} />}>
+                                    <Route path='/owner/dashboard' element={<OwnerDashboard />} />
+                                </Route>
 
-                            {/* Staff Routes */}
-                            <Route element={<RoleProtectedRoute allowedRoles={['staff']} />}>
-                                <Route path='/staff/dashboard' element={<StaffDashboard />} />
-                            </Route>
+                                {/* Manager Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
+                                    <Route path='/manager/dashboard' element={<ManagerDashboard />} />
+                                </Route>
 
-                            {/* User Routes */}
+                                {/* Agency Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['agency']} />}>
+                                    <Route path='/agency/dashboard' element={<AgencyDashboard />} />
+                                </Route>
+
+                                {/* Seller Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['seller']} />}>
+                                    <Route path='/seller/dashboard' element={<SellerDashboard />} />
+                                </Route>
+
+                                {/* Staff Routes */}
+                                <Route element={<RoleProtectedRoute allowedRoles={['staff']} />}>
+                                    <Route path='/staff/dashboard' element={<StaffDashboard />} />
+                                </Route>
+
+                                {/* User Routes */}
+                            </Route>
                         </Route>
+
 
                         {/* Error Pages */}
                         <Route path='/forbidden' element={<ForbiddenPage />} />

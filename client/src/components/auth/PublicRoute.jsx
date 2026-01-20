@@ -4,7 +4,6 @@ import { Navigate, Outlet } from 'react-router';
 
 const PublicRoute = () => {
     const { user } = useAuthStore();
-    console.log(user);
     if (user) {
         if (user.roles.some((role) => role.name === 'admin')) {
             return <Navigate to='/admin/dashboard' replace />;

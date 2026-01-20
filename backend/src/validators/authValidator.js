@@ -43,6 +43,60 @@ export const registerValidation = [
         .withMessage('Địa chỉ phải từ 5 đến 200 ký tự'),
 ];
 
+// Validation rules cho cập nhật profile
+export const updateProfileValidation = [
+    // Email validation
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email không được để trống')
+        .isEmail()
+        .withMessage('Email không hợp lệ')
+        .normalizeEmail(),
+
+    // First name validation
+    body('firstName')
+        .trim()
+        .notEmpty()
+        .withMessage('Họ không được để trống')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Họ phải từ 1 đến 50 ký tự'),
+
+    // Last name validation
+    body('lastName')
+        .trim()
+        .notEmpty()
+        .withMessage('Tên không được để trống')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Tên phải từ 1 đến 50 ký tự'),
+
+    // Phone number validation (optional)
+    body('phoneNumber')
+        .optional({ checkFalsy: true })
+        .trim()
+        .matches(/^(0|\+84)[1-9][0-9]{8,9}$/)
+        .withMessage('Số điện thoại phải đúng định dạng Việt Nam (ví dụ: 0912345678 hoặc +84912345678)'),
+
+    // Address validation (optional)
+    body('address')
+        .optional({ checkFalsy: true })
+        .trim()
+        .isLength({ min: 5, max: 200 })
+        .withMessage('Địa chỉ phải từ 5 đến 200 ký tự'),
+];
+
+// Validation rules cho verify email
+export const verifyEmailValidation = [
+    body('code')
+        .trim()
+        .notEmpty()
+        .withMessage('Mã xác thực không được để trống')
+        .isLength({ min: 6, max: 6 })
+        .withMessage('Mã xác thực phải có 6 chữ số')
+        .matches(/^\d{6}$/)
+        .withMessage('Mã xác thực chỉ được chứa số'),
+];
+
 // Middleware để xử lý validation errors
 export const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);

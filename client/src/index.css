@@ -6,38 +6,60 @@
 }
 
 @plugin "daisyui/theme" {
-    name: 'light';
-    default: false;
-    prefersdark: false;
-    color-scheme: 'light';
-    --color-base-100: oklch(100% 0 0);
-    --color-base-200: oklch(98% 0 0);
-    --color-base-300: oklch(95% 0 0);
-    --color-base-content: oklch(21% 0.006 285.885);
-    --color-primary: oklch(48% 0.243 264.376);
-    --color-primary-content: oklch(93% 0.032 255.585);
-    --color-secondary: oklch(65% 0.241 354.308);
-    --color-secondary-content: oklch(94% 0.028 342.258);
-    --color-accent: oklch(77% 0.152 181.912);
-    --color-accent-content: oklch(38% 0.063 188.416);
-    --color-neutral: oklch(14% 0.005 285.823);
-    --color-neutral-content: oklch(92% 0.004 286.32);
-    --color-info: oklch(74% 0.16 232.661);
-    --color-info-content: oklch(29% 0.066 243.157);
-    --color-success: oklch(76% 0.177 163.223);
-    --color-success-content: oklch(37% 0.077 168.94);
-    --color-warning: oklch(82% 0.189 84.429);
-    --color-warning-content: oklch(41% 0.112 45.904);
-    --color-error: oklch(71% 0.194 13.428);
-    --color-error-content: oklch(27% 0.105 12.094);
-    --radius-selector: 0.5rem;
-    --radius-field: 0.25rem;
-    --radius-box: 0.5rem;
-    --size-selector: 0.25rem;
-    --size-field: 0.25rem;
-    --border: 1px;
-    --depth: 1;
-    --noise: 0;
+  name: "light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+
+  /* Base */
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(98% 0 0);
+  --color-base-300: oklch(95% 0 0);
+  --color-base-content: oklch(21% 0.006 285);
+
+  /* Primary – từ #4e54c8 */
+  --color-primary: oklch(45% 0.18 275);
+  --color-primary-content: oklch(92% 0.03 275);
+
+  /* Secondary – tím hồng nhẹ để bổ trợ indigo */
+  --color-secondary: oklch(65% 0.20 330);
+  --color-secondary-content: oklch(94% 0.03 330);
+
+  /* Accent – xanh ngọc để tạo tương phản */
+  --color-accent: oklch(78% 0.14 190);
+  --color-accent-content: oklch(32% 0.05 190);
+
+  /* Neutral */
+  --color-neutral: oklch(16% 0.01 275);
+  --color-neutral-content: oklch(92% 0.005 275);
+
+  /* Info – xanh dương cùng tông primary */
+  --color-info: oklch(72% 0.14 245);
+  --color-info-content: oklch(30% 0.06 245);
+
+  /* Success */
+  --color-success: oklch(76% 0.17 160);
+  --color-success-content: oklch(36% 0.07 160);
+
+  /* Warning */
+  --color-warning: oklch(82% 0.18 85);
+  --color-warning-content: oklch(40% 0.11 85);
+
+  /* Error */
+  --color-error: oklch(70% 0.19 20);
+  --color-error-content: oklch(27% 0.10 20);
+
+  /* UI */
+  --radius-selector: 0.5rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
 }
 
 @plugin "daisyui/theme" {
@@ -90,4 +112,27 @@ body {
     input[type='password']::-ms-clear {
         display: none !important;
     }
+}
+
+/* custom color */
+@theme{
+    --color-navyBlue: #1E3A8A;
+    --color-backgroundToBottom: linear-gradient(to bottom, #4e54c8, #8f94fb);
+    --color-purple: #8f94fb
+}
+
+/* Custom animations */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.5s ease-out;
 }

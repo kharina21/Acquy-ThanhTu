@@ -4,3 +4,43 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
+
+
+// Lấy chữ cái đầu tiên của tên người dùng
+export const getInitials = (user) => {
+  if (!user) return 'U';
+  const firstName = user.firstName || '';
+  const lastName = user.lastName || '';
+  if (firstName) return firstName.charAt(0).toUpperCase();
+  if (lastName) return lastName.charAt(0).toUpperCase();
+  if (user.username) return user.username.charAt(0).toUpperCase();
+  return 'U';
+};
+
+// Lấy role đầu tiên của người dùng
+export const getPrimaryRole = (user) => {
+  if (!user || !user.roles || user.roles.length === 0) return '';
+  return user.roles[0].name || '';
+};
+
+
+export const formatDate = (dateString) => {
+  if (!dateString) return 'Chưa có thông tin';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('vi-VN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+export const formatDateTime = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};

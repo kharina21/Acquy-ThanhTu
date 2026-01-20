@@ -1,5 +1,4 @@
 import ActivityLog from '../models/ActivityLog.js';
-import { authenticate } from '../middlewares/authenticate.js';
 
 /**
  * Lấy danh sách activity logs với pagination và filters

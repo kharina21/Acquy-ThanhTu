@@ -3,8 +3,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import Session from '../models/Session.js';
+import EmailVerification from '../models/EmailVerification.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
+import { createVerificationCode, sendVerificationEmail } from '../libs/emailHelper.js';
 
 //jwt
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -155,6 +157,242 @@ export const getCurrentUser = async (req, res) => {
     }
 };
 
+// Cập nhật thông tin profile
+export const updateProfile = async (req, res) => {
+    try {
+        const { firstName, lastName, email, phoneNumber, address } = req.body;
+        const userId = req.user._id;
+
+        // Lấy thông tin user hiện tại để so sánh email
+        const currentUser = await User.findById(userId);
+        if (!currentUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Kiểm tra email có bị trùng với user khác không
+        if (email) {
+            const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+            if (existingUser) {
+                return res.status(400).json({ message: 'Email đã được sử dụng bởi người dùng khác' });
+            }
+        }
+
+        // Kiểm tra email có thay đổi không
+        const emailChanged = email && email !== currentUser.email;
+
+        // Chuẩn bị dữ liệu cập nhật
+        const updateData = {
+            firstName,
+            lastName,
+            email,
+            phoneNumber,
+            address,
+        };
+
+        // Nếu email thay đổi, set isVerified = false
+        if (emailChanged) {
+            updateData.isVerified = false;
+        }
+
+        // Cập nhật thông tin user
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            updateData,
+            { new: true, runValidators: true }
+        ).select('-password').populate({
+            path: 'roles',
+            select: 'name description',
+        });
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Log activity
+        try {
+            const description = emailChanged
+                ? `User ${updatedUser.username} đã cập nhật thông tin profile và thay đổi email (cần xác thực lại)`
+                : `User ${updatedUser.username} đã cập nhật thông tin profile`;
+
+            await logAuthActivity({
+                userId: updatedUser._id,
+                action: 'update_profile',
+                description,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        const message = emailChanged
+            ? 'Cập nhật thông tin thành công. Email đã thay đổi, vui lòng xác thực email mới.'
+            : 'Cập nhật thông tin thành công';
+
+        res.status(200).json({ message, user: updatedUser });
+    } catch (error) {
+        console.log('Lỗi khi cập nhật profile: ' + error.message);
+
+        // Log failed update
+        await logAuthActivity({
+            userId: req.user._id,
+            action: 'update_profile',
+            description: `Cập nhật profile thất bại cho user ${req.user.username}`,
+            ipAddress: getClientIp(req),
+            userAgent: getUserAgent(req),
+            status: 'failed',
+            errorMessage: error.message,
+        });
+
+        res.status(500).json({ message: 'Lỗi khi cập nhật profile', error: error.message });
+    }
+};
+
+// Gửi mã xác thực email
+export const sendVerificationCode = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.isVerified) {
+            return res.status(400).json({ message: 'Email đã được xác thực' });
+        }
+
+        // Tạo và lưu mã xác thực
+        const verification = await createVerificationCode(user._id, user.email);
+
+        // Gửi email
+        await sendVerificationEmail(user.email, verification.code);
+
+        // Log activity
+        try {
+            await logAuthActivity({
+                userId: user._id,
+                action: 'send_verification_email',
+                description: `Gửi mã xác thực email cho ${user.email}`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(200).json({
+            message: 'Mã xác thực đã được gửi đến email của bạn',
+            expiresIn: 15 * 60, // 15 phút (giây)
+        });
+    } catch (error) {
+        console.log('Lỗi khi gửi mã xác thực: ' + error.message);
+
+        // Log failed
+        try {
+            await logAuthActivity({
+                userId: req.user._id,
+                action: 'send_verification_email',
+                description: `Gửi mã xác thực email thất bại`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'failed',
+                errorMessage: error.message,
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(500).json({ message: 'Lỗi khi gửi mã xác thực', error: error.message });
+    }
+};
+
+// Xác thực email với mã
+export const verifyEmail = async (req, res) => {
+    try {
+        const { code } = req.body;
+        const userId = req.user._id;
+
+        if (!code) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã xác thực' });
+        }
+
+        // Tìm mã xác thực
+        const verification = await EmailVerification.findOne({
+            userId,
+            code,
+            isUsed: false,
+        });
+
+        if (!verification) {
+            return res.status(400).json({ message: 'Mã xác thực không hợp lệ hoặc đã được sử dụng' });
+        }
+
+        // Kiểm tra mã đã hết hạn chưa
+        if (verification.expiresAt < new Date()) {
+            return res.status(400).json({ message: 'Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới' });
+        }
+
+        // Cập nhật user thành đã xác thực
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { isVerified: true },
+            { new: true }
+        ).select('-password').populate({
+            path: 'roles',
+            select: 'name description',
+        });
+
+        // Đánh dấu mã đã được sử dụng
+        verification.isUsed = true;
+        await verification.save();
+
+        // Xóa tất cả các mã xác thực cũ của user này
+        await EmailVerification.deleteMany({
+            userId,
+            isUsed: false,
+        });
+
+        // Log activity
+        try {
+            await logAuthActivity({
+                userId: user._id,
+                action: 'verify_email',
+                description: `Xác thực email thành công cho ${user.email}`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(200).json({
+            message: 'Xác thực email thành công',
+            user,
+        });
+    } catch (error) {
+        console.log('Lỗi khi xác thực email: ' + error.message);
+
+        // Log failed
+        try {
+            await logAuthActivity({
+                userId: req.user._id,
+                action: 'verify_email',
+                description: `Xác thực email thất bại`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'failed',
+                errorMessage: error.message,
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(500).json({ message: 'Lỗi khi xác thực email', error: error.message });
+    }
+};
 
 export const logout = async (req, res) => {
     try {

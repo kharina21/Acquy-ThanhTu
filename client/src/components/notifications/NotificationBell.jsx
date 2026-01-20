@@ -42,7 +42,7 @@ const NotificationBell = () => {
                 className='btn btn-sm btn-ghost btn-circle relative'
                 aria-label='Notifications'
             >
-                <Bell className='w-5 h-5' />
+                <Bell className='size-5 text-primary' />
                 {unreadCount > 0 && (
                     <span className='absolute top-0 right-0 badge badge-error badge-sm min-w-5 h-5 flex items-center justify-center'>
                         {unreadCount > 99 ? '99+' : unreadCount}
