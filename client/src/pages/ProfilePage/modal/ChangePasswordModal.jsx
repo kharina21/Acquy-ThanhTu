@@ -104,6 +104,7 @@ const ChangePasswordModal = ({ setShowChangePasswordModal }) => {
                             <button
                                 type="button"
                                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                tabIndex={-1}
                                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 z-50"
                             >
                                 {showCurrentPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
@@ -132,6 +133,7 @@ const ChangePasswordModal = ({ setShowChangePasswordModal }) => {
                             <button
                                 type="button"
                                 onClick={() => setShowNewPassword(!showNewPassword)}
+                                tabIndex={-1}
                                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 z-50"
                             >
                                 {showNewPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
@@ -160,6 +162,7 @@ const ChangePasswordModal = ({ setShowChangePasswordModal }) => {
                             <button
                                 type="button"
                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                tabIndex={-1}
                                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 z-50"
                             >
                                 {showConfirmPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}

@@ -16,6 +16,7 @@ export const useAuthStore = create(
             user: null,
             accessToken: null,
             loading: false,
+            loginLoading: false,
             updatingProfile: false, // Loading state riêng cho update profile
 
             setAccessToken: (newAccessToken) => {
@@ -29,7 +30,7 @@ export const useAuthStore = create(
 
             login: async (username, password) => {
                 try {
-                    set({ loading: true });
+                    set({ loginLoading: true });
                     localStorage.clear();
                     const res = await api.post(
                         '/auth/login',
@@ -48,7 +49,7 @@ export const useAuthStore = create(
                     get().clearState();
                     return { success: false, message: error.response.data.message };
                 } finally {
-                    set({ loading: false });
+                    set({ loginLoading: false });
                 }
             },
 
@@ -115,18 +116,18 @@ export const useAuthStore = create(
 
             logout: async () => {
                 try {
+                    // Gọi API logout trước
+                    await api.post('/auth/logout', { withCredentials: true });
                     localStorage.clear();
                     set(initState);
-                    await api.post('/auth/logout', { withCredentials: true });
                     toast.success('Đăng xuất thành công');
-                    navigate('/', { replace: true });
                 } catch (error) {
-                    get().clearState();
-                    toast.error('Lỗi xảy ra khi đăng xuất');
+                    localStorage.clear();
+                    set(initState);
+                    console.error('Error during logout:', error);
                 } finally {
                     set({ loading: false });
                 }
-
             }
         }),
         {

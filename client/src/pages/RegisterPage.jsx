@@ -43,6 +43,7 @@ const RegisterPage = () => {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
+        setError,
     } = useForm({
         resolver: zodResolver(formRegisterSchema),
         defaultValues: {
@@ -68,8 +69,68 @@ const RegisterPage = () => {
             }
         } catch (error) {
             console.error('Error registering:', error);
-            const errorMessage = error.response?.data?.message || 'Đăng ký thất bại';
-            toast.error(errorMessage);
+            const errorResponse = error.response?.data;
+            const statusCode = error.response?.status;
+
+            if (errorResponse?.errors && Array.isArray(errorResponse.errors)) {
+
+                errorResponse.errors.forEach((err) => {
+                    if (typeof err === 'object' && (err.path || err.param)) {
+                        const field = err.path || err.param;
+                        setError(field, {
+                            type: 'server',
+                            message: err.msg || err.message || err,
+                        });
+                    }
+                });
+                return;
+            }
+
+            const errorMessage = errorResponse?.message || 'Đăng ký thất bại';
+
+            const lowerMessage = errorMessage.toLowerCase();
+
+            if (lowerMessage.includes('username') || lowerMessage.includes('tên đăng nhập')) {
+                setError('username', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('email')) {
+                setError('email', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('mật khẩu') || lowerMessage.includes('password')) {
+                setError('password', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('họ') || lowerMessage.includes('firstname') || lowerMessage.includes('first name')) {
+                setError('firstName', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('tên') && !lowerMessage.includes('đăng nhập')) {
+                setError('lastName', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('số điện thoại') || lowerMessage.includes('phone')) {
+                setError('phoneNumber', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else if (lowerMessage.includes('địa chỉ') || lowerMessage.includes('address')) {
+                setError('address', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            } else {
+                setError('root', {
+                    type: 'server',
+                    message: errorMessage,
+                });
+            }
         }
     };
 
@@ -121,6 +182,14 @@ const RegisterPage = () => {
                         </div>
 
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 md:space-y-5">
+                            {/* Hiển thị lỗi root (lỗi chung không map được vào field) */}
+                            {errors.root && (
+                                <div className="alert alert-error">
+                                    <CircleAlert className="w-5 h-5" />
+                                    <span>{errors.root.message}</span>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 {/* First Name */}
                                 <div className="space-y-2">
@@ -238,6 +307,7 @@ const RegisterPage = () => {
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
+                                            tabIndex={-1}
                                             className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 z-50"
                                         >
                                             {showPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
@@ -269,6 +339,7 @@ const RegisterPage = () => {
                                         <button
                                             type="button"
                                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                            tabIndex={-1}
                                             className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 z-50"
                                         >
                                             {showConfirmPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}

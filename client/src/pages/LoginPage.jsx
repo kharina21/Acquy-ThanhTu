@@ -145,6 +145,7 @@ const LoginPage = () => {
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
+                                        tabIndex={-1}
                                         className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content/60 transition-colors z-50"
                                     >
                                         {showPassword ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
@@ -163,6 +164,7 @@ const LoginPage = () => {
                                 <Link
                                     to="/forgot-password"
                                     className="text-sm text-primary hover:text-primary/80 transition-colors font-medium"
+                                    tabIndex={-1}
                                 >
                                     Quên mật khẩu?
                                 </Link>

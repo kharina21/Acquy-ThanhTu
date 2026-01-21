@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import NotificationBell from '../notifications/NotificationBell';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Boxes, Columns2, House, LogOut, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { Boxes, Columns2, House, LayoutDashboard, LogOut, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 import { getInitials, getPrimaryRole } from '@/lib/utils';
 import { useAuthStore } from '@/stores/useAuthStore';
 
@@ -12,9 +12,9 @@ export default function AdminLayout({ children }) {
 
 
 
-    const handleLogout = () => {
-        logout();
-        navigate('/', { replace: true });
+    const handleLogout = async () => {
+        await logout();
+        navigate('/home', { replace: true });
     };
     return (
         <div className='drawer lg:drawer-open h-screen overflow-hidden'>
@@ -74,14 +74,31 @@ export default function AdminLayout({ children }) {
                     {/* Sidebar content here */}
                     <ul className='menu w-full grow text-white font-semibold text-md space-y-2'>
                         {/* List item */}
-                        <li className={cn(pathname === '/admin/dashboard' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin/dashboard' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Trang chủ">
+                        <li className={cn(pathname === '/admin' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link to='/admin' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Trang chủ">
                                 {/* Home icon */}
                                 <House className='my-1.5 inline-block size-4' />
                                 <span className="is-drawer-close:hidden truncate">Trang chủ</span>
                             </Link>
                         </li>
 
+                        {/* List item */}
+                        <li className={cn(pathname === '/admin/dashboard' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link to='/admin/dashboard' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Dashboard">
+                                {/* Home icon */}
+                                <LayoutDashboard className='my-1.5 inline-block size-4' />
+                                <span className="is-drawer-close:hidden truncate">Dashboard</span>
+                            </Link>
+                        </li>
+
+                        {/* List item */}
+                        <li className={cn(pathname === '/admin/users' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link to='/admin/users' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Người dùng">
+                                {/* Users icon */}
+                                <UsersRound className='my-1.5 inline-block size-4' />
+                                <span className="is-drawer-close:hidden truncate">Người dùng</span>
+                            </Link>
+                        </li>
                         {/* List item */}
                         <li className={cn(pathname === '/admin/customers' && 'bg-base-content/10 border border-primary/30')}>
                             <Link to='/admin/customers' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Khách hàng">
