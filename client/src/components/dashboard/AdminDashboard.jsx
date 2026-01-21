@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Link } from 'react-router';
 
-const AdminDashboard = () => {
+const AdminMenu = () => {
     const { user } = useAuthStore();
     const { userRoles } = useUserRole();
 
@@ -132,4 +132,4 @@ const AdminDashboard = () => {
     );
 };
 
-export default AdminDashboard;
+export default AdminMenu;

@@ -21,7 +21,7 @@ const RoleProtectedRoute = ({ allowedRoles = [], redirectTo = '/forbidden' }) =>
     }
 
     if (!user) {
-        return <Navigate to='/' replace />;
+        return <Navigate to='/login' replace />;
     }
 
     if (allowedRoles.length > 0 && !hasAnyRole(...allowedRoles)) {

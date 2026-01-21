@@ -28,19 +28,14 @@ export const useUserRole = () => {
         return roleNames.every((roleName) => userRoles.includes(roleName));
     };
 
-    const isAdmin = hasRole('admin');
-
-    const isUser = hasRole('user');
-
-    const isSeller = hasRole('seller');
-
-    const isOwner = hasRole('owner');
-
-    const isAgency = hasRole('agency');
-
-    const isManager = hasRole('manager');
-
-    const isStaff = hasRole('staff');
+    // Memoize các giá trị boolean để tránh re-render không cần thiết
+    const isAdmin = useMemo(() => userRoles.includes('admin'), [userRoles]);
+    const isUser = useMemo(() => userRoles.includes('user'), [userRoles]);
+    const isSeller = useMemo(() => userRoles.includes('seller'), [userRoles]);
+    const isOwner = useMemo(() => userRoles.includes('owner'), [userRoles]);
+    const isAgency = useMemo(() => userRoles.includes('agency'), [userRoles]);
+    const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
+    const isStaff = useMemo(() => userRoles.includes('staff'), [userRoles]);
 
     //k co role = guest
 

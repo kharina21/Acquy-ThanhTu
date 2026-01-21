@@ -487,7 +487,7 @@ export const forgotPassword = async (req, res) => {
             expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 giờ
         });
 
-        // Gửi email
+        // email
         await sendPasswordResetEmail(user.email, resetToken, resetUrl);
 
         // Log activity
@@ -513,7 +513,7 @@ export const forgotPassword = async (req, res) => {
     }
 };
 
-// Đặt lại mật khẩu
+
 export const resetPassword = async (req, res) => {
     try {
         const { token, password } = req.body;
@@ -582,7 +582,7 @@ export const resetPassword = async (req, res) => {
     }
 };
 
-// Đổi mật khẩu (cần mật khẩu hiện tại)
+// Đổi mật khẩu
 export const changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
