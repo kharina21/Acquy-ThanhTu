@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 const ForbiddenPage = () => {
     return (
         <div className='flex flex-col items-center justify-center min-h-screen text-center bg-slate-50'>
-            <img src='403-forbidden.png' alt='not found' className='max-w-full mb-6 w-96' />
+            <img src='/403-forbidden.png' alt='not found' className='max-w-full mb-6 w-96' />
             <p className='text-xl font-semibold'>Cấm! Bạn không có quyền truy cập trang này!</p>
             <Link
                 to='/'

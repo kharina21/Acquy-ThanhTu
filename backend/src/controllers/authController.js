@@ -4,9 +4,10 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import Session from '../models/Session.js';
 import EmailVerification from '../models/EmailVerification.js';
+import PasswordReset from '../models/PasswordReset.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
-import { createVerificationCode, sendVerificationEmail } from '../libs/emailHelper.js';
+import { createVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../libs/emailHelper.js';
 
 //jwt
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -447,4 +448,229 @@ export const refreshToken = async (req, res) => {
     } catch (e) {
         return res.status(500).json({ message: e });
     }
-}
+};
+
+// Quên mật khẩu - Gửi email reset password
+export const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: 'Vui lòng nhập email' });
+        }
+
+        // Tìm user theo email
+        const user = await User.findOne({ email });
+
+        // Luôn trả về success để bảo mật (không tiết lộ email có tồn tại hay không)
+        if (!user) {
+            return res.status(200).json({
+                message: 'Nếu email tồn tại, chúng tôi đã gửi link khôi phục mật khẩu đến email của bạn'
+            });
+        }
+
+        // Xóa các token cũ của user này trước khi tạo token mới
+        await PasswordReset.deleteMany({
+            userId: user._id,
+            isUsed: false,
+        });
+
+        // Tạo reset token
+        const resetToken = PasswordReset.generateToken();
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+        // Lưu reset token vào database
+        await PasswordReset.create({
+            userId: user._id,
+            email: user.email,
+            token: resetToken,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 giờ
+        });
+
+        // Gửi email
+        await sendPasswordResetEmail(user.email, resetToken, resetUrl);
+
+        // Log activity
+        try {
+            await logAuthActivity({
+                userId: user._id,
+                action: 'reset_password',
+                description: `Yêu cầu khôi phục mật khẩu cho ${user.email}`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(200).json({
+            message: 'Nếu email tồn tại, chúng tôi đã gửi link khôi phục mật khẩu đến email của bạn'
+        });
+    } catch (error) {
+        console.log('Lỗi khi gửi email khôi phục mật khẩu: ' + error.message);
+        res.status(500).json({ message: 'Lỗi khi gửi email khôi phục mật khẩu', error: error.message });
+    }
+};
+
+// Đặt lại mật khẩu
+export const resetPassword = async (req, res) => {
+    try {
+        const { token, password } = req.body;
+
+        if (!token || !password) {
+            return res.status(400).json({ message: 'Token và mật khẩu mới là bắt buộc' });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự' });
+        }
+
+        // Tìm reset token
+        const passwordReset = await PasswordReset.findOne({
+            token,
+            isUsed: false,
+        });
+
+        if (!passwordReset) {
+            return res.status(400).json({ message: 'Token không hợp lệ hoặc đã được sử dụng' });
+        }
+
+        // Kiểm tra token đã hết hạn chưa
+        if (passwordReset.expiresAt < new Date()) {
+            return res.status(400).json({ message: 'Token đã hết hạn. Vui lòng yêu cầu link mới' });
+        }
+
+        // Hash mật khẩu mới
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Cập nhật mật khẩu user
+        await User.findByIdAndUpdate(passwordReset.userId, {
+            password: hashedPassword,
+        });
+
+        // Đánh dấu token đã được sử dụng
+        passwordReset.isUsed = true;
+        await passwordReset.save();
+
+        // Xóa tất cả các reset token cũ của user này
+        await PasswordReset.deleteMany({
+            userId: passwordReset.userId,
+            isUsed: false,
+        });
+
+        // Log activity
+        try {
+            await logAuthActivity({
+                userId: passwordReset.userId,
+                action: 'reset_password',
+                description: `Đặt lại mật khẩu thành công`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(200).json({
+            message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới'
+        });
+    } catch (error) {
+        console.log('Lỗi khi đặt lại mật khẩu: ' + error.message);
+        res.status(500).json({ message: 'Lỗi khi đặt lại mật khẩu', error: error.message });
+    }
+};
+
+// Đổi mật khẩu (cần mật khẩu hiện tại)
+export const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user._id;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ message: 'Mật khẩu hiện tại và mật khẩu mới là bắt buộc' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
+
+            //log
+            try {
+                await logAuthActivity({
+                    userId: user._id,
+                    action: 'change_password',
+                    description: `Thử đổi mật khẩu thất bại - Mật khẩu hiện tại không đúng`,
+                    ipAddress: getClientIp(req),
+                    userAgent: getUserAgent(req),
+                    status: 'failed',
+                    errorMessage: 'Mật khẩu hiện tại không đúng',
+                });
+            } catch (logError) {
+                console.log('Lỗi khi log activity: ' + logError.message);
+            }
+
+            return res.status(400).json({ message: 'Mật khẩu hiện tại không đúng' });
+        }
+
+        // Kiểm tra mật khẩu mới không được trùng với mật khẩu cũ
+        const isSamePassword = await bcrypt.compare(newPassword, user.password);
+        if (isSamePassword) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải khác với mật khẩu hiện tại' });
+        }
+
+        // Hash mật khẩu mới
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Cập nhật mật khẩu
+        await User.findByIdAndUpdate(userId, {
+            password: hashedPassword,
+        });
+
+        // Log activity
+        try {
+            await logAuthActivity({
+                userId: user._id,
+                action: 'change_password',
+                description: `Đổi mật khẩu thành công`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(200).json({
+            message: 'Đổi mật khẩu thành công'
+        });
+    } catch (error) {
+        console.log('Lỗi khi đổi mật khẩu: ' + error.message);
+
+        // Log error
+        try {
+            await logAuthActivity({
+                userId: req.user._id,
+                action: 'change_password',
+                description: `Đổi mật khẩu thất bại`,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'failed',
+                errorMessage: error.message,
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
+
+        res.status(500).json({ message: 'Lỗi khi đổi mật khẩu', error: error.message });
+    }
+};

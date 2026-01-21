@@ -6,6 +6,9 @@ import {
     updateProfile,
     sendVerificationCode,
     verifyEmail,
+    forgotPassword,
+    resetPassword,
+    changePassword,
     logout,
     refreshToken,
 } from "../controllers/authController.js";
@@ -14,6 +17,9 @@ import {
     updateProfileValidation,
     verifyEmailValidation,
     handleValidationErrors,
+    forgotPasswordValidation,
+    resetPasswordValidation,
+    changePasswordValidation,
 } from "../validators/authValidator.js";
 
 import { authenticate } from "../middlewares/authenticate.js";
@@ -27,29 +33,58 @@ router.post(
 );
 router.post("/login", login);
 
-router.get("/me", authenticate, getCurrentUser); // Lấy thông tin user hiện tại
+// Lấy thông tin user hiện tại
+router.get("/me", authenticate, getCurrentUser);
+
+// Cập nhật thông tin profile
 router.put(
     "/profile",
     authenticate,
     updateProfileValidation,
     handleValidationErrors,
     updateProfile
-); // Cập nhật thông tin profile
-router.post("/send-verification-email", authenticate, sendVerificationCode); // Gửi mã xác thực email
+);
+
+// Gửi mã xác thực email
+router.post("/send-verification-email", authenticate, sendVerificationCode);
+
+// Xác thực email với mã
 router.post(
     "/verify-email",
     authenticate,
     verifyEmailValidation,
     handleValidationErrors,
     verifyEmail
-); // Xác thực email với mã
+);
+
+
+// Quên mật khẩu - Gửi email reset
+router.post(
+    "/forgot-password",
+    forgotPasswordValidation,
+    handleValidationErrors,
+    forgotPassword
+);
+
+// Đặt lại mật khẩu với token
+router.post(
+    "/reset-password",
+    resetPasswordValidation,
+    handleValidationErrors,
+    resetPassword
+);
+
+// Đổi mật khẩu (cần mật khẩu hiện tại)
+router.put(
+    "/change-password",
+    authenticate,
+    changePasswordValidation,
+    handleValidationErrors,
+    changePassword
+);
+
 router.post("/logout", logout);
 router.get("/refresh", refreshToken);
-
-// router.post('/logout', logout);
-// router.post('/refresh', refresh);
-// router.post('/forgot-password', forgotPassword);
-// router.post('/reset-password', resetPassword);
 // router.post('/verify-email', verifyEmail);
 // router.post('/send-verification-email', sendVerificationEmail);
 

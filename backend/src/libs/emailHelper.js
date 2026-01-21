@@ -9,7 +9,7 @@ export const generateVerificationCode = () => {
 
 
 export const sendVerificationEmail = async (email, code) => {
-    //test email
+
     console.log('========================================');
     console.log('EMAIL VERIFICATION CODE');
     console.log('========================================');
@@ -20,10 +20,10 @@ export const sendVerificationEmail = async (email, code) => {
     console.log('Mã này có hiệu lực trong 15 phút.');
     console.log('========================================');
 
-    //production
+    // production
     const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT,
+        port: Number(process.env.SMTP_PORT) || 465,
         secure: true,
         auth: {
             user: process.env.SMTP_USER,
@@ -32,15 +32,86 @@ export const sendVerificationEmail = async (email, code) => {
     });
 
     await transporter.sendMail({
-        from: process.env.SMTP_FROM,
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
         to: email,
         subject: 'Mã xác thực email - Thanh Tú Store',
         html: `
-            <h2>Mã xác thực email</h2>
-            <p>Mã xác thực của bạn là: <strong>${code}</strong></p>
-            <p>Mã này có hiệu lực trong 15 phút.</p>
+            <div style="font-family: sans-serif; line-height: 1.6;">
+                <h2>Mã xác thực email</h2>
+                <p>Mã xác thực của bạn là: <strong style="font-size: 24px; letter-spacing: 4px;">${code}</strong></p>
+                <p>Mã này có hiệu lực trong <strong>15 phút</strong>.</p>
+            </div>
         `,
     });
+};
+
+
+export const sendPasswordResetEmail = async (email, resetToken, resetUrl) => {
+    // Log ra console để debug
+    console.log('========================================');
+    console.log('PASSWORD RESET EMAIL');
+    console.log('========================================');
+    console.log(`To: ${email}`);
+    console.log(`Subject: Khôi phục mật khẩu - Thanh Tú Store`);
+    console.log(`Reset Token: ${resetToken}`);
+    console.log(`Reset URL: ${resetUrl}`);
+    console.log('========================================');
+    console.log(`Link khôi phục mật khẩu: ${resetUrl}`);
+    console.log('Link này có hiệu lực trong 1 giờ.');
+    console.log('========================================');
+
+
+    try {
+        const smtpPort = Number(process.env.SMTP_PORT) || 465;
+
+        const isSecurePort = smtpPort === 465;
+
+        const transporterConfig = {
+            host: process.env.SMTP_HOST,
+            port: smtpPort,
+            secure: isSecurePort,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+
+        };
+        const transporter = nodemailer.createTransport(transporterConfig);
+
+        await transporter.verify();
+
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            to: email,
+            subject: 'Khôi phục mật khẩu - Thanh Tú Store',
+            html: `
+                    <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #4e54c8;">Khôi phục mật khẩu</h2>
+                        <p>Xin chào,</p>
+                        <p>Bạn đã yêu cầu khôi phục mật khẩu cho tài khoản của mình.</p>
+                        <p>Nhấp vào nút bên dưới để đặt lại mật khẩu:</p>
+                        <p style="margin: 20px 0;">
+                            <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #4e54c8; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Đặt lại mật khẩu</a>
+                        </p>
+                        <p>Hoặc copy và dán link sau vào trình duyệt:</p>
+                        <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px;">${resetUrl}</p>
+                        <p><strong>Lưu ý:</strong> Link này có hiệu lực trong <strong>1 giờ</strong>.</p>
+                        <p>Nếu bạn không yêu cầu khôi phục mật khẩu, vui lòng bỏ qua email này.</p>
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+                        <p style="color: #666; font-size: 12px;">Thanh Tú Store</p>
+                    </div>
+                `,
+        });
+
+        // Đóng connection sau khi gửi
+        transporter.close();
+
+        console.log(`✅ Email đã được gửi thành công đến ${email}`);
+    } catch (error) {
+        console.error('❌ Lỗi khi gửi email:', error.message);
+        console.error('Chi tiết lỗi:', error);
+    }
+
 };
 
 

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const activityLogSchema = new mongoose.Schema(
     {
-        // User thực hiện hành động
+
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
@@ -35,32 +35,32 @@ const activityLogSchema = new mongoose.Schema(
                 'other',
             ],
         },
-        // Tài nguyên bị tác động (user, role, permission, product, order, etc.)
+
         resource: {
             type: String,
             required: true,
         },
-        // ID của tài nguyên bị tác động (nếu có)
+        // ID của tài nguyên 
         resourceId: {
             type: mongoose.Schema.Types.ObjectId,
             default: null,
         },
-        // Mô tả chi tiết hành động
+
         description: {
             type: String,
             default: '',
         },
-        // Dữ liệu trước khi thay đổi (cho update/delete)
+
         oldData: {
             type: mongoose.Schema.Types.Mixed,
             default: null,
         },
-        // Dữ liệu sau khi thay đổi (cho create/update)
+
         newData: {
             type: mongoose.Schema.Types.Mixed,
             default: null,
         },
-        // IP address của user
+
         ipAddress: {
             type: String,
             default: '',
@@ -70,13 +70,13 @@ const activityLogSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
-        // Kết quả của hành động (success, failed, error)
+
         status: {
             type: String,
             enum: ['success', 'failed', 'error'],
             default: 'success',
         },
-        // Thông báo lỗi (nếu có)
+        // Thông báo lỗi
         errorMessage: {
             type: String,
             default: '',

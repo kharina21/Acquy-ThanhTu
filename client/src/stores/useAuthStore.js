@@ -2,6 +2,7 @@ import api from '@/lib/axios';
 import { toast } from 'sonner';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useLogStore } from './useLogStore';
 
 const initState = {
     user: null,
@@ -15,6 +16,7 @@ export const useAuthStore = create(
             user: null,
             accessToken: null,
             loading: false,
+            updatingProfile: false, // Loading state riêng cho update profile
 
             setAccessToken: (newAccessToken) => {
                 set({ accessToken: newAccessToken });
@@ -61,6 +63,38 @@ export const useAuthStore = create(
                     toast.error('Lỗi xảy ra khi lấy thông tin người dùng');
                 } finally {
                     set({ loading: false });
+                }
+            },
+
+            updateUser: async (data) => {
+                try {
+                    const { user } = get();
+                    set({ updatingProfile: true }); // Sử dụng updatingProfile thay vì loading
+                    const oldEmail = user?.email;
+                    const response = await api.put('/auth/profile', data);
+                    // Không set loading khi fetchUser để tránh loading toàn trang
+                    const res = await api.get('/auth/me', { withCredentials: true });
+                    set({ user: res.data.user });
+                    // Kiểm tra xem email có thay đổi không
+                    const emailChanged = oldEmail && data.email && oldEmail !== data.email;
+
+                    if (emailChanged) {
+                        toast.success('Cập nhật thông tin thành công.', {
+                            duration: 5000,
+                        });
+
+                    } else {
+                        toast.success(response.data?.message || 'Cập nhật thông tin thành công');
+                    }
+                    // Refresh activity logs
+                    await useLogStore.getState().fetchActivityLogs(1);
+                } catch (error) {
+                    console.error('Error updating profile:', error);
+                    const errorMessage = error.response?.data?.message || 'Cập nhật thông tin thất bại';
+                    toast.error(errorMessage);
+                    throw error; // Re-throw để component có thể handle
+                } finally {
+                    set({ updatingProfile: false });
                 }
             },
 

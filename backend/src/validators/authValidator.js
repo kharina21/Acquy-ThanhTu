@@ -97,6 +97,43 @@ export const verifyEmailValidation = [
         .withMessage('Mã xác thực chỉ được chứa số'),
 ];
 
+// Validation rules cho forgot password
+export const forgotPasswordValidation = [
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email không được để trống')
+        .isEmail()
+        .withMessage('Email không hợp lệ')
+        .normalizeEmail(),
+];
+
+// Validation rules cho reset password
+export const resetPasswordValidation = [
+    body('token')
+        .trim()
+        .notEmpty()
+        .withMessage('Token không được để trống'),
+    body('password')
+        .notEmpty()
+        .withMessage('Mật khẩu không được để trống')
+        .isLength({ min: 6, max: 100 })
+        .withMessage('Mật khẩu phải từ 6 đến 100 ký tự'),
+];
+
+// Validation rules cho change password
+export const changePasswordValidation = [
+    body('currentPassword')
+        .notEmpty()
+        .withMessage('Mật khẩu hiện tại không được để trống'),
+    body('newPassword')
+        .notEmpty()
+        .withMessage('Mật khẩu mới không được để trống')
+        .isLength({ min: 6, max: 100 })
+        .withMessage('Mật khẩu mới phải từ 6 đến 100 ký tự'),
+
+];
+
 // Middleware để xử lý validation errors
 export const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
