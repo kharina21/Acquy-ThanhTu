@@ -92,8 +92,8 @@ export default function AdminLayout({ children }) {
                         </li>
 
                         {/* List item */}
-                        <li className={cn(pathname === '/admin/users' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin/users' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Người dùng">
+                        <li className={cn(pathname === '/users' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link to='/users' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Người dùng">
                                 {/* Users icon */}
                                 <UsersRound className='my-1.5 inline-block size-4' />
                                 <span className="is-drawer-close:hidden truncate">Người dùng</span>
