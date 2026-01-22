@@ -7,7 +7,7 @@ import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
 import HomePage from '../pages/HomePage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
-import UserManagementPage from '../pages/UserManagementPage';
+import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 

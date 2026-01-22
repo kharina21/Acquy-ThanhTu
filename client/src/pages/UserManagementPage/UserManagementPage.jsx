@@ -6,14 +6,13 @@ import {
     Edit,
     Trash2,
     Shield,
-    ShieldOff,
     Key,
     ChevronLeft,
     ChevronRight,
-    Filter,
     X,
     CheckCircle2,
     XCircle,
+    UserRoundPlus,
 } from 'lucide-react';
 import {
     getUsers,
@@ -297,8 +296,8 @@ const UserManagementPage = () => {
     };
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="max-w-7xl mx-auto">
+        <div className="px-6 py-8 min-h-screen">
+            <div className="">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <div>
@@ -312,7 +311,7 @@ const UserManagementPage = () => {
                             setShowCreateModal(true);
                         }}
                     >
-                        <UserPlus className="w-5 h-5" />
+                        <UserRoundPlus className="w-5 h-5" />
                         Tạo người dùng
                     </button>
                 </div>
@@ -320,16 +319,16 @@ const UserManagementPage = () => {
                 {/* Filters */}
                 <div className="bg-base-100 rounded-lg shadow-lg p-6 mb-6">
                     <div className="flex items-center gap-4">
-                        <div className="flex-1">
+                        <div className="min-w-xl">
                             <label className="label">
                                 <span className="label-text font-semibold">Tìm kiếm</span>
                             </label>
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-base-content/40" />
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-base-content/40 z-40" />
                                 <input
                                     type="text"
                                     placeholder="Tìm theo tên, email, username..."
-                                    className="input input-bordered w-full pl-10"
+                                    className="input w-full pl-10 focus:outline-none"
                                     value={filters.search}
                                     onChange={(e) => {
                                         setFilters({ ...filters, search: e.target.value });
@@ -338,12 +337,12 @@ const UserManagementPage = () => {
                                 />
                             </div>
                         </div>
-                        <div className="w-48">
+                        <div className="w-28">
                             <label className="label">
                                 <span className="label-text font-semibold">Lọc theo role</span>
                             </label>
                             <select
-                                className="select select-bordered w-full"
+                                className="select w-full  focus:ring-0 outline-none"
                                 value={filters.role}
                                 onChange={(e) => {
                                     setFilters({ ...filters, role: e.target.value });
@@ -396,7 +395,7 @@ const UserManagementPage = () => {
                                             <th>Roles</th>
                                             <th>Trạng thái</th>
                                             <th>Ngày tạo</th>
-                                            <th>Thao tác</th>
+                                            <th className="text-center">Thao tác</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -404,13 +403,6 @@ const UserManagementPage = () => {
                                             <tr key={user._id}>
                                                 <td>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="avatar placeholder">
-                                                            <div className="bg-primary text-primary-content rounded-full w-10">
-                                                                <span className="text-sm font-semibold">
-                                                                    {getInitials(user)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
                                                         <div>
                                                             <div className="font-semibold">
                                                                 {user.firstName} {user.lastName}
@@ -457,9 +449,9 @@ const UserManagementPage = () => {
                                                 </td>
                                                 <td className="text-sm">{formatDateTime(user.createdAt)}</td>
                                                 <td>
-                                                    <div className="flex gap-2">
+                                                    <div className="flex gap-2 justify-center">
                                                         <button
-                                                            className="btn btn-ghost btn-sm"
+                                                            className="btn btn-ghost btn-sm "
                                                             onClick={() => openEditModal(user)}
                                                             title="Chỉnh sửa"
                                                         >
@@ -495,7 +487,7 @@ const UserManagementPage = () => {
                             </div>
 
                             {/* Pagination */}
-                            <div className="flex justify-between items-center p-4 border-t">
+                            <div className="flex justify-between items-center p-4 border-t border-base-300">
                                 <div>
                                     <p className="text-sm text-base-content/60">
                                         Hiển thị {users.length} / {pagination.total} người dùng
