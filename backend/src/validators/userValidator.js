@@ -67,32 +67,41 @@ export const createUserValidation = [
         .optional()
         .isString()
         .withMessage('Mỗi role phải là một chuỗi'),
+
+    // isVerified validation (optional)
+    body('isVerified')
+        .optional()
+        .isBoolean()
+        .withMessage('isVerified phải là boolean'),
+
+    // Status validation (optional)
+    body('status')
+        .optional()
+        .isIn(['active', 'inactive', 'banned', 'suspended'])
+        .withMessage('Status phải là một trong các giá trị: active, inactive, banned, suspended'),
 ];
 
 // Validation rules cho cập nhật user
 export const updateUserValidation = [
-    // Email validation
+    // Email validation (optional)
     body('email')
+        .optional({ checkFalsy: true })
         .trim()
-        .notEmpty()
-        .withMessage('Email không được để trống')
         .isEmail()
         .withMessage('Email không hợp lệ')
         .normalizeEmail(),
 
-    // First name validation
+    // First name validation (optional)
     body('firstName')
+        .optional({ checkFalsy: true })
         .trim()
-        .notEmpty()
-        .withMessage('Họ không được để trống')
         .isLength({ min: 1, max: 50 })
         .withMessage('Họ phải từ 1 đến 50 ký tự'),
 
-    // Last name validation
+    // Last name validation (optional)
     body('lastName')
+        .optional({ checkFalsy: true })
         .trim()
-        .notEmpty()
-        .withMessage('Tên không được để trống')
         .isLength({ min: 1, max: 50 })
         .withMessage('Tên phải từ 1 đến 50 ký tự'),
 
@@ -109,6 +118,18 @@ export const updateUserValidation = [
         .trim()
         .isLength({ min: 5, max: 200 })
         .withMessage('Địa chỉ phải từ 5 đến 200 ký tự'),
+
+    // Status validation (optional)
+    body('status')
+        .optional()
+        .isIn(['active', 'inactive', 'banned', 'suspended'])
+        .withMessage('Status phải là một trong các giá trị: active, inactive, banned, suspended'),
+
+    // isVerified validation (optional)
+    body('isVerified')
+        .optional()
+        .isBoolean()
+        .withMessage('isVerified phải là boolean'),
 ];
 
 // Validation rules cho assign roles

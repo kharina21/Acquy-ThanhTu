@@ -4,27 +4,20 @@ import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 
-// Lấy danh sách tất cả users (có phân trang và filter)
 export const getAllUsers = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const search = req.query.search || '';
         const roleFilter = req.query.role || '';
+        const isVerifiedFilter = req.query.isVerified;
+        const statusFilter = req.query.status || '';
+        const dateFrom = req.query.dateFrom;
+        const dateTo = req.query.dateTo;
         const skip = (page - 1) * limit;
 
         // Build query
         const query = {};
-
-        // Search by username, email, firstName, lastName
-        if (search) {
-            query.$or = [
-                { username: { $regex: search, $options: 'i' } },
-                { email: { $regex: search, $options: 'i' } },
-                { firstName: { $regex: search, $options: 'i' } },
-                { lastName: { $regex: search, $options: 'i' } },
-            ];
-        }
 
         // Filter by role
         if (roleFilter) {
@@ -32,6 +25,39 @@ export const getAllUsers = async (req, res) => {
             if (role) {
                 query.roles = role._id;
             }
+        }
+
+        if (isVerifiedFilter !== undefined && isVerifiedFilter !== '') {
+            query.isVerified = isVerifiedFilter === 'true';
+        }
+
+        if (statusFilter) {
+            query.status = statusFilter;
+        }
+
+        if (dateFrom || dateTo) {
+            query.createdAt = {};
+            if (dateFrom) {
+                const fromDate = new Date(dateFrom);
+                fromDate.setHours(0, 0, 0, 0);
+                query.createdAt.$gte = fromDate;
+            }
+            if (dateTo) {
+                const toDate = new Date(dateTo);
+                toDate.setHours(23, 59, 59, 999);
+                query.createdAt.$lte = toDate;
+            }
+        }
+
+        // Search by username, email, firstName, lastName
+        // MongoDB automatically combines $or with other fields using AND logic
+        if (search) {
+            query.$or = [
+                { username: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+                { firstName: { $regex: search, $options: 'i' } },
+                { lastName: { $regex: search, $options: 'i' } },
+            ];
         }
 
         // Get users with pagination
@@ -95,7 +121,7 @@ export const getUserById = async (req, res) => {
 // Tạo user mới (chỉ admin/owner)
 export const createUser = async (req, res) => {
     try {
-        const { username, password, email, firstName, lastName, phoneNumber, address, roles } = req.body;
+        const { username, password, email, firstName, lastName, phoneNumber, address, roles, isVerified, status } = req.body;
 
         // Kiểm tra username đã tồn tại
         const existingUser = await User.findOne({ username }).select('-password');
@@ -121,7 +147,8 @@ export const createUser = async (req, res) => {
             lastName,
             phoneNumber: phoneNumber || '',
             address: address || '',
-            isVerified: true, // Admin tạo user thì mặc định verified
+            isVerified: isVerified !== undefined ? isVerified : true, // Admin tạo user thì mặc định verified
+            status: status || 'active',
         });
 
         // Gán roles nếu có
@@ -182,7 +209,7 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { firstName, lastName, email, phoneNumber, address } = req.body;
+        const { firstName, lastName, email, phoneNumber, address, status, isVerified } = req.body;
 
         // Kiểm tra user có tồn tại không
         const user = await User.findById(id);
@@ -200,17 +227,29 @@ export const updateUser = async (req, res) => {
 
         // Cập nhật thông tin
         const updateData = {};
-        if (firstName) updateData.firstName = firstName;
-        if (lastName) updateData.lastName = lastName;
-        if (email) {
+        if (firstName !== undefined) updateData.firstName = firstName;
+        if (lastName !== undefined) updateData.lastName = lastName;
+        if (email !== undefined) {
             updateData.email = email;
-            // Nếu email thay đổi, set isVerified = false
-            if (email !== user.email) {
+            // Nếu email thay đổi và isVerified không được gửi lên, set isVerified = false
+            if (email !== user.email && isVerified === undefined) {
                 updateData.isVerified = false;
             }
         }
         if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
         if (address !== undefined) updateData.address = address;
+        if (status !== undefined) {
+            // Validate status
+            const validStatuses = ['active', 'inactive', 'banned', 'suspended'];
+            if (validStatuses.includes(status)) {
+                updateData.status = status;
+            } else {
+                return res.status(400).json({ message: 'Status không hợp lệ' });
+            }
+        }
+        if (isVerified !== undefined) {
+            updateData.isVerified = isVerified;
+        }
 
         const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
             .select('-password')

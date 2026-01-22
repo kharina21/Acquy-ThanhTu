@@ -12,7 +12,7 @@ import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 
 // Dashboards
-import AdminMenu from '../components/dashboard/AdminDashboard';
+import AdminMenu from '../components/dashboard/AdminMenu';
 import SellerDashboard from '../components/dashboard/SellerDashboard';
 import OwnerDashboard from '../components/dashboard/OwnerDashboard';
 import AgencyDashboard from '../components/dashboard/AgencyDashboard';
@@ -56,14 +56,14 @@ export const AppRoutes = () => {
                     {/* Admin Routes */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
                         <Route path="/admin" element={<AdminMenu />} />
-                        <Route path="/admin/users" element={<UserManagementPage />} />
+                        <Route path="/users" element={<UserManagementPage />} />
                         {/* Thêm các admin routes khác ở đây */}
                     </Route>
 
                     {/* Owner Routes */}
                     <Route element={<RoleProtectedRoute allowedRoles={['owner']} />}>
                         <Route path="/owner/dashboard" element={<OwnerDashboard />} />
-                        <Route path="/owner/users" element={<UserManagementPage />} />
+                        <Route path="/users" element={<UserManagementPage />} />
                         {/* Thêm các owner routes khác ở đây */}
                     </Route>
 

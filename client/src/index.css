@@ -118,7 +118,8 @@ body {
 @theme{
     --color-navyBlue: #1E3A8A;
     --color-backgroundToBottom: linear-gradient(to bottom, #4e54c8, #8f94fb);
-    --color-purple: #8f94fb
+    --color-purple: #8f94fb;
+    --color-background: #f8f8f8;
 }
 
 /* Custom animations */

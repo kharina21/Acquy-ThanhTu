@@ -47,7 +47,7 @@ const AdminMenu = () => {
             title: '5. Quản trị hệ thống',
             items: [
                 { name: 'Thông tin doanh nghiệp', image: '/src/assets/kho/Thông tin doanh nghiệp.PNG', path: '#' },
-                { name: 'Người dùng', image: '/src/assets/kho/Người dùng.PNG', path: '#' },
+                { name: 'Người dùng', image: '/src/assets/kho/Người dùng.PNG', path: '/users' },
             ],
         },
         {
