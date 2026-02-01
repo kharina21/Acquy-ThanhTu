@@ -4,7 +4,7 @@ import { Shield } from 'lucide-react';
 const ProfileHeader = ({ user }) => {
     return (
         <div className="bg-base-100 rounded-lg shadow-lg overflow-hidden">
-            <div className="bg-linear-to-r from-primary to-purple-600 p-8">
+            <div className="bg-gradient-to-r from-primary to-purple-600 p-8">
                 <div className="flex flex-col md:flex-row items-center md:items-end gap-6">
                     {/* Avatar */}
                     <div className="relative">

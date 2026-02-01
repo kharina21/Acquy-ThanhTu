@@ -33,7 +33,6 @@ export const useUserRole = () => {
     const isUser = useMemo(() => userRoles.includes('user'), [userRoles]);
     const isSeller = useMemo(() => userRoles.includes('seller'), [userRoles]);
     const isOwner = useMemo(() => userRoles.includes('owner'), [userRoles]);
-    const isAgency = useMemo(() => userRoles.includes('agency'), [userRoles]);
     const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
     const isStaff = useMemo(() => userRoles.includes('staff'), [userRoles]);
 
@@ -48,7 +47,6 @@ export const useUserRole = () => {
         isUser,
         isSeller,
         isOwner,
-        isAgency,
         isManager,
         isStaff,
     };

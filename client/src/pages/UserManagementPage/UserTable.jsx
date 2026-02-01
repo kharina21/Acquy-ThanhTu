@@ -6,6 +6,9 @@ import {
     resetUserPassword,
 } from '@/services/userService';
 import React, { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { TableSkeleton } from '@/components/common/SkeletonLoader';
 
 const UserTable = ({
     setSelectedUser,
@@ -33,6 +36,16 @@ const UserTable = ({
 
 
     const [loading, setLoading] = useState(true);
+
+    // Confirmation modal states
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null,
+        onCancel: null,
+        variant: 'warning',
+    });
 
     // Handle update user
     const handleUpdateUser = async (e) => {
@@ -78,14 +91,16 @@ const UserTable = ({
             if (rolesToRemove.length > 0) {
                 const removeRes = await removeRoles(selectedUser._id, rolesToRemove);
                 if (!removeRes.success) {
-                    alert(removeRes.message || 'Có lỗi khi xóa roles');
+                    toast.error(removeRes.message || 'Có lỗi khi xóa roles');
+                    setSubmitting(false);
                     return;
                 }
             }
             if (rolesToAdd.length > 0) {
                 const addRes = await assignRoles(selectedUser._id, rolesToAdd);
                 if (!addRes.success) {
-                    alert(addRes.message || 'Có lỗi khi thêm roles');
+                    toast.error(addRes.message || 'Có lỗi khi thêm roles');
+                    setSubmitting(false);
                     return;
                 }
             }
@@ -93,9 +108,10 @@ const UserTable = ({
             // If no changes, still refresh
             setShowRoleModal(false);
             resetForm();
+            toast.success('Cập nhật roles thành công');
             fetchUsers();
         } catch (error) {
-            alert(error.response?.data?.message || 'Có lỗi xảy ra');
+            toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
         } finally {
             setSubmitting(false);
         }
@@ -112,39 +128,62 @@ const UserTable = ({
             if (res.success) {
                 setShowPasswordModal(false);
                 resetForm();
-                alert('Đặt lại mật khẩu thành công');
+                toast.success('Đặt lại mật khẩu thành công');
             }
         } catch (error) {
             setFormErrors({ password: error.response?.data?.message || 'Có lỗi xảy ra' });
+            toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
         } finally {
             setSubmitting(false);
         }
     };
     // Handle delete user
-    const handleDeleteUser = async (userId) => {
-        if (!confirm('Bạn có chắc chắn muốn xóa user này?')) return;
-
-        try {
-            const res = await deleteUser(userId);
-            if (res.success) {
-                fetchUsers();
-            }
-        } catch (error) {
-            alert(error.response?.data?.message || 'Có lỗi xảy ra');
-        }
+    const handleDeleteUser = (userId) => {
+        const user = users.find(u => u._id === userId);
+        setConfirmModal({
+            isOpen: true,
+            title: 'Xóa người dùng',
+            message: `Bạn có chắc chắn muốn xóa người dùng "${user?.firstName} ${user?.lastName}" (${user?.username})? Hành động này không thể hoàn tác.`,
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    const res = await deleteUser(userId);
+                    if (res.success) {
+                        toast.success('Xóa người dùng thành công');
+                        fetchUsers();
+                    }
+                } catch (error) {
+                    toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
+                } finally {
+                    setLoading(false);
+                }
+            },
+            variant: 'danger',
+        });
     };
     // Handle remove roles
-    const handleRemoveRole = async (userId, roleName) => {
-        if (!confirm(`Bạn có chắc chắn muốn xóa role "${roleName}" khỏi user này?`)) return;
-
-        try {
-            const res = await removeRoles(userId, [roleName]);
-            if (res.success) {
-                fetchUsers();
-            }
-        } catch (error) {
-            alert(error.response?.data?.message || 'Có lỗi xảy ra');
-        }
+    const handleRemoveRole = (userId, roleName) => {
+        const user = users.find(u => u._id === userId);
+        setConfirmModal({
+            isOpen: true,
+            title: 'Xóa role',
+            message: `Bạn có chắc chắn muốn xóa role "${roleName}" khỏi người dùng "${user?.firstName} ${user?.lastName}"?`,
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    const res = await removeRoles(userId, [roleName]);
+                    if (res.success) {
+                        toast.success(`Đã xóa role "${roleName}" thành công`);
+                        fetchUsers();
+                    }
+                } catch (error) {
+                    toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
+                } finally {
+                    setLoading(false);
+                }
+            },
+            variant: 'warning',
+        });
     };
     // Open edit modal
     const openEditModal = (user) => {
@@ -187,7 +226,6 @@ const UserTable = ({
             manager: 'badge-info',
             seller: 'badge-success',
             staff: 'badge-primary',
-            agency: 'badge-secondary',
             user: 'badge-neutral',
         };
         return colors[roleName] || 'badge-neutral';
@@ -216,15 +254,37 @@ const UserTable = ({
     };
 
     // Handle update status
-    const handleUpdateStatus = async (userId, newStatus) => {
-        try {
-            const res = await updateUser(userId, { status: newStatus });
-            if (res.success) {
-                fetchUsers();
-            }
-        } catch (error) {
-            alert(error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái');
-        }
+    const handleUpdateStatus = (userId, newStatus, currentStatus, selectElement) => {
+        const user = users.find(u => u._id === userId);
+        setConfirmModal({
+            isOpen: true,
+            title: 'Thay đổi trạng thái',
+            message: `Bạn có chắc chắn muốn thay đổi trạng thái của "${user?.firstName} ${user?.lastName}" từ "${getStatusLabel(currentStatus)}" sang "${getStatusLabel(newStatus)}"?`,
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    const res = await updateUser(userId, { status: newStatus });
+                    if (res.success) {
+                        toast.success(`Đã cập nhật trạng thái thành "${getStatusLabel(newStatus)}"`);
+                        fetchUsers();
+                    } else {
+                        // Reset select if failed
+                        if (selectElement) selectElement.value = currentStatus;
+                    }
+                } catch (error) {
+                    toast.error(error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái');
+                    // Reset select on error
+                    if (selectElement) selectElement.value = currentStatus;
+                } finally {
+                    setLoading(false);
+                }
+            },
+            onCancel: () => {
+                // Reset select if cancelled
+                if (selectElement) selectElement.value = currentStatus;
+            },
+            variant: 'warning',
+        });
     };
 
     // Fetch users
@@ -263,8 +323,8 @@ const UserTable = ({
     return (
         <div className="bg-base-100 rounded-lg shadow-lg">
             {loading ? (
-                <div className="flex justify-center items-center p-8">
-                    <span className="loading loading-spinner loading-lg"></span>
+                <div className="p-4">
+                    <TableSkeleton rows={pagination.limit} cols={8} />
                 </div>
             ) : users.length === 0 ? (
                 <div className="p-8 text-center">
@@ -313,9 +373,10 @@ const UserTable = ({
                                                             {role.name}
                                                         </span>
                                                         <button
-                                                            className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-0"
+                                                            className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-0 focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
                                                             onClick={() => handleRemoveRole(user._id, role.name)}
                                                             title={`Xóa role ${role.name}`}
+                                                            aria-label={`Xóa role ${role.name} khỏi ${user.firstName} ${user.lastName}`}
                                                         >
                                                             <X className="w-3 h-3" />
                                                         </button>
@@ -338,16 +399,19 @@ const UserTable = ({
                                         </td>
                                         <td>
                                             <select
-                                                className={`select select-sm select-bordered w-full max-w-xs ${getStatusBadgeColor(user.status || 'active')}`}
+                                                className={`select select-sm select-bordered w-full max-w-xs ${getStatusBadgeColor(user.status || 'active')} focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1`}
                                                 value={user.status || 'active'}
                                                 onChange={(e) => {
-                                                    if (confirm(`Bạn có chắc chắn muốn thay đổi trạng thái thành "${getStatusLabel(e.target.value)}"?`)) {
-                                                        handleUpdateStatus(user._id, e.target.value);
-                                                    } else {
-                                                        // Reset về giá trị cũ nếu cancel
-                                                        e.target.value = user.status || 'active';
+                                                    const newStatus = e.target.value;
+                                                    const currentStatus = user.status || 'active';
+                                                    if (newStatus !== currentStatus) {
+                                                        const selectElement = e.target;
+                                                        handleUpdateStatus(user._id, newStatus, currentStatus, selectElement);
+                                                        // Reset immediately - will be updated after confirmation
+                                                        selectElement.value = currentStatus;
                                                     }
                                                 }}
+                                                aria-label={`Thay đổi trạng thái của ${user.firstName} ${user.lastName}`}
                                             >
                                                 <option value="active">Hoạt động</option>
                                                 <option value="inactive">Không hoạt động</option>
@@ -359,30 +423,34 @@ const UserTable = ({
                                         <td>
                                             <div className="flex gap-2 justify-center">
                                                 <button
-                                                    className="btn btn-ghost btn-sm "
+                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                                                     onClick={() => openEditModal(user)}
                                                     title="Chỉnh sửa"
+                                                    aria-label={`Chỉnh sửa người dùng ${user.firstName} ${user.lastName}`}
                                                 >
                                                     <Edit className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    className="btn btn-ghost btn-sm"
+                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                                                     onClick={() => openRoleModal(user)}
                                                     title="Quản lý roles"
+                                                    aria-label={`Quản lý roles của ${user.firstName} ${user.lastName}`}
                                                 >
                                                     <Shield className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    className="btn btn-ghost btn-sm"
+                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                                                     onClick={() => openPasswordModal(user)}
                                                     title="Đặt lại mật khẩu"
+                                                    aria-label={`Đặt lại mật khẩu cho ${user.firstName} ${user.lastName}`}
                                                 >
                                                     <Key className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    className="btn btn-ghost btn-sm text-error"
+                                                    className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
                                                     onClick={() => handleDeleteUser(user._id)}
                                                     title="Xóa"
+                                                    aria-label={`Xóa người dùng ${user.firstName} ${user.lastName}`}
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -683,10 +751,21 @@ const UserTable = ({
                         </form>
                     </div>
                     <form method="dialog" className="modal-backdrop">
-                        <button onClick={() => resetForm()}>close</button>
+                        <button type="button" onClick={() => resetForm()} aria-label="Đóng">close</button>
                     </form>
                 </dialog>
             )}
+
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                onConfirm={confirmModal.onConfirm || (() => { })}
+                onCancel={confirmModal.onCancel}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                variant={confirmModal.variant}
+            />
         </div>
     )
 }

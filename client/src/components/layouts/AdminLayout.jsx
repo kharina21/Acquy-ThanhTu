@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import NotificationBell from '../notifications/NotificationBell';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Boxes, Columns2, House, LayoutDashboard, LogOut, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { Boxes, Columns2, House, LayoutDashboard, LogOut, Package, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 import { getInitials, getPrimaryRole } from '@/lib/utils';
 import { useAuthStore } from '@/stores/useAuthStore';
 
@@ -52,9 +52,23 @@ export default function AdminLayout({ children }) {
                                     <UserRound className='size-5 text-primary' />
                                 )}
                             </div>
-                            <ul tabIndex="-1" className="dropdown-content menu bg-base-100 rounded-box z-100 w-35 p-2 border border-base-300 shadow-md">
-                                <li><Link to='/profile'><UserRoundPen className='size-4' />Hồ sơ</Link></li>
-                                <li><div onClick={handleLogout}><LogOut className='size-4' />Đăng xuất</div></li>
+                            <ul tabIndex="-1" className="dropdown-content menu bg-base-100 rounded-box z-100 w-52 p-2 border border-base-300 shadow-md">
+                                <li>
+                                    <Link to='/profile' aria-label="Xem hồ sơ">
+                                        <UserRoundPen className='size-4' aria-hidden="true" />
+                                        Hồ sơ
+                                    </Link>
+                                </li>
+                                <li>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="w-full text-left"
+                                        aria-label="Đăng xuất"
+                                    >
+                                        <LogOut className='size-4' aria-hidden="true" />
+                                        Đăng xuất
+                                    </button>
+                                </li>
                             </ul>
                         </div>
 
@@ -70,57 +84,88 @@ export default function AdminLayout({ children }) {
                     aria-label='close sidebar'
                     className='drawer-overlay'
                 ></label>
-                <div className='flex min-h-full flex-col items-start bg-linear-to-b from-primary to-purple is-drawer-close:w-14 is-drawer-open:w-64'>
+                <div className='flex min-h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64'>
                     {/* Sidebar content here */}
                     <ul className='menu w-full grow text-white font-semibold text-md space-y-2'>
                         {/* List item */}
                         <li className={cn(pathname === '/admin' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Trang chủ">
-                                {/* Home icon */}
-                                <House className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/admin'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Trang chủ"
+                                aria-label="Trang chủ"
+                            >
+                                <House className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Trang chủ</span>
                             </Link>
                         </li>
 
                         {/* List item */}
                         <li className={cn(pathname === '/admin/dashboard' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin/dashboard' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Dashboard">
-                                {/* Home icon */}
-                                <LayoutDashboard className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/admin/dashboard'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Dashboard"
+                                aria-label="Dashboard"
+                            >
+                                <LayoutDashboard className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Dashboard</span>
                             </Link>
                         </li>
 
-                        {/* List item */}
+                        <li className={cn(pathname === '/admin/products' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link
+                                to='/admin/products'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Sản phẩm"
+                                aria-label="Quản lý sản phẩm"
+                            >
+                                <Package className='my-1.5 inline-block size-4' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate">Sản phẩm</span>
+                            </Link>
+                        </li>
                         <li className={cn(pathname === '/users' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/users' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Người dùng">
-                                {/* Users icon */}
-                                <UsersRound className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/users'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Người dùng"
+                                aria-label="Quản lý người dùng"
+                            >
+                                <UsersRound className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Người dùng</span>
                             </Link>
                         </li>
-                        {/* List item */}
                         <li className={cn(pathname === '/admin/customers' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin/customers' className="is-drawer-close:tooltip is-drawer-close:tooltip-right" data-tip="Khách hàng">
-                                {/* Settings icon */}
-                                <UsersRound className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/admin/customers'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Khách hàng"
+                                aria-label="Quản lý khách hàng"
+                            >
+                                <UsersRound className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Khách hàng</span>
                             </Link>
                         </li>
-                        {/* List item */}
                         <li className={cn(pathname === '/admin/warehouses' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/admin/warehouses' className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center" data-tip="Kho hàng">
-                                {/* Settings icon */}
-                                <Boxes className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/admin/warehouses'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Kho hàng"
+                                aria-label="Quản lý kho hàng"
+                            >
+                                <Boxes className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Kho hàng</span>
                             </Link>
                         </li>
 
-                        {/* List item */}
                         <li className={cn(pathname === '/profile' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link to='/profile' className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center" data-tip="Tài khoản">
-                                {/* Settings icon */}
-                                <UserRound className='my-1.5 inline-block size-4' />
+                            <Link
+                                to='/profile'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Tài khoản"
+                                aria-label="Xem tài khoản"
+                            >
+                                <UserRound className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Tài khoản</span>
                             </Link>
                         </li>

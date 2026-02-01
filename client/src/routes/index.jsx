@@ -8,14 +8,14 @@ import ResetPasswordPage from '../pages/ResetPasswordPage';
 import HomePage from '../pages/HomePage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
+import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 
 // Dashboards
-import AdminMenu from '../components/dashboard/AdminMenu';
+import AdminDashboard from '../components/dashboard/AdminDashboard';
 import SellerDashboard from '../components/dashboard/SellerDashboard';
 import OwnerDashboard from '../components/dashboard/OwnerDashboard';
-import AgencyDashboard from '../components/dashboard/AgencyDashboard';
 import ManagerDashboard from '../components/dashboard/ManagerDashboard';
 import StaffDashboard from '../components/dashboard/StaffDashboard';
 
@@ -55,7 +55,9 @@ export const AppRoutes = () => {
 
                     {/* Admin Routes */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
-                        <Route path="/admin" element={<AdminMenu />} />
+                        <Route path="/admin" element={<AdminDashboard />} />
+                        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                        <Route path="/admin/products" element={<ProductManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
                         {/* Thêm các admin routes khác ở đây */}
                     </Route>
@@ -71,12 +73,6 @@ export const AppRoutes = () => {
                     <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
                         <Route path="/manager/dashboard" element={<ManagerDashboard />} />
                         {/* Thêm các manager routes khác ở đây */}
-                    </Route>
-
-                    {/* Agency Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['agency']} />}>
-                        <Route path="/agency/dashboard" element={<AgencyDashboard />} />
-                        {/* Thêm các agency routes khác ở đây */}
                     </Route>
 
                     {/* Seller Routes */}

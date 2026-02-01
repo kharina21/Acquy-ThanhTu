@@ -9,6 +9,8 @@ import authRoutes from './routes/authRoute.js';
 import activityLogRoutes from './routes/activityLogRoute.js';
 import notificationRoutes from './routes/notificationRoute.js';
 import userRoutes from './routes/userRoute.js';
+import productRoutes from './routes/productRoute.js';
+import stockCheckRoutes from './routes/stockCheckRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +31,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/stock-checks', stockCheckRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {

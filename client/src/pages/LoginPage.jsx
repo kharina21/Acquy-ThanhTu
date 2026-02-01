@@ -54,11 +54,11 @@ const LoginPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-linear-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
             <div className="w-full max-w-5xl grid md:grid-cols-2 gap-6 items-center">
                 {/* Left Side - Branding */}
                 <div className="hidden md:flex flex-col items-center justify-center text-center space-y-6 p-8">
-                    <div className="w-32 h-32 rounded-2xl bg-linear-to-br from-primary to-purple-600 p-6 shadow-2xl flex items-center justify-center">
+                    <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-primary to-purple-600 p-6 shadow-2xl flex items-center justify-center">
                         <img src="/submark-logo.png" alt="logo" className="w-full h-full object-contain" />
                     </div>
                     <div>
@@ -93,7 +93,7 @@ const LoginPage = () => {
                 <div className="w-full">
                     <div className="bg-base-100 rounded-2xl shadow-2xl p-8 md:p-10">
                         <div className="text-center mb-8">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-linear-to-br from-primary to-purple-600 mb-4">
+                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-primary to-purple-600 mb-4">
                                 <LogIn className="w-8 h-8 text-white" />
                             </div>
                             <h2 className="text-3xl font-bold text-base-content mb-2">Chào mừng trở lại</h2>

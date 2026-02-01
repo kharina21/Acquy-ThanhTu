@@ -45,14 +45,14 @@ const ForgotPasswordPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-linear-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 {/* Header Card với Gradient */}
                 <div className="bg-base-100 rounded-2xl shadow-2xl p-8 md:p-10">
                     {!isSubmitted ? (
                         <>
                             <div className="text-center mb-8">
-                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-linear-to-br from-primary to-purple-600 mb-4">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-primary to-purple-600 mb-4">
                                     <Mail className="w-8 h-8 text-white" />
                                 </div>
                                 <h2 className="text-3xl font-bold text-base-content mb-2">Quên mật khẩu?</h2>

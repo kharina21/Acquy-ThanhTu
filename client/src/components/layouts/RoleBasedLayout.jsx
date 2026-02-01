@@ -11,7 +11,7 @@ import AdminLayout from './AdminLayout';
  * để nested routes có thể render.
  */
 const RoleBasedLayout = () => {
-    const { isAdmin, isSeller, isOwner, isAgency, isManager, isStaff } = useUserRole();
+    const { isAdmin, isSeller, isOwner, isManager, isStaff } = useUserRole();
 
     // Layout cho admin
     if (isAdmin) {
@@ -43,20 +43,6 @@ const RoleBasedLayout = () => {
                 <div className='container mx-auto px-4 py-8'>
                     <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
                         <h1 className='text-2xl font-bold'>Manager Panel</h1>
-                    </div>
-                    <Outlet />
-                </div>
-            </div>
-        );
-    }
-
-    // Layout cho agency
-    if (isAgency) {
-        return (
-            <div className='min-h-screen bg-base-200'>
-                <div className='container mx-auto px-4 py-8'>
-                    <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
-                        <h1 className='text-2xl font-bold'>Agency Panel</h1>
                     </div>
                     <Outlet />
                 </div>

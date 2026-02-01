@@ -9,7 +9,7 @@ import { Navigate } from 'react-router';
  */
 const DefaultRoute = () => {
     const { user, loading } = useAuthStore();
-    const { isAdmin, isUser, isSeller, isOwner, isAgency, isManager, isStaff } = useUserRole();
+    const { isAdmin, isUser, isSeller, isOwner, isManager, isStaff } = useUserRole();
 
     // Hiển thị loading khi đang kiểm tra authentication
     if (loading) {
@@ -34,9 +34,6 @@ const DefaultRoute = () => {
     }
     if (isManager) {
         return <Navigate to='/manager/dashboard' replace />;
-    }
-    if (isAgency) {
-        return <Navigate to='/agency/dashboard' replace />;
     }
     if (isSeller) {
         return <Navigate to='/seller/dashboard' replace />;

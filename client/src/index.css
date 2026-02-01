@@ -6,60 +6,60 @@
 }
 
 @plugin "daisyui/theme" {
-  name: "light";
-  default: false;
-  prefersdark: false;
-  color-scheme: "light";
+    name: 'light';
+    default: false;
+    prefersdark: false;
+    color-scheme: 'light';
 
-  /* Base */
-  --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(98% 0 0);
-  --color-base-300: oklch(95% 0 0);
-  --color-base-content: oklch(21% 0.006 285);
+    /* Base */
+    --color-base-100: oklch(100% 0 0);
+    --color-base-200: oklch(98% 0 0);
+    --color-base-300: oklch(95% 0 0);
+    --color-base-content: oklch(21% 0.006 285);
 
-  /* Primary – từ #4e54c8 */
-  --color-primary: oklch(45% 0.18 275);
-  --color-primary-content: oklch(92% 0.03 275);
+    /* Primary – từ #4e54c8 */
+    --color-primary: oklch(45% 0.18 275);
+    --color-primary-content: oklch(92% 0.03 275);
 
-  /* Secondary – tím hồng nhẹ để bổ trợ indigo */
-  --color-secondary: oklch(65% 0.20 330);
-  --color-secondary-content: oklch(94% 0.03 330);
+    /* Secondary – tím hồng nhẹ để bổ trợ indigo */
+    --color-secondary: oklch(65% 0.2 330);
+    --color-secondary-content: oklch(94% 0.03 330);
 
-  /* Accent – xanh ngọc để tạo tương phản */
-  --color-accent: oklch(78% 0.14 190);
-  --color-accent-content: oklch(32% 0.05 190);
+    /* Accent – xanh ngọc để tạo tương phản */
+    --color-accent: oklch(78% 0.14 190);
+    --color-accent-content: oklch(32% 0.05 190);
 
-  /* Neutral */
-  --color-neutral: oklch(16% 0.01 275);
-  --color-neutral-content: oklch(92% 0.005 275);
+    /* Neutral */
+    --color-neutral: oklch(16% 0.01 275);
+    --color-neutral-content: oklch(92% 0.005 275);
 
-  /* Info – xanh dương cùng tông primary */
-  --color-info: oklch(72% 0.14 245);
-  --color-info-content: oklch(30% 0.06 245);
+    /* Info – xanh dương cùng tông primary */
+    --color-info: oklch(72% 0.14 245);
+    --color-info-content: oklch(30% 0.06 245);
 
-  /* Success */
-  --color-success: oklch(76% 0.17 160);
-  --color-success-content: oklch(36% 0.07 160);
+    /* Success */
+    --color-success: oklch(76% 0.17 160);
+    --color-success-content: oklch(36% 0.07 160);
 
-  /* Warning */
-  --color-warning: oklch(82% 0.18 85);
-  --color-warning-content: oklch(40% 0.11 85);
+    /* Warning */
+    --color-warning: oklch(82% 0.18 85);
+    --color-warning-content: oklch(40% 0.11 85);
 
-  /* Error */
-  --color-error: oklch(70% 0.19 20);
-  --color-error-content: oklch(27% 0.10 20);
+    /* Error */
+    --color-error: oklch(70% 0.19 20);
+    --color-error-content: oklch(27% 0.1 20);
 
-  /* UI */
-  --radius-selector: 0.5rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
+    /* UI */
+    --radius-selector: 0.5rem;
+    --radius-field: 0.25rem;
+    --radius-box: 0.5rem;
 
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
 
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
+    --border: 1px;
+    --depth: 1;
+    --noise: 0;
 }
 
 @plugin "daisyui/theme" {
@@ -103,6 +103,13 @@ body {
 }
 
 @layer base {
+    /* Bỏ viền outline khi focus vào input, textarea, select */
+    input:focus,
+    textarea:focus,
+    select:focus {
+        outline: none;
+    }
+
     /* Ẩn icon reveal password mặc định của browser */
     input[type='password']::-webkit-credentials-auto-fill-button {
         display: none !important;
@@ -115,8 +122,8 @@ body {
 }
 
 /* custom color */
-@theme{
-    --color-navyBlue: #1E3A8A;
+@theme {
+    --color-navyBlue: #1e3a8a;
     --color-backgroundToBottom: linear-gradient(to bottom, #4e54c8, #8f94fb);
     --color-purple: #8f94fb;
     --color-background: #f8f8f8;

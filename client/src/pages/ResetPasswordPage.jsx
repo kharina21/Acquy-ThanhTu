@@ -74,7 +74,7 @@ const ResetPasswordPage = () => {
 
     if (isSuccess) {
         return (
-            <div className="min-h-screen bg-linear-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-gradient-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="bg-base-100 rounded-2xl shadow-2xl p-8 md:p-10 text-center">
                         <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-success/20 mb-4">
@@ -95,11 +95,11 @@ const ResetPasswordPage = () => {
     }
 
     return (
-        <div className="min-h-screen bg-linear-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-base-200 to-purple-600/10 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 <div className="bg-base-100 rounded-2xl shadow-2xl p-8 md:p-10">
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-linear-to-br from-primary to-purple-600 mb-4">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-primary to-purple-600 mb-4">
                             <KeyRound className="w-8 h-8 text-white" />
                         </div>
                         <h2 className="text-3xl font-bold text-base-content mb-2">Đặt lại mật khẩu</h2>

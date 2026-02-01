@@ -1,11 +1,7 @@
-import { Search, X, Calendar } from 'lucide-react';
-import React from 'react'
-// import { LocalizationProvider } from '@mui/x-date-pickers';
-// import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import 'dayjs/locale/vi';
+import { Search, X } from 'lucide-react';
+import React from 'react';
 
 const FilterField = ({ filters, setFilters, pagination, setPagination, roles }) => {
-
     const clearFilters = () => {
         setFilters({
             search: '',
@@ -116,9 +112,9 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles }) 
                             -
                             <input
                                 type="date"
-                                className="input w-full outline-none focus:outline-none  border-none"
+                                className="input w-full outline-none focus:outline-none border-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 value={filters.dateTo}
-                                // disabled={!filters.dateFrom}
+                                disabled={!filters.dateFrom}
                                 onChange={(e) => {
                                     setFilters({ ...filters, dateTo: e.target.value });
                                     setPagination({ ...pagination, page: 1 });
