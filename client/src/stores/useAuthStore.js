@@ -43,11 +43,16 @@ export const useAuthStore = create(
                         toast.success('Đăng nhập thành công');
                         return { success: true };
                     } else {
-                        return { success: false, message: res.data.message };
+                        return { success: false, message: res?.data?.message || 'Đăng nhập thất bại' };
                     }
                 } catch (error) {
                     get().clearState();
-                    return { success: false, message: error.response.data.message };
+                    const message =
+                        error.response?.data?.message ||
+                        (error.code === 'ERR_NETWORK' || error.message?.includes('Network')
+                            ? 'Không thể kết nối server. Vui lòng kiểm tra backend đã chạy chưa.'
+                            : error.message || 'Đăng nhập thất bại');
+                    return { success: false, message };
                 } finally {
                     set({ loginLoading: false });
                 }
@@ -60,6 +65,7 @@ export const useAuthStore = create(
                     const { user } = res.data;
                     set({ user });
                 } catch (error) {
+                    console.error('Error fetching user:', error);
                     get().clearState();
                     toast.error('Lỗi xảy ra khi lấy thông tin người dùng');
                 } finally {
@@ -107,6 +113,7 @@ export const useAuthStore = create(
                         set({ accessToken: res.data.accessToken });
                     }
                 } catch (error) {
+                    console.error('Error refreshing access token:', error);
                     get().clearState();
                     toast.error('Lỗi xảy ra khi lấy access token mới');
                 } finally {

@@ -1,15 +1,15 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet, Barcode, FolderDown } from 'lucide-react';
+import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet, Barcode, FolderDown, ImageIcon } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import {
     getProducts,
-    getProductOptions,
     createProduct,
     updateProduct,
     deleteProduct,
     importProductsFromExcel,
     generateSampleExcelBlob,
+    uploadProductImage,
 } from '@/services/productService';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/services/categoryService';
 import { getBrands, createBrand, updateBrand, deleteBrand } from '@/services/brandService';
@@ -17,6 +17,7 @@ import CategoryBrandSelect from '@/components/common/CategoryBrandSelect';
 import CategoryModal from '@/pages/CategoryManagementPage/CategoryModal';
 import BrandModal from '@/components/common/BrandModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
 
 const formatVND = (num) => {
@@ -25,8 +26,8 @@ const formatVND = (num) => {
 };
 
 const emptyProductForm = () => ({
-    category: null, // Lưu ID
-    brand: null, // Lưu ID
+    category: null,
+    brand: null,
     sku: '',
     barcode: '',
     name: '',
@@ -34,10 +35,9 @@ const emptyProductForm = () => ({
     costPrice: 0,
     price: 0,
     quantity: 0,
-    image: '',
+    images: [],
     isActive: true,
     warrantyText: '',
-    warrantyMonths: '',
     notes: '',
 });
 
@@ -47,7 +47,6 @@ const ProductListTab = () => {
     const [search, setSearch] = useState('');
     const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 0 });
     const [importing, setImporting] = useState(false);
-    const [importFile, setImportFile] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -56,7 +55,6 @@ const ProductListTab = () => {
     const [confirmDeleteModal, setConfirmDeleteModal] = useState({ isOpen: false, onConfirm: null });
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createFormData, setCreateFormData] = useState(emptyProductForm());
-    const [productOptions, setProductOptions] = useState({ category: [], brand: [] });
     const [categories, setCategories] = useState([]);
     const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
@@ -69,10 +67,21 @@ const ProductListTab = () => {
     const [barcodePrintQty, setBarcodePrintQty] = useState(1);
     const [barcodeShowPrice, setBarcodeShowPrice] = useState(true);
     const [barcodeShowStoreName, setBarcodeShowStoreName] = useState(true);
+    const [imageUploading, setImageUploading] = useState(false);
+    const [detailImageIndex, setDetailImageIndex] = useState(0);
+    const [editImageIndex, setEditImageIndex] = useState(0);
+    const [createImageIndex, setCreateImageIndex] = useState(0);
+
+    const currentLocationId = useBranchStore((s) => s.currentLocationId);
 
     const fetchProducts = async () => {
         setLoading(true);
-        const res = await getProducts({ page: pagination.page, limit: pagination.limit, search });
+        const res = await getProducts({
+            page: pagination.page,
+            limit: pagination.limit,
+            search,
+            locationId: currentLocationId || undefined,
+        });
         if (res.success) {
             setProducts(res.data.products);
             setPagination(res.data.pagination);
@@ -81,13 +90,29 @@ const ProductListTab = () => {
     };
 
     useEffect(() => {
-        fetchProducts();
-    }, [pagination.page, search]);
+        if (selectedProduct) setDetailImageIndex(0);
+    }, [selectedProduct?._id]);
 
-    const fetchProductOptions = async () => {
-        const res = await getProductOptions();
-        if (res.success && res.data) setProductOptions(res.data);
-    };
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        getProducts({
+            page: pagination.page,
+            limit: pagination.limit,
+            search,
+            locationId: currentLocationId || undefined,
+        })
+            .then((res) => {
+                if (!cancelled && res.success) {
+                    setProducts(res.data.products);
+                    setPagination(res.data.pagination);
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [pagination.page, search, currentLocationId]);
 
     const fetchCategories = async () => {
         try {
@@ -111,16 +136,13 @@ const ProductListTab = () => {
         }
     };
 
+    const _CATEGORIES_COUNT = categories.length;
+    const _BRANDS_COUNT = brands.length;
+
     useEffect(() => {
-        fetchProductOptions();
         fetchCategories();
         fetchBrands();
     }, []);
-
-    const handleSearchSubmit = (e) => {
-        e.preventDefault();
-        setPagination((p) => ({ ...p, page: 1 }));
-    };
 
     const handleDownloadSample = () => {
         try {
@@ -133,6 +155,7 @@ const ProductListTab = () => {
             URL.revokeObjectURL(url);
             toast.success('Đã tải file mẫu');
         } catch (err) {
+            console.error('handleDownloadSample error:', err);
             toast.error('Không thể tạo file mẫu');
         }
     };
@@ -149,23 +172,21 @@ const ProductListTab = () => {
                 toast.error('Vui lòng chọn file Excel (.xlsx hoặc .xls)');
                 return;
             }
-            setImportFile(file.name);
             setImporting(true);
             try {
-                const result = await importProductsFromExcel(file);
+                const result = await importProductsFromExcel(file, currentLocationId);
                 if (result.success) {
                     toast.success(result.message || 'Import thành công');
                     fetchProducts();
-                    fetchProductOptions();
                     fetchCategories(); // Refresh categories sau khi import
                 } else {
                     toast.error(result.message || 'Import thất bại');
                 }
             } catch (err) {
+                console.error('handleImportClick error:', err);
                 toast.error(err.message || 'Import thất bại. Kiểm tra định dạng file.');
             } finally {
                 setImporting(false);
-                setImportFile(null);
             }
         };
         input.click();
@@ -189,14 +210,14 @@ const ProductListTab = () => {
             capacity: selectedProduct.capacity ?? '',
             costPrice: selectedProduct.costPrice ?? 0,
             price: selectedProduct.price ?? 0,
-            quantity: selectedProduct.quantity ?? 0,
-            image: selectedProduct.image ?? '',
+            quantity: selectedProduct.stockAtLocation ?? selectedProduct.totalStock ?? 0,
+            images: selectedProduct.images?.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []),
             isActive: selectedProduct.isActive ?? true,
             warrantyText: selectedProduct.warrantyText ?? '',
-            warrantyMonths: selectedProduct.warrantyMonths ?? '',
             notes: selectedProduct.notes ?? '',
         });
         setShowDetailModal(false);
+        setEditImageIndex(0);
         setShowEditModal(true);
     };
 
@@ -207,13 +228,14 @@ const ProductListTab = () => {
         try {
             const payload = {
                 ...editFormData,
-                category: editFormData.category || null, // Gửi ID trực tiếp
-                brand: editFormData.brand || null, // Gửi ID trực tiếp
+                category: editFormData.category || null,
+                brand: editFormData.brand || null,
                 costPrice: Number(editFormData.costPrice) || 0,
                 price: Number(editFormData.price) || 0,
                 quantity: Number(editFormData.quantity) || 0,
-                warrantyMonths: editFormData.warrantyMonths === '' ? null : Number(editFormData.warrantyMonths) || null,
+                images: Array.isArray(editFormData.images) ? editFormData.images : [],
             };
+            if (currentLocationId) payload.locationId = currentLocationId;
             await updateProduct(selectedProduct._id, payload);
             toast.success('Cập nhật sản phẩm thành công');
             setShowEditModal(false);
@@ -252,12 +274,12 @@ const ProductListTab = () => {
         const canvas = document.createElement('canvas');
         try {
             JsBarcode(canvas, barcodeValue, { format: 'CODE128', width: 2, height: 40, displayValue: true });
-        } catch (e) {
+        } catch (error) {
+            console.error('JsBarcode error:', error);
             toast.error('Không tạo được mã vạch. Kiểm tra mã không chứa ký tự đặc biệt.');
             return;
         }
         const barcodeDataUrl = canvas.toDataURL('image/png');
-        const storeName = barcodeShowStoreName ? 'Cửa hàng' : '';
         const priceStr = barcodeShowPrice && (selectedProduct.price != null) ? formatVND(selectedProduct.price) : '';
         const name = (selectedProduct.name || selectedProduct.sku || '').toString();
         const widthStyle = typeof template.width === 'number' || /^\d+$/.test(String(template.width)) ? `${template.width}mm` : '50mm';
@@ -327,6 +349,7 @@ const ProductListTab = () => {
 
     const openCreateModal = () => {
         setCreateFormData(emptyProductForm());
+        setCreateImageIndex(0);
         setShowCreateModal(true);
     };
 
@@ -383,7 +406,6 @@ const ProductListTab = () => {
                 setShowCategoryModal(false);
                 setEditingCategory(null);
                 fetchCategories();
-                fetchProductOptions();
                 setCategoryRefreshKey((k) => k + 1);
             }
         } catch (error) {
@@ -444,7 +466,6 @@ const ProductListTab = () => {
                 setShowBrandModal(false);
                 setEditingBrand(null);
                 fetchBrands();
-                fetchProductOptions();
                 setBrandRefreshKey((k) => k + 1);
             }
         } catch (error) {
@@ -463,21 +484,21 @@ const ProductListTab = () => {
         try {
             const payload = {
                 ...createFormData,
-                category: createFormData.category || null, // Gửi ID trực tiếp
-                brand: createFormData.brand || null, // Gửi ID trực tiếp
+                category: createFormData.category || null,
+                brand: createFormData.brand || null,
                 costPrice: Number(createFormData.costPrice) || 0,
                 price: Number(createFormData.price) || 0,
                 quantity: Number(createFormData.quantity) || 0,
-                warrantyMonths: createFormData.warrantyMonths === '' ? null : Number(createFormData.warrantyMonths) || null,
+                images: Array.isArray(createFormData.images) ? createFormData.images : [],
             };
-            delete payload.category; // Xóa category field
-            await createProduct(payload);
-            toast.success('Thêm sản phẩm thành công');
+            delete payload.category;
+            if (currentLocationId) payload.locationId = currentLocationId;
+            const res = await createProduct(payload);
+            toast.success('Thêm sản phẩm thành công.');
             closeCreateModal();
             fetchProducts();
-            fetchProductOptions();
-            fetchCategories(); // Refresh categories để hiển thị category mới tạo
-            fetchBrands(); // Refresh brands để hiển thị brand mới tạo
+            fetchCategories();
+            fetchBrands();
         } catch (err) {
             const msg = err?.response?.data?.message || err?.message || 'Thêm sản phẩm thất bại';
             toast.error(msg);
@@ -488,7 +509,7 @@ const ProductListTab = () => {
 
     const handleDeleteClick = () => {
         if (!selectedProduct) return;
-        const qty = selectedProduct.quantity ?? 0;
+        const qty = selectedProduct.totalStock ?? 0;
         if (qty > 0) {
             toast.error('Vui lòng đưa tồn kho về 0 trước khi xóa sản phẩm.');
             return;
@@ -518,7 +539,7 @@ const ProductListTab = () => {
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
-                <form onSubmit={handleSearchSubmit} className="flex gap-2 flex-1 min-w-[200px]">
+                <div className="flex gap-2 flex-1 min-w-[200px]">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40 z-10" />
                         <input
@@ -526,13 +547,14 @@ const ProductListTab = () => {
                             placeholder="Tìm theo tên, mã hàng, thương hiệu..."
                             className="input input-bordered w-full pl-10"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setSearch(value);
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
                         />
                     </div>
-                    <button type="submit" className="btn btn-primary">
-                        Tìm kiếm
-                    </button>
-                </form>
+                </div>
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
@@ -584,7 +606,7 @@ const ProductListTab = () => {
                                     <th className="font-medium text-neutral text-xs">Dung lượng (Ah)</th>
                                     <th className="text-right font-medium text-neutral text-xs">Đơn giá nhập</th>
                                     <th className="text-right font-medium text-neutral text-xs">Đơn giá bán</th>
-                                    <th className="text-right font-medium text-neutral text-xs">Tồn kho</th>
+                                    <th className="text-right font-medium text-neutral text-xs">Tồn kho{currentLocationId ? ' (chi nhánh)' : ''}</th>
                                     <th className="font-medium text-neutral text-xs">Bảo hành</th>
                                     <th className="text-center font-medium text-neutral text-xs">Đang kinh doanh</th>
                                     <th className="font-medium text-neutral text-xs">Ghi chú</th>
@@ -606,8 +628,8 @@ const ProductListTab = () => {
                                         <td>{p.capacity || '...'}</td>
                                         <td className="text-right">{formatVND(p.costPrice)}</td>
                                         <td className="text-right">{formatVND(p.price)}</td>
-                                        <td className="text-right">{p.quantity ?? '...'}</td>
-                                        <td>{p.warrantyText || (p.warrantyMonths != null ? `${p.warrantyMonths} tháng` : '...')}</td>
+                                        <td className="text-right">{p.stockAtLocation !== undefined ? p.stockAtLocation : (p.totalStock ?? '...')}</td>
+                                        <td>{p.warrantyText || '...'}</td>
                                         <td className="text-center">{p.isActive ? 'Có' : 'Không'}</td>
                                         <td className="max-w-[200px] truncate" title={p.notes || ''}>{p.notes || '...'}</td>
                                     </tr>
@@ -643,102 +665,153 @@ const ProductListTab = () => {
             </div>
 
             {/* Modal chi tiết sản phẩm */}
-            {showDetailModal && selectedProduct && (
-                <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
-                    <div className="modal-box max-w-2xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 id="product-detail-title" className="font-bold text-lg">
-                                Chi tiết sản phẩm
-                            </h3>
-                            <button
-                                type="button"
-                                className="btn btn-ghost btn-sm btn-square border-none"
-                                onClick={closeDetailModal}
-                                aria-label="Đóng"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="space-y-3 text-sm">
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                <span className="text-base-content/60">Loại hàng</span>
-                                <span>{selectedProduct.category?.name || '—'}</span>
-                                <span className="text-base-content/60">Thương hiệu</span>
-                                <span>{selectedProduct.brand?.name || '—'}</span>
-                                <span className="text-base-content/60">Mã hàng</span>
-                                <span className="font-medium">{selectedProduct.sku}</span>
-                                <span className="text-base-content/60">Mã vạch</span>
-                                <span>{selectedProduct.barcode || '—'}</span>
-                                <span className="text-base-content/60">Tên hàng</span>
-                                <span className="col-span-1 font-medium">{selectedProduct.name}</span>
-                                <span className="text-base-content/60">Dung lượng (Ah)</span>
-                                <span>{selectedProduct.capacity || '—'}</span>
-                                <span className="text-base-content/60">Đơn giá nhập</span>
-                                <span>{formatVND(selectedProduct.costPrice)}</span>
-                                <span className="text-base-content/60">Đơn giá bán</span>
-                                <span>{formatVND(selectedProduct.price)}</span>
-                                <span className="text-base-content/60">Tồn kho</span>
-                                <span>{selectedProduct.quantity ?? '—'}</span>
-                                <span className="text-base-content/60">Bảo hành</span>
-                                <span>
-                                    {selectedProduct.warrantyText ||
-                                        (selectedProduct.warrantyMonths != null ? `${selectedProduct.warrantyMonths} tháng` : '—')}
-                                </span>
-                                <span className="text-base-content/60">Đang kinh doanh</span>
-                                <span>{selectedProduct.isActive ? 'Có' : 'Không'}</span>
-                                {selectedProduct.image ? (
-                                    <>
-                                        <span className="text-base-content/60">Hình ảnh</span>
-                                        <span className="break-all">{selectedProduct.image}</span>
-                                    </>
-                                ) : null}
+            {showDetailModal && selectedProduct && (() => {
+                const imgs = (selectedProduct.images?.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : [])).slice(0, 5);
+                const mainUrl = imgs[detailImageIndex];
+                const otherIndices = imgs.map((_, i) => i).filter((i) => i !== detailImageIndex);
+                const isValidUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
+                return (
+                    <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+                        <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 id="product-detail-title" className="font-bold text-xl text-base-content">
+                                    Chi tiết sản phẩm
+                                </h3>
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm btn-square border-none"
+                                    onClick={closeDetailModal}
+                                    aria-label="Đóng"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
                             </div>
-                            {selectedProduct.notes ? (
-                                <div>
-                                    <span className="text-base-content/60 block mb-1">Ghi chú</span>
-                                    <p className="bg-base-200/50 rounded-lg p-3">{selectedProduct.notes}</p>
+
+                            <div className="flex flex-col md:flex-row gap-8">
+                                {/* Khối hình ảnh: ảnh chính trái + 4 ô nhỏ phải (tối đa 5 ảnh) */}
+                                <div className="shrink-0 flex flex-row gap-3">
+                                    <div className="w-64 h-64 md:w-72 md:h-72 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
+                                        {mainUrl && isValidUrl(mainUrl) ? (
+                                            <img
+                                                src={mainUrl}
+                                                alt={selectedProduct.name}
+                                                className="w-full h-full object-contain"
+                                            />
+                                        ) : (
+                                            <ImageIcon className="w-16 h-16 text-base-content/30" aria-hidden />
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        {[0, 1, 2, 3].map((k) => {
+                                            const idx = otherIndices[k];
+                                            const url = idx !== undefined ? imgs[idx] : null;
+                                            const hasUrl = url && isValidUrl(url);
+                                            return (
+                                                <button
+                                                    key={k}
+                                                    type="button"
+                                                    className="w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden flex items-center justify-center border-2 border-base-300 hover:border-primary/50 transition-colors bg-base-200"
+                                                    onClick={() => idx !== undefined && setDetailImageIndex(idx)}
+                                                    aria-label={hasUrl ? `Xem ảnh ${idx + 1}` : 'Ô ảnh trống'}
+                                                >
+                                                    {hasUrl ? (
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <ImageIcon className="w-6 h-6 text-base-content/25" aria-hidden />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            ) : null}
 
-                            {/* In mã vạch */}
-                            <div className="border-t border-base-200 pt-4 mt-4">
+                                {/* Thông tin sản phẩm */}
+                                <div className="flex-1 min-w-0 space-y-5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Loại hàng</span>
+                                            <span className="font-medium">{selectedProduct.category?.name || '—'}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Thương hiệu</span>
+                                            <span className="font-medium">{selectedProduct.brand?.name || '—'}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Mã hàng</span>
+                                            <span className="font-mono font-medium">{selectedProduct.sku}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Mã vạch</span>
+                                            <span className="font-mono">{selectedProduct.barcode || '—'}</span>
+                                        </div>
+                                        <div className="sm:col-span-2 flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Tên hàng</span>
+                                            <span className="font-medium text-base-content">{selectedProduct.name}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Dung lượng (Ah)</span>
+                                            <span>{selectedProduct.capacity || '—'}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Đơn giá nhập</span>
+                                            <span>{formatVND(selectedProduct.costPrice)}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Đơn giá bán</span>
+                                            <span className="font-medium text-primary">{formatVND(selectedProduct.price)}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Tồn kho{currentLocationId ? ' (chi nhánh)' : ''}</span>
+                                            <span className="font-medium">{selectedProduct.stockAtLocation !== undefined ? selectedProduct.stockAtLocation : (selectedProduct.totalStock ?? '—')}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Bảo hành</span>
+                                            <span>{selectedProduct.warrantyText || '—'}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Đang kinh doanh</span>
+                                            <span>{selectedProduct.isActive ? 'Có' : 'Không'}</span>
+                                        </div>
+                                    </div>
 
-                                <button
-                                    type="button"
-                                    className="btn btn-outline btn-sm gap-2"
-                                    onClick={openBarcodeModal}
-                                >
-                                    <Printer className="w-4 h-4" />
-                                    In tem mã
+                                    {selectedProduct.notes ? (
+                                        <div className="pt-2 border-t border-base-200">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide block mb-1">Ghi chú</span>
+                                            <p className="text-sm bg-base-200/50 rounded-lg p-3 text-base-content/90">{selectedProduct.notes}</p>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="flex flex-wrap gap-2 pt-2">
+                                        <button type="button" className="btn btn-outline btn-sm gap-2" onClick={openBarcodeModal}>
+                                            <Printer className="w-4 h-4" />
+                                            In tem mã
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="modal-action mt-8 pt-6 border-t border-base-200">
+                                <button type="button" className="btn btn-ghost" onClick={closeDetailModal}>
+                                    Đóng
                                 </button>
+                                <div className="flex gap-2">
+                                    <button type="button" className="btn btn-error btn-outline gap-2" onClick={handleDeleteClick} aria-label="Xóa sản phẩm">
+                                        <Trash2 className="w-4 h-4" />
+                                        Xóa sản phẩm
+                                    </button>
+                                    <button type="button" className="btn btn-primary gap-2" onClick={openEditModal}>
+                                        <Pencil className="w-4 h-4" />
+                                        Chỉnh sửa sản phẩm
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div className="modal-action mt-6">
-                            <button type="button" className="btn btn-ghost" onClick={closeDetailModal}>
-                                Đóng
-                            </button>
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    className="btn btn-error btn-outline gap-2"
-                                    onClick={handleDeleteClick}
-                                    aria-label="Xóa sản phẩm"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Xóa sản phẩm
-                                </button>
-                                <button type="button" className="btn btn-primary gap-2" onClick={openEditModal}>
-                                    <Pencil className="w-4 h-4" />
-                                    Chỉnh sửa sản phẩm
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <form method="dialog" className="modal-backdrop">
-                        <button type="button" onClick={closeDetailModal}>Đóng</button>
-                    </form>
-                </dialog>
-            )}
+                        <form method="dialog" className="modal-backdrop">
+                            <button type="button" onClick={closeDetailModal}>Đóng</button>
+                        </form>
+                    </dialog>
+                );
+            })()}
 
             {/* Modal chọn loại giấy in tem mã */}
             {showBarcodeModal && selectedProduct && (
@@ -838,172 +911,196 @@ const ProductListTab = () => {
             {/* Modal chỉnh sửa sản phẩm */}
             {showEditModal && selectedProduct && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="product-edit-title">
-                    <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <h3 id="product-edit-title" className="font-bold text-lg mb-4">
-                            Chỉnh sửa sản phẩm
-                        </h3>
-                        <form onSubmit={handleUpdateProduct} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <CategoryBrandSelect
-                                    type="category"
-                                    label="Loại hàng"
-                                    value={editFormData.category}
-                                    refreshKey={categoryRefreshKey}
-                                    onChange={(id) => setEditFormData({ ...editFormData, category: id })}
-                                    onCreateNew={handleCreateCategory}
-                                    onEdit={handleEditCategory}
-                                    placeholder="Chọn loại hàng"
-                                />
-                                <CategoryBrandSelect
-                                    type="brand"
-                                    label="Thương hiệu"
-                                    value={editFormData.brand}
-                                    refreshKey={brandRefreshKey}
-                                    onChange={(id) => setEditFormData({ ...editFormData, brand: id })}
-                                    onCreateNew={handleCreateBrand}
-                                    onEdit={handleEditBrand}
-                                    placeholder="Chọn thương hiệu"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text font-semibold">Mã hàng <span className="text-error">*</span></span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={editFormData.sku}
-                                        onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
-                                        required
-                                    />
+                    <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+                        <div className="sticky top-0 z-10 bg-base-100 border-b border-base-200 px-6 py-4 flex items-center justify-between">
+                            <h3 id="product-edit-title" className="font-bold text-xl text-base-content">
+                                Chỉnh sửa sản phẩm
+                            </h3>
+                            <button type="button" className="btn btn-ghost btn-sm btn-square" onClick={closeEditModal} aria-label="Đóng">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleUpdateProduct} className="flex flex-col">
+                            <div className="p-6 flex flex-col md:flex-row gap-8">
+                                {/* Cột trái: Hình ảnh */}
+                                <div className="shrink-0">
+                                    <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide block mb-2">Hình ảnh (tối đa 5)</span>
+                                    {(() => {
+                                        const imgs = (Array.isArray(editFormData.images) ? editFormData.images : []).slice(0, 5);
+                                        const mainUrl = imgs[editImageIndex];
+                                        const otherIndices = imgs.map((_, i) => i).filter((i) => i !== editImageIndex);
+                                        const isValidUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
+                                        const removeEditImage = (idx) => {
+                                            setEditFormData((prev) => ({
+                                                ...prev,
+                                                images: (prev.images || []).filter((_, i) => i !== idx),
+                                            }));
+                                            if (editImageIndex === idx) setEditImageIndex(0);
+                                            else if (editImageIndex > idx) setEditImageIndex((i) => Math.max(0, i - 1));
+                                        };
+                                        return (
+                                            <>
+                                                <div className="flex flex-row gap-3 mb-2">
+                                                    <div className="shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
+                                                        {mainUrl && isValidUrl(mainUrl) ? (
+                                                            <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                        ) : (
+                                                            <ImageIcon className="w-10 h-10 text-base-content/30" aria-hidden />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col gap-2">
+                                                        {[0, 1, 2, 3].map((k) => {
+                                                            if (imgs.length < 5 && k === 0) {
+                                                                return (
+                                                                    <label key="add" className="w-14 h-14 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors">
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/jpeg,image/png,image/webp,image/gif"
+                                                                            multiple
+                                                                            className="hidden"
+                                                                            disabled={imageUploading}
+                                                                            onChange={async (e) => {
+                                                                                const files = e.target.files ? Array.from(e.target.files) : [];
+                                                                                if (files.length === 0) return;
+                                                                                const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
+                                                                                if (oversized.length) {
+                                                                                    toast.error('Mỗi ảnh tối đa 3MB');
+                                                                                    e.target.value = '';
+                                                                                    return;
+                                                                                }
+                                                                                setImageUploading(true);
+                                                                                try {
+                                                                                    const res = await uploadProductImage(files);
+                                                                                    if (res?.success && res?.data?.urls?.length) {
+                                                                                        setEditFormData((prev) => ({
+                                                                                            ...prev,
+                                                                                            images: [...(prev.images || []), ...(res.data.urls || [])].slice(0, 5),
+                                                                                        }));
+                                                                                        toast.success(`Đã tải ảnh lên`);
+                                                                                    } else {
+                                                                                        toast.error(res?.message || 'Tải ảnh thất bại');
+                                                                                    }
+                                                                                } catch (err) {
+                                                                                    toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
+                                                                                } finally {
+                                                                                    setImageUploading(false);
+                                                                                    e.target.value = '';
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {imageUploading ? <span className="loading loading-spinner loading-sm" /> : <Plus className="w-6 h-6 text-base-content/50" />}
+                                                                    </label>
+                                                                );
+                                                            }
+                                                            const idx = otherIndices[k - (imgs.length < 5 ? 1 : 0)];
+                                                            const url = idx !== undefined ? imgs[idx] : null;
+                                                            const hasUrl = url && isValidUrl(url);
+                                                            return (
+                                                                <div key={k} className="relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0">
+                                                                    {hasUrl ? (
+                                                                        <>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="w-full h-full block"
+                                                                                onClick={() => setEditImageIndex(idx)}
+                                                                            >
+                                                                                <img src={url} alt="" className="w-full h-full object-cover" />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100"
+                                                                                onClick={(ev) => { ev.stopPropagation(); removeEditImage(idx); }}
+                                                                                aria-label="Xóa ảnh"
+                                                                            >
+                                                                                <X className="w-3 h-3" />
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center">
+                                                                            <ImageIcon className="w-6 h-6 text-base-content/25" />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Mã vạch</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={editFormData.barcode}
-                                        onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
-                                    />
+                                {/* Cột phải: Form */}
+                                <div className="flex-1 min-w-0 space-y-6">
+                                    <section>
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Thông tin cơ bản</h4>
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <CategoryBrandSelect type="category" label="Loại hàng" value={editFormData.category} refreshKey={categoryRefreshKey} onChange={(id) => setEditFormData({ ...editFormData, category: id })} onCreateNew={handleCreateCategory} onEdit={handleEditCategory} placeholder="Chọn loại hàng" />
+                                                <CategoryBrandSelect type="brand" label="Thương hiệu" value={editFormData.brand} refreshKey={brandRefreshKey} onChange={(id) => setEditFormData({ ...editFormData, brand: id })} onCreateNew={handleCreateBrand} onEdit={handleEditBrand} placeholder="Chọn thương hiệu" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="label py-0"><span className="label-text text-xs font-medium">Mã hàng <span className="text-error">*</span></span></label>
+                                                    <input type="text" className="input input-bordered input-sm w-full" value={editFormData.sku} onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })} required />
+                                                </div>
+                                                <div>
+                                                    <label className="label py-0"><span className="label-text text-xs font-medium">Mã vạch</span></label>
+                                                    <input type="text" className="input input-bordered input-sm w-full" value={editFormData.barcode} onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Tên hàng <span className="text-error">*</span></span></label>
+                                                <input type="text" className="input input-bordered input-sm w-full" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} required />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Dung lượng (Ah)</span></label>
+                                                <input type="text" className="input input-bordered input-sm w-full" value={editFormData.capacity} onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })} placeholder="VD: 100" />
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Giá & Tồn kho</h4>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Giá nhập (VNĐ)</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={editFormData.costPrice || ''} onChange={(e) => setEditFormData({ ...editFormData, costPrice: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Giá bán (VNĐ)</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={editFormData.price || ''} onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Tồn kho</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={editFormData.quantity} onChange={(e) => setEditFormData({ ...editFormData, quantity: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Bảo hành</h4>
+                                        <div>
+                                            <label className="label py-0"><span className="label-text text-xs font-medium">Bảo hành</span></label>
+                                            <input type="text" className="input input-bordered input-sm w-full" placeholder="VD: 12 tháng, 1 năm, 15 ngày" value={editFormData.warrantyText} onChange={(e) => setEditFormData({ ...editFormData, warrantyText: e.target.value })} />
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Khác</h4>
+                                        <div className="space-y-3">
+                                            <label className="label cursor-pointer justify-start gap-2 py-0">
+                                                <input type="checkbox" className="checkbox checkbox-primary checkbox-sm" checked={editFormData.isActive} onChange={(e) => setEditFormData({ ...editFormData, isActive: e.target.checked })} />
+                                                <span className="label-text text-sm">Đang kinh doanh</span>
+                                            </label>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Ghi chú</span></label>
+                                                <textarea className="textarea textarea-bordered textarea-sm w-full mt-0.5" rows={2} placeholder="Ghi chú nội bộ..." value={editFormData.notes} onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </section>
                                 </div>
                             </div>
-                            <div>
-                                <label className="label"><span className="label-text font-semibold">Tên hàng <span className="text-error">*</span></span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    value={editFormData.name}
-                                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                                    required
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Dung lượng (Ah)</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={editFormData.capacity}
-                                        onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Tồn kho</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={editFormData.quantity}
-                                        onChange={(e) => setEditFormData({ ...editFormData, quantity: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Đơn giá nhập (VNĐ)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={editFormData.costPrice || ''}
-                                        onChange={(e) => setEditFormData({ ...editFormData, costPrice: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Đơn giá bán (VNĐ)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={editFormData.price || ''}
-                                        onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Bảo hành (tháng)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        placeholder="VD: 12"
-                                        value={editFormData.warrantyMonths ?? ''}
-                                        onChange={(e) => setEditFormData({ ...editFormData, warrantyMonths: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Bảo hành (ghi chú)</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        placeholder="VD: 12 tháng"
-                                        value={editFormData.warrantyText}
-                                        onChange={(e) => setEditFormData({ ...editFormData, warrantyText: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="label"><span className="label-text">Hình ảnh (URL)</span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    value={editFormData.image}
-                                    onChange={(e) => setEditFormData({ ...editFormData, image: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="label cursor-pointer gap-2">
-                                    <input
-                                        type="checkbox"
-                                        className="checkbox checkbox-primary"
-                                        checked={editFormData.isActive}
-                                        onChange={(e) => setEditFormData({ ...editFormData, isActive: e.target.checked })}
-                                    />
-                                    <span className="label-text">Đang kinh doanh</span>
-                                </label>
-                            </div>
-                            <div>
-                                <label className="label"><span className="label-text">Ghi chú</span></label>
-                                <textarea
-                                    className="textarea textarea-bordered w-full"
-                                    rows={3}
-                                    value={editFormData.notes}
-                                    onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
-                                />
-                            </div>
-                            <div className="modal-action">
-                                <button type="button" className="btn btn-ghost" onClick={closeEditModal}>
-                                    Hủy
-                                </button>
+                            <div className="modal-action px-6 py-4 bg-base-200/30 border-t border-base-200 rounded-b-2xl">
+                                <button type="button" className="btn btn-ghost" onClick={closeEditModal}>Hủy</button>
                                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                                    {submitting ? (
-                                        <>
-                                            <span className="loading loading-spinner loading-sm" />
-                                            Đang cập nhật...
-                                        </>
-                                    ) : (
-                                        'Cập nhật'
-                                    )}
+                                    {submitting ? <><span className="loading loading-spinner loading-sm" /> Đang cập nhật...</> : 'Cập nhật'}
                                 </button>
                             </div>
                         </form>
@@ -1017,172 +1114,197 @@ const ProductListTab = () => {
             {/* Modal thêm sản phẩm */}
             {showCreateModal && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="product-create-title">
-                    <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <h3 id="product-create-title" className="font-bold text-lg mb-4">
-                            Thêm sản phẩm
-                        </h3>
-                        <form onSubmit={handleCreateProduct} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <CategoryBrandSelect
-                                    type="category"
-                                    label="Loại hàng"
-                                    value={createFormData.category}
-                                    refreshKey={categoryRefreshKey}
-                                    onChange={(id) => setCreateFormData({ ...createFormData, category: id })}
-                                    onCreateNew={handleCreateCategory}
-                                    onEdit={handleEditCategory}
-                                    placeholder="Chọn loại hàng"
-                                />
-                                <CategoryBrandSelect
-                                    type="brand"
-                                    label="Thương hiệu"
-                                    value={createFormData.brand}
-                                    refreshKey={brandRefreshKey}
-                                    onChange={(id) => setCreateFormData({ ...createFormData, brand: id })}
-                                    onCreateNew={handleCreateBrand}
-                                    onEdit={handleEditBrand}
-                                    placeholder="Chọn thương hiệu"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text font-semibold">Mã hàng <span className="text-error">*</span></span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={createFormData.sku}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, sku: e.target.value })}
-                                        required
-                                    />
+                    <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+                        <div className="sticky top-0 z-10 bg-base-100 border-b border-base-200 px-6 py-4 flex items-center justify-between">
+                            <h3 id="product-create-title" className="font-bold text-xl text-base-content">
+                                Thêm sản phẩm
+                            </h3>
+                            <button type="button" className="btn btn-ghost btn-sm btn-square" onClick={closeCreateModal} aria-label="Đóng">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleCreateProduct} className="flex flex-col">
+                            <div className="p-6 flex flex-col md:flex-row gap-8">
+                                {/* Cột trái: Hình ảnh */}
+                                <div className="shrink-0">
+                                    <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide block mb-2">Hình ảnh (tối đa 5)</span>
+                                    {(() => {
+                                        const imgs = (Array.isArray(createFormData.images) ? createFormData.images : []).slice(0, 5);
+                                        const mainUrl = imgs[createImageIndex];
+                                        const otherIndices = imgs.map((_, i) => i).filter((i) => i !== createImageIndex);
+                                        const isValidUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
+                                        const removeCreateImage = (idx) => {
+                                            setCreateFormData((prev) => ({
+                                                ...prev,
+                                                images: (prev.images || []).filter((_, i) => i !== idx),
+                                            }));
+                                            if (createImageIndex === idx) setCreateImageIndex(0);
+                                            else if (createImageIndex > idx) setCreateImageIndex((i) => Math.max(0, i - 1));
+                                        };
+                                        return (
+                                            <>
+                                                <div className="flex flex-row gap-3 mb-2">
+                                                    <div className="shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
+                                                        {mainUrl && isValidUrl(mainUrl) ? (
+                                                            <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                        ) : (
+                                                            <ImageIcon className="w-10 h-10 text-base-content/30" aria-hidden />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col gap-2">
+                                                        {[0, 1, 2, 3].map((k) => {
+                                                            if (imgs.length < 5 && k === 0) {
+                                                                return (
+                                                                    <label key="add" className="w-14 h-14 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors">
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/jpeg,image/png,image/webp,image/gif"
+                                                                            multiple
+                                                                            className="hidden"
+                                                                            disabled={imageUploading}
+                                                                            onChange={async (e) => {
+                                                                                const files = e.target.files ? Array.from(e.target.files) : [];
+                                                                                if (files.length === 0) return;
+                                                                                const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
+                                                                                if (oversized.length) {
+                                                                                    toast.error('Mỗi ảnh tối đa 3MB');
+                                                                                    e.target.value = '';
+                                                                                    return;
+                                                                                }
+                                                                                setImageUploading(true);
+                                                                                try {
+                                                                                    const res = await uploadProductImage(files);
+                                                                                    const urls = res?.data?.urls?.length ? res.data.urls : (res?.data?.url ? [res.data.url] : []);
+                                                                                    if (urls.length) {
+                                                                                        setCreateFormData((prev) => ({
+                                                                                            ...prev,
+                                                                                            images: [...(Array.isArray(prev.images) ? prev.images : []), ...urls].slice(0, 5),
+                                                                                        }));
+                                                                                        toast.success('Đã tải ảnh lên');
+                                                                                    } else {
+                                                                                        toast.error(res?.message || 'Tải ảnh thất bại');
+                                                                                    }
+                                                                                } catch (err) {
+                                                                                    toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
+                                                                                } finally {
+                                                                                    setImageUploading(false);
+                                                                                    e.target.value = '';
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {imageUploading ? <span className="loading loading-spinner loading-sm" /> : <Plus className="w-6 h-6 text-base-content/50" />}
+                                                                    </label>
+                                                                );
+                                                            }
+                                                            const idx = otherIndices[k - (imgs.length < 5 ? 1 : 0)];
+                                                            const url = idx !== undefined ? imgs[idx] : null;
+                                                            const hasUrl = url && isValidUrl(url);
+                                                            return (
+                                                                <div key={k} className="relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0">
+                                                                    {hasUrl ? (
+                                                                        <>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="w-full h-full block"
+                                                                                onClick={() => setCreateImageIndex(idx)}
+                                                                            >
+                                                                                <img src={url} alt="" className="w-full h-full object-cover" />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100"
+                                                                                onClick={(ev) => { ev.stopPropagation(); removeCreateImage(idx); }}
+                                                                                aria-label="Xóa ảnh"
+                                                                            >
+                                                                                <X className="w-3 h-3" />
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center">
+                                                                            <ImageIcon className="w-6 h-6 text-base-content/25" />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Mã vạch</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={createFormData.barcode}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, barcode: e.target.value })}
-                                    />
+                                {/* Cột phải: Form */}
+                                <div className="flex-1 min-w-0 space-y-6">
+                                    <section>
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Thông tin cơ bản</h4>
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <CategoryBrandSelect type="category" label="Loại hàng" value={createFormData.category} refreshKey={categoryRefreshKey} onChange={(id) => setCreateFormData({ ...createFormData, category: id })} onCreateNew={handleCreateCategory} onEdit={handleEditCategory} placeholder="Chọn loại hàng" />
+                                                <CategoryBrandSelect type="brand" label="Thương hiệu" value={createFormData.brand} refreshKey={brandRefreshKey} onChange={(id) => setCreateFormData({ ...createFormData, brand: id })} onCreateNew={handleCreateBrand} onEdit={handleEditBrand} placeholder="Chọn thương hiệu" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="label py-0"><span className="label-text text-xs font-medium">Mã hàng <span className="text-error">*</span></span></label>
+                                                    <input type="text" className="input input-bordered input-sm w-full" value={createFormData.sku} onChange={(e) => setCreateFormData({ ...createFormData, sku: e.target.value })} required />
+                                                </div>
+                                                <div>
+                                                    <label className="label py-0"><span className="label-text text-xs font-medium">Mã vạch</span></label>
+                                                    <input type="text" className="input input-bordered input-sm w-full" value={createFormData.barcode} onChange={(e) => setCreateFormData({ ...createFormData, barcode: e.target.value })} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Tên hàng <span className="text-error">*</span></span></label>
+                                                <input type="text" className="input input-bordered input-sm w-full" value={createFormData.name} onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })} required />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Dung lượng (Ah)</span></label>
+                                                <input type="text" className="input input-bordered input-sm w-full" value={createFormData.capacity} onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })} placeholder="VD: 100" />
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Giá & Tồn kho</h4>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Giá nhập (VNĐ)</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={createFormData.costPrice || ''} onChange={(e) => setCreateFormData({ ...createFormData, costPrice: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Giá bán (VNĐ)</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={createFormData.price || ''} onChange={(e) => setCreateFormData({ ...createFormData, price: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Tồn kho</span></label>
+                                                <input type="number" min={0} className="input input-bordered input-sm w-full" value={createFormData.quantity} onChange={(e) => setCreateFormData({ ...createFormData, quantity: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Bảo hành</h4>
+                                        <div>
+                                            <label className="label py-0"><span className="label-text text-xs font-medium">Bảo hành</span></label>
+                                            <input type="text" className="input input-bordered input-sm w-full" placeholder="VD: 12 tháng, 1 năm, 15 ngày" value={createFormData.warrantyText} onChange={(e) => setCreateFormData({ ...createFormData, warrantyText: e.target.value })} />
+                                        </div>
+                                    </section>
+                                    <section className="pt-4 border-t border-base-200">
+                                        <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Khác</h4>
+                                        <div className="space-y-3">
+                                            <label className="label cursor-pointer justify-start gap-2 py-0">
+                                                <input type="checkbox" className="checkbox checkbox-primary checkbox-sm" checked={createFormData.isActive} onChange={(e) => setCreateFormData({ ...createFormData, isActive: e.target.checked })} />
+                                                <span className="label-text text-sm">Đang kinh doanh</span>
+                                            </label>
+                                            <div>
+                                                <label className="label py-0"><span className="label-text text-xs font-medium">Ghi chú</span></label>
+                                                <textarea className="textarea textarea-bordered textarea-sm w-full mt-0.5" rows={2} placeholder="Ghi chú nội bộ..." value={createFormData.notes} onChange={(e) => setCreateFormData({ ...createFormData, notes: e.target.value })} />
+                                            </div>
+                                        </div>
+                                    </section>
                                 </div>
                             </div>
-                            <div>
-                                <label className="label"><span className="label-text font-semibold">Tên hàng <span className="text-error">*</span></span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    value={createFormData.name}
-                                    onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
-                                    required
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Dung lượng (Ah)</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        value={createFormData.capacity}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Tồn kho</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={createFormData.quantity}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, quantity: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Đơn giá nhập (VNĐ)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={createFormData.costPrice || ''}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, costPrice: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Đơn giá bán (VNĐ)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        value={createFormData.price || ''}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, price: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Bảo hành (tháng)</span></label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        className="input input-bordered w-full"
-                                        placeholder="VD: 12"
-                                        value={createFormData.warrantyMonths ?? ''}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, warrantyMonths: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Bảo hành (ghi chú)</span></label>
-                                    <input
-                                        type="text"
-                                        className="input input-bordered w-full"
-                                        placeholder="VD: 12 tháng"
-                                        value={createFormData.warrantyText}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, warrantyText: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="label"><span className="label-text">Hình ảnh (URL)</span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    value={createFormData.image}
-                                    onChange={(e) => setCreateFormData({ ...createFormData, image: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="label cursor-pointer gap-2">
-                                    <input
-                                        type="checkbox"
-                                        className="checkbox checkbox-primary"
-                                        checked={createFormData.isActive}
-                                        onChange={(e) => setCreateFormData({ ...createFormData, isActive: e.target.checked })}
-                                    />
-                                    <span className="label-text">Đang kinh doanh</span>
-                                </label>
-                            </div>
-                            <div>
-                                <label className="label"><span className="label-text">Ghi chú</span></label>
-                                <textarea
-                                    className="textarea textarea-bordered w-full"
-                                    rows={3}
-                                    value={createFormData.notes}
-                                    onChange={(e) => setCreateFormData({ ...createFormData, notes: e.target.value })}
-                                />
-                            </div>
-                            <div className="modal-action">
-                                <button type="button" className="btn btn-ghost" onClick={closeCreateModal}>
-                                    Hủy
-                                </button>
+                            <div className="modal-action px-6 py-4 bg-base-200/30 border-t border-base-200 rounded-b-2xl">
+                                <button type="button" className="btn btn-ghost" onClick={closeCreateModal}>Hủy</button>
                                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                                    {submitting ? (
-                                        <>
-                                            <span className="loading loading-spinner loading-sm" />
-                                            Đang thêm...
-                                        </>
-                                    ) : (
-                                        'Thêm sản phẩm'
-                                    )}
+                                    {submitting ? <><span className="loading loading-spinner loading-sm" /> Đang thêm...</> : 'Thêm sản phẩm'}
                                 </button>
                             </div>
                         </form>

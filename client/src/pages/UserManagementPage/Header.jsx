@@ -50,10 +50,10 @@ const createUserSchema = z.object({
     status: z.enum(['active', 'inactive', 'banned', 'suspended']).default('active'),
 });
 
-const Header = ({ resetForm, roles, triggerRefresh }) => {
+const Header = ({ roles, triggerRefresh }) => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const [rolesSelected, setRolesSelected] = useState([]);
+    const [roleSelected, setRoleSelected] = useState(''); // Mỗi user chỉ 1 vai trò
     const [serverError, setServerError] = useState('');
 
     const {
@@ -84,14 +84,14 @@ const Header = ({ resetForm, roles, triggerRefresh }) => {
         try {
             const formData = {
                 ...data,
-                roles: rolesSelected,
+                roles: roleSelected ? [roleSelected] : [],
             };
 
             const res = await createUser(formData);
             if (res.success) {
                 setShowCreateModal(false);
                 reset();
-                setRolesSelected([]);
+                setRoleSelected('');
                 triggerRefresh();
             }
         } catch (error) {
@@ -155,7 +155,7 @@ const Header = ({ resetForm, roles, triggerRefresh }) => {
                 className="btn btn-primary gap-2"
                 onClick={() => {
                     reset();
-                    setRolesSelected([]);
+                    setRoleSelected('');
                     setServerError('');
                     setShowCreateModal(true);
                 }}
@@ -297,27 +297,18 @@ const Header = ({ resetForm, roles, triggerRefresh }) => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="label mb-2">
-                                        <span className="label-text font-semibold">Roles</span>
+                                        <span className="label-text font-semibold">Vai trò</span>
                                     </label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {roles.map((role) => (
-                                            <label key={role._id} className="label cursor-pointer gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    className="checkbox checkbox-sm"
-                                                    checked={rolesSelected.includes(role.name)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setRolesSelected([...rolesSelected, role.name]);
-                                                        } else {
-                                                            setRolesSelected(rolesSelected.filter((r) => r !== role.name));
-                                                        }
-                                                    }}
-                                                />
-                                                <span className="label-text">{role.name}</span>
-                                            </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={roleSelected}
+                                        onChange={(e) => setRoleSelected(e.target.value)}
+                                    >
+                                        <option value="">-- Chọn vai trò --</option>
+                                        {roles.filter((r) => ['user', 'seller', 'warehouse_manager', 'manager'].includes(r.name)).map((role) => (
+                                            <option key={role._id} value={role.name}>{role.name}</option>
                                         ))}
-                                    </div>
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="label">
@@ -365,7 +356,7 @@ const Header = ({ resetForm, roles, triggerRefresh }) => {
                                     onClick={() => {
                                         setShowCreateModal(false);
                                         reset();
-                                        setRolesSelected([]);
+                                        setRoleSelected('');
                                         setServerError('');
                                     }}
                                 >
@@ -387,7 +378,7 @@ const Header = ({ resetForm, roles, triggerRefresh }) => {
                     <form method="dialog" className="modal-backdrop">
                         <button onClick={() => {
                             reset();
-                            setRolesSelected([]);
+                            setRoleSelected('');
                             setServerError('');
                         }}>close</button>
                     </form>

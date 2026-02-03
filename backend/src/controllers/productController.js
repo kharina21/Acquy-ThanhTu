@@ -1,9 +1,11 @@
 import mongoose from 'mongoose';
 import Product from '../models/Product.js';
+import ProductStock from '../models/ProductStock.js';
+import StockCheck from '../models/StockCheck.js';
 import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
-import StockCheck from '../models/StockCheck.js';
 import { parseExcelBuffer } from '../utils/parseExcelProduct.js';
+import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { generateStockCheckCode } from '../utils/stockCheckCode.js';
 
 async function findCategoryByName(categoryName) {
@@ -24,11 +26,53 @@ async function findBrandByName(brandName) {
     });
 }
 
+/** Đảm bảo product.images là mảng (tương thích dữ liệu cũ chỉ có image). */
+function normalizeProductImages(product) {
+    if (!product) return;
+    if (Array.isArray(product.images) && product.images.length > 0) return;
+    product.images = product.image ? [product.image] : [];
+}
+
+/**
+ * Upload một hoặc nhiều ảnh sản phẩm lên Cloudinary (không lưu local).
+ * Expect: multipart/form-data, field name "image" (có thể gửi nhiều file cùng tên).
+ */
+export const uploadProductImage = async (req, res) => {
+    try {
+        if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+            return res.status(503).json({
+                message: 'Chưa cấu hình Cloudinary. Thêm CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET vào .env',
+            });
+        }
+        const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : []);
+        if (files.length === 0 || !files[0].buffer) {
+            return res.status(400).json({ message: 'Vui lòng gửi ít nhất một file ảnh (field: image)' });
+        }
+        const urls = [];
+        for (const file of files) {
+            if (!file.buffer) continue;
+            const result = await uploadImageFromBuffer(file.buffer, file.mimetype);
+            urls.push(result.url);
+        }
+        if (urls.length === 0) {
+            return res.status(400).json({ message: 'Không có file ảnh hợp lệ' });
+        }
+        res.status(200).json({ success: true, data: { url: urls[0], urls } });
+    } catch (error) {
+        console.error('uploadProductImage error:', error.message);
+        res.status(500).json({
+            message: error.message || 'Lỗi khi tải ảnh lên. Kiểm tra cấu hình Cloudinary.',
+            error: error.message,
+        });
+    }
+};
+
 export const getAllProducts = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 15;
         const search = (req.query.search || '').trim();
+        const locationId = req.query.locationId?.trim();
         const skip = (page - 1) * limit;
 
         const query = {};
@@ -80,9 +124,28 @@ export const getAllProducts = async (req, res) => {
                     if (product.brand) product.brand = null;
                 }
 
+                normalizeProductImages(product);
                 return product;
             })
         );
+
+        const productIds = processedProducts.map((p) => p._id);
+        const [totalsAgg, stocksAtLoc] = await Promise.all([
+            ProductStock.aggregate([
+                { $match: { product: { $in: productIds } } },
+                { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+            ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total]))),
+            locationId
+                ? ProductStock.find({ location: locationId, product: { $in: productIds } })
+                    .select('product quantity')
+                    .lean()
+                    .then((rows) => Object.fromEntries(rows.map((s) => [s.product.toString(), s.quantity])))
+                : Promise.resolve({}),
+        ]);
+        processedProducts.forEach((p) => {
+            p.totalStock = totalsAgg[p._id.toString()] ?? 0;
+            if (locationId) p.stockAtLocation = stocksAtLoc[p._id.toString()] ?? 0;
+        });
 
         const total = await Product.countDocuments(query);
 
@@ -178,6 +241,12 @@ export const getProductById = async (req, res) => {
             product.brand = null;
         }
 
+        normalizeProductImages(product);
+        const totalRows = await ProductStock.aggregate([
+            { $match: { product: product._id } },
+            { $group: { _id: null, total: { $sum: '$quantity' } } },
+        ]);
+        product.totalStock = totalRows[0]?.total ?? 0;
         res.status(200).json({ success: true, data: { product } });
     } catch (error) {
         console.error('getProductById error:', error.message);
@@ -218,7 +287,25 @@ export const createProduct = async (req, res) => {
         // Nếu có categoryId, giữ nguyên
         // Nếu không có cả hai, để null
 
+        // Chuẩn hóa images: mảng URL (hỗ trợ nhiều ảnh)
+        let images = Array.isArray(productData.images)
+            ? productData.images.map((u) => String(u || '').trim()).filter(Boolean)
+            : (productData.image ? [String(productData.image).trim()] : []);
+        productData.images = images;
+        productData.image = images[0] || '';
+        delete productData.quantity;
+        delete productData.totalStock;
+
         const product = await Product.create(productData);
+        const locationId = req.body.locationId?.trim();
+        const quantity = req.body.quantity !== undefined ? Number(req.body.quantity) || 0 : null;
+        if (locationId && quantity !== null) {
+            await ProductStock.findOneAndUpdate(
+                { product: product._id, location: locationId },
+                { quantity },
+                { upsert: true, new: true }
+            );
+        }
         const populatedProduct = await Product.findById(product._id)
             .populate('category', 'name description')
             .populate('brand', 'name description')
@@ -268,7 +355,52 @@ export const updateProduct = async (req, res) => {
         delete updateData.brandName; // không lưu brandName nữa
         // Nếu có brand ID, giữ nguyên
 
+        // Chuẩn hóa images
+        if (Array.isArray(updateData.images)) {
+            updateData.images = updateData.images.map((u) => String(u || '').trim()).filter(Boolean);
+            updateData.image = updateData.images[0] || '';
+        } else if (updateData.image !== undefined) {
+            const s = String(updateData.image || '').trim();
+            updateData.images = s ? [s] : [];
+            updateData.image = s;
+        }
+        const locationId = updateData.locationId?.trim();
+        const quantity = updateData.quantity !== undefined ? Number(updateData.quantity) : null;
+        delete updateData.quantity;
+        delete updateData.totalStock;
+        delete updateData.locationId;
+
         const product = await Product.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+        if (product && locationId && quantity !== null) {
+            const existingStock = await ProductStock.findOne({ product: product._id, location: locationId }).lean();
+            const quantityBefore = existingStock?.quantity ?? 0;
+            await ProductStock.findOneAndUpdate(
+                { product: product._id, location: locationId },
+                { quantity },
+                { upsert: true, new: true }
+            );
+            if (req.user?._id) {
+                const quantityChange = quantity - quantityBefore;
+                const unitPrice = product.costPrice ?? product.price ?? 0;
+                const valueChange = quantityChange * unitPrice;
+                const code = await generateStockCheckCode();
+                await StockCheck.create({
+                    code,
+                    location: locationId,
+                    createdBy: req.user._id,
+                    note: 'Điều chỉnh từ chỉnh sửa số lượng sản phẩm',
+                    status: 'draft',
+                    items: [{
+                        product: product._id,
+                        quantityBefore,
+                        quantityCounted: quantity,
+                        quantityChange,
+                        unitPrice,
+                        valueChange,
+                    }],
+                });
+            }
+        }
         if (!product) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
         }
@@ -276,32 +408,6 @@ export const updateProduct = async (req, res) => {
             .populate('category', 'name description')
             .populate('brand', 'name description')
             .lean();
-
-        // Khi thay đổi số lượng: tự tạo phiếu kiểm kho (1 dòng) để ghi nhận thay đổi
-        const newQty = req.body.quantity !== undefined ? Number(req.body.quantity) : undefined;
-        const oldQty = oldProduct.quantity ?? 0;
-        if (newQty !== undefined && newQty !== oldQty && req.user?._id) {
-            const code = await generateStockCheckCode();
-            const quantityChange = newQty - oldQty;
-            const unitPrice = oldProduct.costPrice ?? oldProduct.price ?? 0;
-            const valueChange = quantityChange * unitPrice;
-            await StockCheck.create({
-                code,
-                createdBy: req.user._id,
-                note: 'Tự động tạo khi chỉnh sửa số lượng sản phẩm',
-                status: 'confirmed',
-                items: [
-                    {
-                        product: id,
-                        quantityBefore: oldQty,
-                        quantityCounted: newQty,
-                        quantityChange,
-                        unitPrice,
-                        valueChange,
-                    },
-                ],
-            });
-        }
 
         res.status(200).json({ success: true, data: { product: populatedProduct }, message: 'Cập nhật sản phẩm thành công' });
     } catch (error) {
@@ -329,13 +435,14 @@ export const deleteProduct = async (req, res) => {
 
 /**
  * Import sản phẩm từ file Excel.
- * Expect: multipart/form-data, field name "file"
+ * Expect: multipart/form-data, field "file", optional "locationId". Cột "Tồn kho" = ProductStock tại locationId.
  */
 export const importFromExcel = async (req, res) => {
     try {
         if (!req.file || !req.file.buffer) {
             return res.status(400).json({ message: 'Vui lòng gửi file Excel (field: file)' });
         }
+        const locationId = (req.body?.locationId || req.query?.locationId || '').toString().trim() || null;
         const { products, errors } = parseExcelBuffer(req.file.buffer);
         if (products.length === 0) {
             return res.status(400).json({
@@ -397,8 +504,18 @@ export const importFromExcel = async (req, res) => {
                 }
             }
             delete productData.brandName; // không lưu brandName nữa
+            const quantityFromExcel = productData.quantity !== undefined ? Number(productData.quantity) ?? 0 : 0;
+            delete productData.quantity;
+            delete productData.totalStock;
 
             const doc = await Product.create(productData);
+            if (locationId && quantityFromExcel >= 0) {
+                await ProductStock.findOneAndUpdate(
+                    { product: doc._id, location: locationId },
+                    { quantity: quantityFromExcel },
+                    { upsert: true, new: true }
+                );
+            }
             inserted.push(doc);
         }
         const skipMsg = [duplicateSkus.length && `${duplicateSkus.length} mã hàng trùng`, duplicateBarcodes.length && `${duplicateBarcodes.length} mã vạch trùng`].filter(Boolean).join(', ');
@@ -471,56 +588,5 @@ export const bulkUpdatePrice = async (req, res) => {
     } catch (error) {
         console.error('bulkUpdatePrice error:', error.message);
         res.status(500).json({ message: 'Lỗi khi cập nhật giá hàng loạt', error: error.message });
-    }
-};
-
-/**
- * Cập nhật bảo hành hàng loạt.
- * Body: { category?, brand?, warrantyMonths?, warrantyText? }
- */
-export const bulkUpdateWarranty = async (req, res) => {
-    try {
-        const { category, brand, warrantyMonths, warrantyText } = req.body;
-        const query = {};
-        if (category && mongoose.Types.ObjectId.isValid(category)) query.category = category;
-        if (brand && String(brand).trim()) query.brandName = String(brand).trim();
-
-        const update = {};
-        if (warrantyMonths !== undefined && warrantyMonths !== null && warrantyMonths !== '') {
-            const months = Number(warrantyMonths);
-            update.warrantyMonths = Number.isNaN(months) ? null : months;
-        }
-        if (warrantyText !== undefined) update.warrantyText = String(warrantyText ?? '').trim();
-
-        if (Object.keys(update).length === 0) {
-            return res.status(400).json({ message: 'Vui lòng nhập ít nhất bảo hành (tháng) hoặc ghi chú bảo hành' });
-        }
-
-        const result = await Product.updateMany(query, { $set: update });
-        res.status(200).json({
-            success: true,
-            message: `Đã cập nhật bảo hành ${result.modifiedCount} sản phẩm`,
-            data: { updated: result.modifiedCount },
-        });
-    } catch (error) {
-        console.error('bulkUpdateWarranty error:', error.message);
-        res.status(500).json({ message: 'Lỗi khi cập nhật bảo hành hàng loạt', error: error.message });
-    }
-};
-
-/**
- * Đếm sản phẩm theo bộ lọc (category, brand) - dùng cho preview trước khi bulk update.
- */
-export const countProductsByFilter = async (req, res) => {
-    try {
-        const { category, brand } = req.query;
-        const query = {};
-        if (category && mongoose.Types.ObjectId.isValid(category)) query.category = category;
-        if (brand && String(brand).trim()) query.brandName = String(brand).trim();
-        const count = await Product.countDocuments(query);
-        res.status(200).json({ success: true, data: { count } });
-    } catch (error) {
-        console.error('countProductsByFilter error:', error.message);
-        res.status(500).json({ message: 'Lỗi khi đếm sản phẩm', error: error.message });
     }
 };

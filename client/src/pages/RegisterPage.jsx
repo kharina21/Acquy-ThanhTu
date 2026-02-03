@@ -60,7 +60,7 @@ const RegisterPage = () => {
 
     const onSubmit = async (data) => {
         try {
-            const { confirmPassword, ...registerData } = data;
+            const { confirmPassword: _confirmPassword, ...registerData } = data;
             const response = await api.post('/auth/register-user', registerData);
 
             if (response.data) {
@@ -70,7 +70,6 @@ const RegisterPage = () => {
         } catch (error) {
             console.error('Error registering:', error);
             const errorResponse = error.response?.data;
-            const statusCode = error.response?.status;
 
             if (errorResponse?.errors && Array.isArray(errorResponse.errors)) {
 

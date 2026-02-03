@@ -12,21 +12,8 @@ function parsePrice(value) {
 }
 
 /**
- * Parse "12 tháng" -> 12, "30 ngày" -> 0
- */
-function parseWarranty(value) {
-    if (value == null || value === '') return null;
-    const str = String(value).trim();
-    const matchMonth = str.match(/(\d+)\s*tháng/i);
-    if (matchMonth) return parseInt(matchMonth[1], 10);
-    const matchDay = str.match(/(\d+)\s*ngày/i);
-    if (matchDay) return 0;
-    const num = parseInt(str, 10);
-    return Number.isNaN(num) ? null : num;
-}
-
-/**
  * Chuyển một dòng Excel (object với key là header) thành object sản phẩm để lưu DB.
+ * Cột "Bảo hành": chỉ lưu text (VD: 12 tháng, 1 năm, 15 ngày), không parse số.
  */
 export function rowToProduct(row, index) {
     const category = row['Loại hàng'] != null ? String(row['Loại hàng']).trim() : '';
@@ -44,15 +31,17 @@ export function rowToProduct(row, index) {
                 ? quantityRaw
                 : parseInt(String(quantityRaw).replace(/\s/g, ''), 10) || 0
             : 0;
-    const image = row['Hình ảnh'] != null ? String(row['Hình ảnh']).trim() : '';
+    const imageRaw = row['Hình ảnh'] != null ? String(row['Hình ảnh']).trim() : '';
+    const images = imageRaw
+        ? imageRaw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
+        : [];
+    const image = images[0] || '';
     const inBusiness = row['Đang kinh doanh'];
     const isActive = inBusiness === 1 || inBusiness === '1' || String(inBusiness).trim() === '1';
     const warrantyText = row['Bảo hành'] != null ? String(row['Bảo hành']).trim() : '';
-    const warrantyMonths = parseWarranty(row['Bảo hành']);
     const notes = row['Ghi chú'] != null ? String(row['Ghi chú']).trim() : '';
 
     return {
-        // các field này chỉ là input để backend map -> Category/Brand ref
         categoryName: category || '',
         brandName: brand || '',
         sku: sku || `IM-${index + 1}`,
@@ -63,9 +52,9 @@ export function rowToProduct(row, index) {
         price,
         quantity,
         image: image || '',
+        images: images || [],
         isActive,
         warrantyText: warrantyText || '',
-        warrantyMonths,
         notes: notes || '',
     };
 }

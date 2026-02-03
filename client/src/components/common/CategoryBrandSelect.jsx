@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, ChevronUp, Pencil } from 'lucide-react';
 import { getCategories, createCategory, updateCategory } from '@/services/categoryService';
 import { getBrands, createBrand, updateBrand } from '@/services/brandService';
-import { toast } from 'sonner';
 
 const CategoryBrandSelect = ({
     type, // 'category' hoặc 'brand'

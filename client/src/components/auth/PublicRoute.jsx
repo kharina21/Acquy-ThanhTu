@@ -9,7 +9,7 @@ import { Navigate, Outlet } from 'react-router';
  */
 const PublicRoute = () => {
     const { user, loading } = useAuthStore();
-    const { isAdmin, isUser, isSeller, isOwner, isManager, isStaff } = useUserRole();
+    const { isAdmin, isUser, isSeller, isManager, isWarehouseManager, isStaff } = useUserRole();
 
     // Hiển thị loading khi đang kiểm tra authentication
     if (loading) {
@@ -22,24 +22,11 @@ const PublicRoute = () => {
 
     // Nếu đã đăng nhập, redirect đến trang phù hợp với role (ưu tiên theo thứ tự)
     if (user) {
-        if (isAdmin) {
-            return <Navigate to='/admin' replace />;
-        }
-        if (isOwner) {
-            return <Navigate to='/owner/dashboard' replace />;
-        }
-        if (isManager) {
-            return <Navigate to='/manager/dashboard' replace />;
-        }
-        if (isSeller) {
-            return <Navigate to='/seller/dashboard' replace />;
-        }
-        if (isStaff) {
-            return <Navigate to='/staff/dashboard' replace />;
-        }
-        if (isUser) {
-            return <Navigate to='/home' replace />;
-        }
+        if (isAdmin) return <Navigate to='/admin' replace />;
+        if (isManager) return <Navigate to='/admin' replace />;
+        if (isWarehouseManager) return <Navigate to='/admin/warehouses' replace />;
+        if (isSeller || isStaff) return <Navigate to='/staff/dashboard' replace />;
+        if (isUser) return <Navigate to='/home' replace />;
         // Fallback: Nếu có user nhưng không có role nào match, redirect về home
         return <Navigate to='/home' replace />;
     }

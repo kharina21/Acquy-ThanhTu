@@ -11,70 +11,14 @@ import AdminLayout from './AdminLayout';
  * để nested routes có thể render.
  */
 const RoleBasedLayout = () => {
-    const { isAdmin, isSeller, isOwner, isManager, isStaff } = useUserRole();
+    const { isAdmin, isSeller, isManager, isWarehouseManager, isStaff } = useUserRole();
 
-    // Layout cho admin
-    if (isAdmin) {
+    // Dùng chung AdminLayout cho admin, manager, warehouse_manager, seller, staff
+    if (isAdmin || isManager || isWarehouseManager || isSeller || isStaff) {
         return (
             <AdminLayout>
                 <Outlet />
             </AdminLayout>
-        );
-    }
-
-    // Layout cho owner
-    if (isOwner) {
-        return (
-            <div className='min-h-screen bg-base-200'>
-                <div className='container mx-auto px-4 py-8'>
-                    <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
-                        <h1 className='text-2xl font-bold'>Owner Panel</h1>
-                    </div>
-                    <Outlet />
-                </div>
-            </div>
-        );
-    }
-
-    // Layout cho manager
-    if (isManager) {
-        return (
-            <div className='min-h-screen bg-base-200'>
-                <div className='container mx-auto px-4 py-8'>
-                    <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
-                        <h1 className='text-2xl font-bold'>Manager Panel</h1>
-                    </div>
-                    <Outlet />
-                </div>
-            </div>
-        );
-    }
-
-    // Layout cho seller
-    if (isSeller) {
-        return (
-            <div className='min-h-screen bg-base-200'>
-                <div className='container mx-auto px-4 py-8'>
-                    <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
-                        <h1 className='text-2xl font-bold'>Seller Panel</h1>
-                    </div>
-                    <Outlet />
-                </div>
-            </div>
-        );
-    }
-
-    // Layout cho staff
-    if (isStaff) {
-        return (
-            <div className='min-h-screen bg-base-200'>
-                <div className='container mx-auto px-4 py-8'>
-                    <div className='bg-base-100 rounded-lg shadow-lg p-6 mb-4'>
-                        <h1 className='text-2xl font-bold'>Staff Panel</h1>
-                    </div>
-                    <Outlet />
-                </div>
-            </div>
         );
     }
 

@@ -151,11 +151,13 @@ export const createUser = async (req, res) => {
             status: status || 'active',
         });
 
-        // Gán roles nếu có
+        // Gán 1 vai trò nếu có (mỗi user chỉ 1 role; không cho gán admin)
         if (roles && Array.isArray(roles) && roles.length > 0) {
-            for (const roleName of roles) {
-                await assignRoleByName(user, roleName);
+            const roleName = roles[0];
+            if (roleName === 'admin') {
+                return res.status(403).json({ message: 'Không được gán vai trò quản trị viên khi tạo user' });
             }
+            await assignRoleByName(user, roleName);
         } else {
             // Nếu không có role, gán role mặc định
             const { assignDefaultRole } = await import('../libs/rbacHelpers.js');
@@ -293,6 +295,14 @@ export const updateUser = async (req, res) => {
     }
 };
 
+// Kiểm tra user có vai trò admin hay không (roles là mảng ObjectId)
+const userHasAdminRole = async (user) => {
+    if (!user?.roles?.length) return false;
+    const adminRole = await Role.findOne({ name: 'admin' });
+    if (!adminRole) return false;
+    return user.roles.some((rid) => rid.toString() === adminRole._id.toString());
+};
+
 // Xóa user (soft delete - không thực sự xóa)
 export const deleteUser = async (req, res) => {
     try {
@@ -306,6 +316,11 @@ export const deleteUser = async (req, res) => {
         const user = await User.findById(id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Không cho phép xóa tài khoản quản trị viên (admin)
+        if (await userHasAdminRole(user)) {
+            return res.status(403).json({ message: 'Không được xóa tài khoản quản trị viên' });
         }
 
         // Xóa user
@@ -345,14 +360,14 @@ export const deleteUser = async (req, res) => {
     }
 };
 
-// Gán roles cho user
+// Gán role cho user (mỗi user chỉ 1 vai trò)
 export const assignRoles = async (req, res) => {
     try {
         const { id } = req.params;
-        const { roles } = req.body; // Array of role names
+        const { roles } = req.body; // Mảng role names, chỉ dùng phần tử đầu
 
         if (!roles || !Array.isArray(roles) || roles.length === 0) {
-            return res.status(400).json({ message: 'Vui lòng cung cấp danh sách roles' });
+            return res.status(400).json({ message: 'Vui lòng chọn một vai trò' });
         }
 
         const user = await User.findById(id);
@@ -360,18 +375,37 @@ export const assignRoles = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Kiểm tra các roles có tồn tại không
-        const existingRoles = await Role.find({ name: { $in: roles } });
-        if (existingRoles.length !== roles.length) {
-            return res.status(400).json({ message: 'Một hoặc nhiều roles không tồn tại' });
+        // Không cho phép sửa quyền tài khoản quản trị viên
+        if (await userHasAdminRole(user)) {
+            return res.status(403).json({ message: 'Không được sửa đổi quyền tài khoản quản trị viên' });
         }
 
-        // Gán roles
-        const assignedRoles = [];
-        for (const roleName of roles) {
-            await assignRoleByName(user, roleName);
-            assignedRoles.push(roleName);
+        const roleName = roles[0];
+        if (roleName === 'admin') {
+            return res.status(403).json({ message: 'Không được gán vai trò quản trị viên' });
         }
+
+        // Manager chỉ được gán seller hoặc warehouse_manager (không gán manager)
+        const currentUser = await User.findById(req.user._id).populate('roles', 'name');
+        const currentRoleNames = (currentUser?.roles || []).map((r) => r.name);
+        const isAdmin = currentRoleNames.includes('admin');
+        if (!isAdmin && currentRoleNames.includes('manager')) {
+            const managerAllowedRoles = ['seller', 'warehouse_manager'];
+            if (!managerAllowedRoles.includes(roleName)) {
+                return res.status(403).json({
+                    message: 'Quản lý chỉ được gán vai trò Nhân viên bán hàng hoặc Quản lý kho',
+                });
+            }
+        }
+
+        const role = await Role.findOne({ name: roleName });
+        if (!role) {
+            return res.status(400).json({ message: 'Vai trò không tồn tại' });
+        }
+
+        // Mỗi user chỉ 1 role: ghi đè thành [roleId]
+        user.roles = [role._id];
+        await user.save();
 
         // Lấy lại user với roles đã populate
         const userWithRoles = await User.findById(id)
@@ -386,7 +420,7 @@ export const assignRoles = async (req, res) => {
             userId: req.user._id,
             action: 'assign_role',
             resource: 'user',
-            description: `Admin ${req.user.username} đã gán roles [${roles.join(', ')}] cho user: ${user.username}`,
+            description: `Admin ${req.user.username} đã gán vai trò ${roleName} cho user: ${user.username}`,
             ipAddress: getClientIp(req),
             userAgent: getUserAgent(req),
             status: 'success',
@@ -394,11 +428,11 @@ export const assignRoles = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: 'Gán roles thành công',
+            message: 'Cập nhật vai trò thành công',
             data: { user: userWithRoles },
         });
     } catch (error) {
-        console.log('Lỗi khi gán roles: ' + error.message);
+        console.log('Lỗi khi gán role: ' + error.message);
 
         // Log failed
         await logAuthActivity({
@@ -429,6 +463,11 @@ export const removeRoles = async (req, res) => {
         const user = await User.findById(id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Không cho phép sửa quyền tài khoản quản trị viên
+        if (await userHasAdminRole(user)) {
+            return res.status(403).json({ message: 'Không được sửa đổi quyền tài khoản quản trị viên' });
         }
 
         // Xóa roles

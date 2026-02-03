@@ -1,8 +1,8 @@
 import { formatDateTime } from '@/lib/utils';
-import { CheckCircle2, ChevronLeft, ChevronRight, Edit, Key, Shield, Trash2, Users, X, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Edit, Key, Shield, Trash2, Users, XCircle } from 'lucide-react';
 import {
-    deleteUser, getUsers, removeRoles, updateUser,
-    assignRoles, createUser,
+    deleteUser, getUsers, updateUser,
+    assignRoles,
     resetUserPassword,
 } from '@/services/userService';
 import React, { useEffect, useState } from 'react';
@@ -78,37 +78,25 @@ const UserTable = ({
 
 
 
-    // Handle assign roles
+    // Handle assign role (mỗi user chỉ 1 vai trò)
     const handleAssignRoles = async (e) => {
         e.preventDefault();
+        const newRole = formData.roles?.[0];
+        if (!newRole) {
+            toast.error('Vui lòng chọn một vai trò');
+            return;
+        }
         setSubmitting(true);
         try {
-            const currentRoles = selectedUser.roles?.map((r) => r.name) || [];
-            const newRoles = formData.roles || [];
-            const rolesToAdd = newRoles.filter((role) => !currentRoles.includes(role));
-            const rolesToRemove = currentRoles.filter((role) => !newRoles.includes(role));
-
-            if (rolesToRemove.length > 0) {
-                const removeRes = await removeRoles(selectedUser._id, rolesToRemove);
-                if (!removeRes.success) {
-                    toast.error(removeRes.message || 'Có lỗi khi xóa roles');
-                    setSubmitting(false);
-                    return;
-                }
+            const addRes = await assignRoles(selectedUser._id, [newRole]);
+            if (!addRes.success) {
+                toast.error(addRes.message || 'Cập nhật vai trò thất bại');
+                setSubmitting(false);
+                return;
             }
-            if (rolesToAdd.length > 0) {
-                const addRes = await assignRoles(selectedUser._id, rolesToAdd);
-                if (!addRes.success) {
-                    toast.error(addRes.message || 'Có lỗi khi thêm roles');
-                    setSubmitting(false);
-                    return;
-                }
-            }
-
-            // If no changes, still refresh
             setShowRoleModal(false);
             resetForm();
-            toast.success('Cập nhật roles thành công');
+            toast.success('Cập nhật vai trò thành công');
             fetchUsers();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
@@ -161,30 +149,6 @@ const UserTable = ({
             variant: 'danger',
         });
     };
-    // Handle remove roles
-    const handleRemoveRole = (userId, roleName) => {
-        const user = users.find(u => u._id === userId);
-        setConfirmModal({
-            isOpen: true,
-            title: 'Xóa role',
-            message: `Bạn có chắc chắn muốn xóa role "${roleName}" khỏi người dùng "${user?.firstName} ${user?.lastName}"?`,
-            onConfirm: async () => {
-                try {
-                    setLoading(true);
-                    const res = await removeRoles(userId, [roleName]);
-                    if (res.success) {
-                        toast.success(`Đã xóa role "${roleName}" thành công`);
-                        fetchUsers();
-                    }
-                } catch (error) {
-                    toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
-                } finally {
-                    setLoading(false);
-                }
-            },
-            variant: 'warning',
-        });
-    };
     // Open edit modal
     const openEditModal = (user) => {
         setSelectedUser(user);
@@ -202,11 +166,13 @@ const UserTable = ({
         setShowEditModal(true);
     };
 
-    // Open role modal
+    // Open role modal (mỗi user 1 vai trò)
     const openRoleModal = (user) => {
         setSelectedUser(user);
+        const currentRole = user.roles?.[0]?.name;
         setFormData({
-            roles: user.roles?.map((r) => r.name) || [],
+            ...formData,
+            roles: currentRole ? [currentRole] : [],
         });
         setShowRoleModal(true);
     };
@@ -221,21 +187,27 @@ const UserTable = ({
     // Get role description in Vietnamese
     const getRoleDescription = (roleName, defaultDescription) => {
         const descriptions = {
-            admin: 'Quản trị viên - Toàn quyền truy cập và quản lý hệ thống',
-            staff: 'Nhân viên - Quyền hạn cơ bản để thực hiện các tác vụ hàng ngày',
-            manager: 'Quản lý - Quyền quản lý sản phẩm, đơn hàng và nhân viên',
-            user: 'Người dùng thông thường',
+            admin: 'Quản trị viên - Toàn quyền hệ thống',
+            manager: 'Quản lý cửa hàng - Nhân viên, sản phẩm, đơn hàng',
+            seller: 'Nhân viên bán hàng - Tạo đơn, xem sản phẩm',
+            warehouse_manager: 'Quản lý kho - Kiểm kho, nhập/xuất, tồn',
+            user: 'Khách hàng / người dùng web',
+            staff: 'Nhân viên (cũ) - Nên chuyển sang seller',
         };
         return descriptions[roleName] || defaultDescription || '';
     };
+
+    // User có vai trò admin thì không được xóa / sửa quyền
+    const isAdminUser = (user) => user?.roles?.some((r) => r.name === 'admin');
 
     // Get role badge color
     const getRoleBadgeColor = (roleName) => {
         const colors = {
             admin: 'badge-error',
-            owner: 'badge-warning',
             manager: 'badge-info',
-            staff: 'badge-primary',
+            seller: 'badge-primary',
+            warehouse_manager: 'badge-secondary',
+            staff: 'badge-ghost',
             user: 'badge-neutral',
         };
         return colors[roleName] || 'badge-neutral';
@@ -374,23 +346,10 @@ const UserTable = ({
                                         <td>{user.phoneNumber || '-'}</td>
                                         <td>
                                             <div className="flex flex-wrap gap-1">
-                                                {user.roles?.map((role) => (
-                                                    <div
-                                                        key={role._id}
-                                                        className="flex items-center gap-1"
-                                                    >
-                                                        <span className={`badge badge-sm ${getRoleBadgeColor(role.name)}`}>
-                                                            {role.name}
-                                                        </span>
-                                                        <button
-                                                            className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-0 focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
-                                                            onClick={() => handleRemoveRole(user._id, role.name)}
-                                                            title={`Xóa role ${role.name}`}
-                                                            aria-label={`Xóa role ${role.name} khỏi ${user.firstName} ${user.lastName}`}
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
+                                                {(user.roles?.length ? [user.roles[0]] : user.roles || []).map((role) => (
+                                                    <span key={role._id} className={`badge badge-sm ${getRoleBadgeColor(role.name)}`}>
+                                                        {role.name}
+                                                    </span>
                                                 ))}
                                             </div>
                                         </td>
@@ -440,14 +399,16 @@ const UserTable = ({
                                                 >
                                                     <Edit className="w-4 h-4" />
                                                 </button>
-                                                <button
-                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
-                                                    onClick={() => openRoleModal(user)}
-                                                    title="Quản lý roles"
-                                                    aria-label={`Quản lý roles của ${user.firstName} ${user.lastName}`}
-                                                >
-                                                    <Shield className="w-4 h-4" />
-                                                </button>
+                                                {!isAdminUser(user) && (
+                                                    <button
+                                                        className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                                                        onClick={() => openRoleModal(user)}
+                                                        title="Đổi vai trò"
+                                                        aria-label={`Đổi vai trò của ${user.firstName} ${user.lastName}`}
+                                                    >
+                                                        <Shield className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 <button
                                                     className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                                                     onClick={() => openPasswordModal(user)}
@@ -456,14 +417,16 @@ const UserTable = ({
                                                 >
                                                     <Key className="w-4 h-4" />
                                                 </button>
-                                                <button
-                                                    className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
-                                                    onClick={() => handleDeleteUser(user._id)}
-                                                    title="Xóa"
-                                                    aria-label={`Xóa người dùng ${user.firstName} ${user.lastName}`}
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                {!isAdminUser(user) && (
+                                                    <button
+                                                        className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
+                                                        onClick={() => handleDeleteUser(user._id)}
+                                                        title="Xóa"
+                                                        aria-label={`Xóa người dùng ${user.firstName} ${user.lastName}`}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -506,46 +469,29 @@ const UserTable = ({
                 </>
             )}
 
-            {/* Role Management Modal */}
-            {showRoleModal && selectedUser && (
+            {/* Role Modal - mỗi user chỉ 1 vai trò */}
+            {showRoleModal && selectedUser && !isAdminUser(selectedUser) && (
                 <dialog className="modal modal-open">
                     <div className="modal-box">
-                        <h3 className="font-bold text-lg mb-4">Quản lý roles cho {selectedUser.username}</h3>
+                        <h3 className="font-bold text-lg mb-4">Đổi vai trò: {selectedUser.username}</h3>
                         <form onSubmit={handleAssignRoles} className="space-y-4">
                             <div>
                                 <label className="label">
-                                    <span className="label-text font-semibold">Roles</span>
+                                    <span className="label-text font-semibold">Vai trò</span>
                                 </label>
-                                <div className="flex flex-wrap gap-3 p-4 border border-base-300 rounded-lg max-h-64 overflow-y-auto">
-                                    {roles.map((role) => (
-                                        <label key={role._id} className="label cursor-pointer gap-2">
-                                            <input
-                                                type="checkbox"
-                                                className="checkbox"
-                                                checked={formData.roles.includes(role.name)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setFormData({
-                                                            ...formData,
-                                                            roles: [...formData.roles, role.name],
-                                                        });
-                                                    } else {
-                                                        setFormData({
-                                                            ...formData,
-                                                            roles: formData.roles.filter((r) => r !== role.name),
-                                                        });
-                                                    }
-                                                }}
-                                            />
-                                            <div>
-                                                <span className="label-text font-semibold">{role.name}</span>
-                                                {getRoleDescription(role.name, role.description) && (
-                                                    <div className="text-xs text-base-content/60">{getRoleDescription(role.name, role.description)}</div>
-                                                )}
-                                            </div>
-                                        </label>
+                                <select
+                                    className="select select-bordered w-full"
+                                    value={formData.roles?.[0] || ''}
+                                    onChange={(e) => setFormData({ ...formData, roles: e.target.value ? [e.target.value] : [] })}
+                                >
+                                    <option value="">-- Chọn vai trò --</option>
+                                    {roles.filter((r) => ['user', 'seller', 'warehouse_manager', 'manager'].includes(r.name)).map((role) => (
+                                        <option key={role._id} value={role.name}>
+                                            {role.name}
+                                            {getRoleDescription(role.name, role.description) && ` - ${getRoleDescription(role.name, role.description)}`}
+                                        </option>
                                     ))}
-                                </div>
+                                </select>
                             </div>
                             <div className="modal-action">
                                 <button
@@ -558,14 +504,14 @@ const UserTable = ({
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                                <button type="submit" className="btn btn-primary" disabled={submitting || !formData.roles?.[0]}>
                                     {submitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>
                                             Đang cập nhật...
                                         </>
                                     ) : (
-                                        'Cập nhật roles'
+                                        'Cập nhật vai trò'
                                     )}
                                 </button>
                             </div>

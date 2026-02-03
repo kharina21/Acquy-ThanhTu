@@ -9,8 +9,7 @@ import {
     deleteProduct,
     importFromExcel,
     bulkUpdatePrice,
-    bulkUpdateWarranty,
-    countProductsByFilter,
+    uploadProductImage,
 } from '../controllers/productController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -34,15 +33,28 @@ const upload = multer({
     },
 });
 
-// Tất cả routes đều cần đăng nhập và role admin hoặc owner
+// Upload ảnh sản phẩm (lên Cloudinary)
+const uploadImage = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+    fileFilter: (req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (allowed.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Chỉ chấp nhận ảnh (JPEG, PNG, WebP, GIF)'), false);
+        }
+    },
+});
+
+// Tất cả routes đều cần đăng nhập và role admin hoặc manager
 router.use(authenticate);
 router.use(hasRole('admin', 'manager'));
 
 router.get('/', getAllProducts);
 router.get('/options', getProductOptions);
-router.get('/count', countProductsByFilter);
 router.post('/bulk-update-price', bulkUpdatePrice);
-router.post('/bulk-update-warranty', bulkUpdateWarranty);
+router.post('/upload-image', uploadImage.array('image', 20), uploadProductImage);
 router.get('/:id', getProductById);
 router.post('/', createProduct);
 router.put('/:id', updateProduct);

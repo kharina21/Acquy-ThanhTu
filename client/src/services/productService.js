@@ -45,9 +45,9 @@ export const generateSampleExcelBlob = () => {
  */
 export const getProducts = async (params = {}) => {
     try {
-        const { page = 1, limit = 10, search = '' } = params;
+        const { page = 1, limit = 10, search = '', locationId } = params;
         const { data } = await api.get('/products', {
-            params: { page, limit, search: search || undefined },
+            params: { page, limit, search: search || undefined, locationId: locationId || undefined },
         });
         return data?.success
             ? data
@@ -128,20 +128,18 @@ export const deleteProduct = async (id) => {
 };
 
 /**
- * Đếm sản phẩm theo bộ lọc (category?, brand?) - preview trước khi bulk update.
+ * Upload một hoặc nhiều ảnh sản phẩm lên Cloudinary.
+ * @param {File | File[]} files - Một file hoặc mảng file ảnh (JPEG, PNG, WebP, GIF, tối đa 3MB/file)
+ * @returns {Promise<{ success: boolean, data?: { url: string, urls: string[] } }>}
  */
-export const countProductsByFilter = async (params = {}) => {
-    try {
-        const { category, brand } = params;
-        const requestParams = {};
-        if (category) requestParams.category = category;
-        if (brand) requestParams.brand = brand;
-        const { data } = await api.get('/products/count', { params: requestParams });
-        return data?.success ? data.data.count : 0;
-    } catch (error) {
-        console.error('countProductsByFilter error:', error?.response?.data || error);
-        return 0;
-    }
+export const uploadProductImage = async (files) => {
+    const list = Array.isArray(files) ? files : [files];
+    const formData = new FormData();
+    list.forEach((file) => formData.append('image', file));
+    const { data } = await api.post('/products/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
 };
 
 /**
@@ -159,26 +157,13 @@ export const bulkUpdatePrice = async (payload) => {
 };
 
 /**
- * Cập nhật bảo hành hàng loạt.
- * Payload: { category?, brand?, warrantyMonths?, warrantyText? }
+ * Import sản phẩm từ file Excel. Cột "Tồn kho" = ProductStock tại locationId (nếu có).
  */
-export const bulkUpdateWarranty = async (payload) => {
-    try {
-        const { data } = await api.post('/products/bulk-update-warranty', payload);
-        return data;
-    } catch (error) {
-        console.error('bulkUpdateWarranty error:', error?.response?.data || error);
-        throw error;
-    }
-};
-
-/**
- * Import sản phẩm từ file Excel (gửi file lên API).
- */
-export const importProductsFromExcel = async (file) => {
+export const importProductsFromExcel = async (file, locationId) => {
     try {
         const formData = new FormData();
         formData.append('file', file);
+        if (locationId) formData.append('locationId', locationId);
         const { data } = await api.post('/products/import', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
         });

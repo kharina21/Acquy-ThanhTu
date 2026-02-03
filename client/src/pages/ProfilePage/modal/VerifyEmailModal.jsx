@@ -33,7 +33,7 @@ const VerifyEmailModal = ({ setShowVerifyModal, countdown, setCountdown }) => {
             await verifyEmail(data.code);
             setShowVerifyModal(false);
             resetVerify();
-        } catch (error) {
+        } catch {
             // Error đã được handle trong useMailStore
             // Chỉ cần đóng modal nếu thành công
         }

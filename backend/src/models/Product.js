@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 
+/**
+ * Sản phẩm (chỉ thông tin hàng hóa). Tồn kho match ở bảng ProductStock (product + location + quantity).
+ */
 const productSchema = new mongoose.Schema(
     {
         category: {
@@ -18,8 +21,8 @@ const productSchema = new mongoose.Schema(
         capacity: { type: String, default: '' },
         costPrice: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
-        quantity: { type: Number, default: 0 },
         image: { type: String, default: '' },
+        images: { type: [String], default: [] },
         isActive: { type: Boolean, default: true },
         warrantyText: { type: String, default: '' },
         warrantyMonths: { type: Number, default: null },

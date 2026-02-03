@@ -9,13 +9,12 @@ import { useEffect } from 'react';
 const ProfilePage = () => {
     const { user } = useAuthStore();
     const { fetchActivityLogs } = useLogStore();
-    const { fetchUser } = useAuthStore();
 
     useEffect(() => {
         if (user) {
             fetchActivityLogs(1);
         }
-    }, [user]);
+    }, [user, fetchActivityLogs]);
 
     if (!user) {
         return (

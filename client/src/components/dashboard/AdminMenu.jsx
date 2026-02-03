@@ -1,6 +1,4 @@
-import React, { lazy, Suspense } from 'react';
-import { useAuthStore } from '@/stores/useAuthStore';
-import { useUserRole } from '@/hooks/useUserRole';
+import React from 'react';
 import { Link } from 'react-router';
 
 // Lazy load images for better performance
@@ -50,9 +48,6 @@ const LazyImage = ({ src, alt, className }) => {
 };
 
 const AdminMenu = React.memo(() => {
-    const { user } = useAuthStore();
-    const { userRoles } = useUserRole();
-
     // Menu items configuration - Updated paths to use public folder
     const menuSections = [
         {

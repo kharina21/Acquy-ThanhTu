@@ -32,11 +32,10 @@ export const useUserRole = () => {
     const isAdmin = useMemo(() => userRoles.includes('admin'), [userRoles]);
     const isUser = useMemo(() => userRoles.includes('user'), [userRoles]);
     const isSeller = useMemo(() => userRoles.includes('seller'), [userRoles]);
-    const isOwner = useMemo(() => userRoles.includes('owner'), [userRoles]);
     const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
+    const isWarehouseManager = useMemo(() => userRoles.includes('warehouse_manager'), [userRoles]);
+    /** @deprecated Dùng isSeller. Giữ để tương thích user cũ có role staff */
     const isStaff = useMemo(() => userRoles.includes('staff'), [userRoles]);
-
-    //k co role = guest
 
     return {
         userRoles,
@@ -46,8 +45,8 @@ export const useUserRole = () => {
         isAdmin,
         isUser,
         isSeller,
-        isOwner,
         isManager,
+        isWarehouseManager,
         isStaff,
     };
 };

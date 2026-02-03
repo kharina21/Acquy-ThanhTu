@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 
 // Pages
 import LoginPage from '../pages/LoginPage';
@@ -10,14 +10,12 @@ import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
+import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
-import SellerDashboard from '../components/dashboard/SellerDashboard';
-import OwnerDashboard from '../components/dashboard/OwnerDashboard';
-import ManagerDashboard from '../components/dashboard/ManagerDashboard';
 import StaffDashboard from '../components/dashboard/StaffDashboard';
 
 // Route Guards
@@ -54,41 +52,24 @@ export const AppRoutes = () => {
                     {/* Common routes - Tất cả authenticated users đều có thể truy cập */}
                     <Route path="/profile" element={<ProfilePage />} />
 
-                    {/* Admin Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
+                    {/* Admin + Manager: trang quản lý chung */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager']} />}>
                         <Route path="/admin" element={<AdminDashboard />} />
-                        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                        <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
                         <Route path="/admin/products" element={<ProductManagementPage />} />
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
-                        {/* Thêm các admin routes khác ở đây */}
+                        <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 
-                    {/* Owner Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['owner']} />}>
-                        <Route path="/owner/dashboard" element={<OwnerDashboard />} />
-                        <Route path="/users" element={<UserManagementPage />} />
-                        {/* Thêm các owner routes khác ở đây */}
+                    {/* Warehouse manager: kho hàng (kiểm kho) + có thể xem admin */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'warehouse_manager']} />}>
+                        <Route path="/admin/warehouses" element={<ProductManagementPage initialTab="stock-check" />} />
                     </Route>
 
-                    {/* Manager Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
-                        <Route path="/manager/dashboard" element={<ManagerDashboard />} />
-                        <Route path="/admin/products" element={<ProductManagementPage />} />
-                        <Route path="/admin/categories" element={<CategoryManagementPage />} />
-                        {/* Thêm các manager routes khác ở đây */}
-                    </Route>
-
-                    {/* Seller Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['seller']} />}>
-                        <Route path="/seller/dashboard" element={<SellerDashboard />} />
-                        {/* Thêm các seller routes khác ở đây */}
-                    </Route>
-
-                    {/* Staff Routes */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['staff']} />}>
+                    {/* Seller / Staff: dashboard nhân viên */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff']} />}>
                         <Route path="/staff/dashboard" element={<StaffDashboard />} />
-                        {/* Thêm các staff routes khác ở đây */}
                     </Route>
 
                     {/* User Routes - Nếu cần routes riêng cho user role */}

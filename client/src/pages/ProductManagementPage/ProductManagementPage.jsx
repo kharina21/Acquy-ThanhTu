@@ -1,19 +1,17 @@
 import React, { useState } from 'react';
-import { Package, DollarSign, Shield, ClipboardList } from 'lucide-react';
+import { Package, DollarSign, ClipboardList } from 'lucide-react';
 import ProductListTab from './ProductListTab';
 import PriceSettingsTab from './PriceSettingsTab';
-import WarrantySettingsTab from './WarrantySettingsTab';
 import StockCheckTab from './StockCheckTab';
 
 const TABS = [
     { id: 'list', label: 'Danh sách sản phẩm', icon: Package, component: ProductListTab },
     { id: 'stock-check', label: 'Kiểm kho', icon: ClipboardList, component: StockCheckTab },
     { id: 'price', label: 'Thiết lập giá', icon: DollarSign, component: PriceSettingsTab },
-    { id: 'warranty', label: 'Thiết lập bảo hành', icon: Shield, component: WarrantySettingsTab },
 ];
 
-const ProductManagementPage = () => {
-    const [activeTab, setActiveTab] = useState('list');
+const ProductManagementPage = ({ initialTab = 'list' } = {}) => {
+    const [activeTab, setActiveTab] = useState(initialTab);
     const ActiveComponent = TABS.find((t) => t.id === activeTab)?.component || ProductListTab;
 
     return (

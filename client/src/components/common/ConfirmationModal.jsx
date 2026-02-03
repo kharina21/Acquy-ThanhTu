@@ -24,8 +24,6 @@ const ConfirmationModal = ({
     cancelText = 'Hủy',
     variant = 'warning',
 }) => {
-    if (!isOpen) return null;
-
     const handleConfirm = () => {
         if (onConfirm) {
             onConfirm();
@@ -49,18 +47,20 @@ const ConfirmationModal = ({
     };
 
     React.useEffect(() => {
-        if (isOpen) {
-            document.addEventListener('keydown', handleKeyDown);
-            // Focus the confirm button when modal opens
-            const confirmBtn = document.getElementById('confirm-btn');
-            if (confirmBtn) {
-                setTimeout(() => confirmBtn.focus(), 100);
-            }
-            return () => {
-                document.removeEventListener('keydown', handleKeyDown);
-            };
+        if (!isOpen) return;
+
+        document.addEventListener('keydown', handleKeyDown);
+        // Focus the confirm button when modal opens
+        const confirmBtn = document.getElementById('confirm-btn');
+        if (confirmBtn) {
+            setTimeout(() => confirmBtn.focus(), 100);
         }
-    }, [isOpen]);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen, handleKeyDown]);
+
+    if (!isOpen) return null;
 
     const variantClasses = {
         danger: 'bg-error text-error-content',

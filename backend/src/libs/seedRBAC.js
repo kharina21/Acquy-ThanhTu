@@ -34,6 +34,13 @@ const seedPermissions = async () => {
         { name: 'role:update', description: 'Update roles', resource: 'role', action: 'update' },
         { name: 'role:delete', description: 'Delete roles', resource: 'role', action: 'delete' },
         { name: 'role:manage', description: 'Manage all roles', resource: 'role', action: 'manage' },
+
+        // Stock check (kiểm kho)
+        { name: 'stock_check:create', description: 'Create stock checks', resource: 'stock_check', action: 'create' },
+        { name: 'stock_check:read', description: 'Read stock checks', resource: 'stock_check', action: 'read' },
+        { name: 'stock_check:update', description: 'Update stock checks', resource: 'stock_check', action: 'update' },
+        { name: 'stock_check:delete', description: 'Delete stock checks', resource: 'stock_check', action: 'delete' },
+        { name: 'stock_check:manage', description: 'Manage all stock checks', resource: 'stock_check', action: 'manage' },
     ];
 
     for (const perm of permissions) {
@@ -59,24 +66,37 @@ const seedRoles = async (permissions) => {
     const roles = [
         {
             name: 'user',
-            description: 'Người dùng thông thường',
+            description: 'Khách hàng / người dùng web',
             permissions: [permissionMap.user?.read, permissionMap.product?.read, permissionMap.order?.create, permissionMap.order?.read].filter(Boolean),
         },
         {
-            name: 'staff',
-            description: 'Nhân viên - Quyền hạn cơ bản để thực hiện các tác vụ hàng ngày',
+            name: 'seller',
+            description: 'Nhân viên bán hàng - Tạo đơn, xem sản phẩm, cập nhật đơn',
+            permissions: [
+                permissionMap.user?.read,
+                permissionMap.product?.read,
+                permissionMap.order?.create,
+                permissionMap.order?.read,
+                permissionMap.order?.update,
+                permissionMap.stock_check?.read,
+            ].filter(Boolean),
+        },
+        {
+            name: 'warehouse_manager',
+            description: 'Quản lý kho - Kiểm kho, nhập/xuất, tồn',
             permissions: [
                 permissionMap.user?.read,
                 permissionMap.product?.read,
                 permissionMap.product?.update,
-                permissionMap.order?.create,
                 permissionMap.order?.read,
-                permissionMap.order?.update,
+                permissionMap.stock_check?.create,
+                permissionMap.stock_check?.read,
+                permissionMap.stock_check?.update,
             ].filter(Boolean),
         },
         {
             name: 'manager',
-            description: 'Quản lý - Quyền quản lý sản phẩm, đơn hàng và nhân viên',
+            description: 'Quản lý cửa hàng - Nhân viên, sản phẩm, đơn hàng',
             permissions: [
                 permissionMap.user?.read,
                 permissionMap.user?.update,
@@ -87,11 +107,14 @@ const seedRoles = async (permissions) => {
                 permissionMap.order?.read,
                 permissionMap.order?.update,
                 permissionMap.order?.delete,
+                permissionMap.stock_check?.read,
+                permissionMap.stock_check?.update,
+                permissionMap.role?.read,
             ].filter(Boolean),
         },
         {
             name: 'admin',
-            description: 'Quản trị viên - Toàn quyền truy cập và quản lý hệ thống',
+            description: 'Quản trị viên - Toàn quyền hệ thống',
             permissions: permissions.map((p) => p._id),
         },
     ];

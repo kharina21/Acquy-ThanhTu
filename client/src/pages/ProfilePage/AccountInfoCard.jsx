@@ -1,13 +1,7 @@
-import api from '@/lib/axios';
 import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { useLogStore } from '@/stores/useLogStore';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Calendar, CheckCircle2, Info, KeyRound, MailCheck, Send, Shield, UserRound, X } from 'lucide-react';
+import { Calendar, CheckCircle2, Info, KeyRound, MailCheck, Send, Shield, UserRound } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { toast } from 'sonner';
-import { z } from 'zod';
 import ChangePasswordModal from './modal/ChangePasswordModal';
 import VerifyEmailModal from './modal/VerifyEmailModal';
 import { useMailStore } from '@/stores/useMailStore';
@@ -17,7 +11,7 @@ import { useMailStore } from '@/stores/useMailStore';
 
 
 const AccountInfoCard = () => {
-    const { user, fetchUser } = useAuthStore();
+    const { user } = useAuthStore();
     const { sendVerificationCode, isLoading: isSendingCode } = useMailStore();
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
     const [showVerifyModal, setShowVerifyModal] = useState(false);

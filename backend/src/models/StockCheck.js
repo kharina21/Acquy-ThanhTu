@@ -15,6 +15,7 @@ const stockCheckItemSchema = new mongoose.Schema(
 const stockCheckSchema = new mongoose.Schema(
     {
         code: { type: String, required: true, unique: true, trim: true },
+        location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', default: null },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         note: { type: String, default: '' },
         status: { type: String, enum: ['draft', 'confirmed'], default: 'draft' },
@@ -23,9 +24,9 @@ const stockCheckSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-stockCheckSchema.index({ code: 1 });
 stockCheckSchema.index({ createdAt: -1 });
 stockCheckSchema.index({ createdBy: 1 });
+stockCheckSchema.index({ location: 1 });
 
 const StockCheck = mongoose.model('StockCheck', stockCheckSchema);
 

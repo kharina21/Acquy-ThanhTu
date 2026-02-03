@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { ClipboardList, Plus, Eye, CheckCircle, X, Search } from 'lucide-react';
+import { ClipboardList, Plus, Eye, CheckCircle, X } from 'lucide-react';
 import {
     getNextStockCheckCode,
     getStockChecks,
@@ -8,6 +8,8 @@ import {
     confirmStockCheck,
 } from '@/services/stockCheckService';
 import { getProducts, getProductOptions } from '@/services/productService';
+import { getLocations } from '@/services/locationService';
+import { useBranchStore } from '@/stores/useBranchStore';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { toast } from 'sonner';
 
@@ -28,8 +30,14 @@ const StockCheckTab = () => {
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
     const [filters, setFilters] = useState({ fromDate: '', toDate: '', brand: '', category: '' });
     const [productOptions, setProductOptions] = useState({ category: [], brand: [] });
+    const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+    const [brandDropdownOpen, setBrandDropdownOpen] = useState(false);
+    const [categorySearch, setCategorySearch] = useState('');
+    const [brandSearch, setBrandSearch] = useState('');
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createCode, setCreateCode] = useState('');
+    const [createLocationId, setCreateLocationId] = useState('');
+    const [locations, setLocations] = useState([]);
     const [createNote, setCreateNote] = useState('');
     const [createRows, setCreateRows] = useState([]);
     const [productsForPick, setProductsForPick] = useState([]);
@@ -39,11 +47,17 @@ const StockCheckTab = () => {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
+    // Ngày hôm nay (YYYY-MM-DD) dùng để giới hạn "Từ ngày"
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const currentLocationId = useBranchStore((s) => s.currentLocationId);
+
     const fetchList = async (overridePage, overrideFilters) => {
         setLoading(true);
         const page = overridePage !== undefined ? overridePage : pagination.page;
         const f = overrideFilters !== undefined ? overrideFilters : filters;
         const params = { page, limit: pagination.limit };
+        if (currentLocationId) params.locationId = currentLocationId;
         if (f.fromDate) params.fromDate = f.fromDate;
         if (f.toDate) params.toDate = f.toDate;
         if (f.brand) params.brand = f.brand;
@@ -66,38 +80,43 @@ const StockCheckTab = () => {
 
     useEffect(() => {
         fetchList();
-    }, [pagination.page]);
-
-    const handleSearchSubmit = (e) => {
-        e.preventDefault();
-        setPagination((p) => ({ ...p, page: 1 }));
-        fetchList(1);
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pagination.page, filters, currentLocationId]);
 
     const clearFilters = () => {
         const empty = { fromDate: '', toDate: '', brand: '', category: '' };
         setFilters(empty);
         setPagination((p) => ({ ...p, page: 1 }));
-        fetchList(1, empty);
     };
 
     const openCreateModal = async () => {
         const code = await getNextStockCheckCode();
         setCreateCode(code || '');
+        setCreateLocationId(currentLocationId || '');
         setCreateNote('');
         setCreateRows([]);
+        try {
+            const res = await getLocations();
+            if (res.success && res.data?.locations) {
+                setLocations(res.data.locations.filter((l) => l.isActive !== false));
+            }
+        } catch (e) {
+            console.error(e);
+        }
         setShowCreateModal(true);
     };
 
     const closeCreateModal = () => {
         setShowCreateModal(false);
         setCreateCode('');
+        setCreateLocationId('');
         setCreateNote('');
         setCreateRows([]);
     };
 
     const loadProductsForPick = async () => {
-        const res = await getProducts({ page: 1, limit: 200, search: '' });
+        const locId = createLocationId || currentLocationId;
+        const res = await getProducts({ page: 1, limit: 200, search: '', locationId: locId || undefined });
         if (res.success && res.data?.products) {
             setProductsForPick(res.data.products);
             setShowPickProduct(true);
@@ -113,8 +132,8 @@ const StockCheckTab = () => {
             ...prev,
             {
                 product,
-                quantityBefore: product.quantity ?? 0,
-                quantityCounted: product.quantity ?? 0,
+                quantityBefore: product.stockAtLocation ?? product.totalStock ?? 0,
+                quantityCounted: product.stockAtLocation ?? product.totalStock ?? 0,
             },
         ]);
         setShowPickProduct(false);
@@ -139,6 +158,10 @@ const StockCheckTab = () => {
             toast.error('Vui lòng nhập mã phiếu kiểm kho');
             return;
         }
+        if (!createLocationId) {
+            toast.error('Vui lòng chọn chi nhánh kiểm kho');
+            return;
+        }
         if (createRows.length === 0) {
             toast.error('Vui lòng thêm ít nhất một sản phẩm');
             return;
@@ -147,6 +170,7 @@ const StockCheckTab = () => {
         try {
             await createStockCheck({
                 code: createCode.trim(),
+                locationId: createLocationId,
                 note: createNote.trim(),
                 items: createRows.map((r) => ({
                     productId: r.product._id,
@@ -195,20 +219,54 @@ const StockCheckTab = () => {
 
     const totalValueChange = detailStockCheck?.items?.reduce((s, it) => s + (it.valueChange || 0), 0) ?? 0;
 
-    const optionCategories = useMemo(() => (productOptions.category || []).filter(Boolean).sort((a, b) => String(a).localeCompare(b)), [productOptions.category]);
-    const optionBrands = useMemo(() => (productOptions.brand || []).filter(Boolean).sort((a, b) => String(a).localeCompare(b)), [productOptions.brand]);
+    const optionCategories = useMemo(
+        () => (productOptions.category || []).filter(Boolean).sort((a, b) => String(a).localeCompare(b)),
+        [productOptions.category]
+    );
+    const optionBrands = useMemo(
+        () => (productOptions.brand || []).filter(Boolean).sort((a, b) => String(a).localeCompare(b)),
+        [productOptions.brand]
+    );
+
+    const filteredCategories = useMemo(
+        () =>
+            optionCategories.filter((c) =>
+                categorySearch ? String(c).toLowerCase().includes(categorySearch.toLowerCase()) : true
+            ),
+        [optionCategories, categorySearch]
+    );
+
+    const filteredBrands = useMemo(
+        () =>
+            optionBrands.filter((b) =>
+                brandSearch ? String(b).toLowerCase().includes(brandSearch.toLowerCase()) : true
+            ),
+        [optionBrands, brandSearch]
+    );
 
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
-                <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-wrap items-end gap-3">
                     <div>
                         <label className="label py-0"><span className="label-text text-sm">Từ ngày</span></label>
                         <input
                             type="date"
                             className="input input-bordered input-sm w-full"
                             value={filters.fromDate}
-                            onChange={(e) => setFilters((f) => ({ ...f, fromDate: e.target.value }))}
+                            onChange={(e) => {
+                                let value = e.target.value;
+                                // Không cho chọn ngày lớn hơn hôm nay trên UI
+                                if (value && value > todayStr) value = todayStr;
+                                setFilters((f) => ({
+                                    ...f,
+                                    fromDate: value,
+                                    // Nếu xóa "Từ ngày" thì cũng xóa luôn "Đến ngày"
+                                    toDate: value ? f.toDate : '',
+                                }));
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
+                            max={todayStr}
                         />
                     </div>
                     <div>
@@ -217,44 +275,165 @@ const StockCheckTab = () => {
                             type="date"
                             className="input input-bordered input-sm w-full"
                             value={filters.toDate}
-                            onChange={(e) => setFilters((f) => ({ ...f, toDate: e.target.value }))}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setFilters((f) => ({ ...f, toDate: value }));
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
                             min={filters.fromDate || undefined}
+                            disabled={!filters.fromDate}
                         />
                     </div>
-                    <div>
-                        <label className="label py-0"><span className="label-text text-sm">Loại hàng</span></label>
-                        <select
-                            className="select select-bordered select-sm w-full min-w-[120px]"
-                            value={filters.category}
-                            onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
+                    <div className="form-control relative w-40">
+                        <label className="label py-0">
+                            <span className="label-text text-sm">Loại hàng</span>
+                        </label>
+                        <div
+                            className="relative"
+                            onClick={() => setCategoryDropdownOpen((o) => !o)}
                         >
-                            <option value="">— Tất cả —</option>
-                            {optionCategories.map((v) => (
-                                <option key={v} value={v}>{v}</option>
-                            ))}
-                        </select>
+                            <input
+                                readOnly
+                                className="input input-bordered input-sm w-full cursor-pointer"
+                                value={filters.category || 'Tất cả'}
+                            />
+                            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-base-content/70">
+                                ▼
+                            </span>
+                        </div>
+                        {categoryDropdownOpen && (
+                            <div className="absolute z-30 mt-1 bg-base-100 rounded-box shadow-lg border border-base-300">
+                                <div className="p-2 border-b border-base-200 bg-base-100">
+                                    <input
+                                        type="text"
+                                        className="input input-sm w-full outline-none border-primary/25 focus:border-primary/50"
+                                        placeholder="Tìm loại hàng..."
+                                        value={categorySearch}
+                                        onChange={(e) => setCategorySearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                <ul className="menu menu-sm max-h-56 w-full overflow-y-auto bg-base-100">
+                                    <li>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setFilters((f) => ({ ...f, category: '' }));
+                                                setPagination((p) => ({ ...p, page: 1 }));
+                                                setCategoryDropdownOpen(false);
+                                                setCategorySearch('');
+                                            }}
+                                            className="text-base-content/70"
+                                        >
+                                            Tất cả
+                                        </button>
+                                    </li>
+                                    {filteredCategories.map((c) => (
+                                        <li key={c}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setFilters((f) => ({ ...f, category: c }));
+                                                    setPagination((p) => ({ ...p, page: 1 }));
+                                                    setCategoryDropdownOpen(false);
+                                                    setCategorySearch('');
+                                                }}
+                                                className={
+                                                    filters.category === c
+                                                        ? 'font-medium bg-base-200'
+                                                        : undefined
+                                                }
+                                            >
+                                                {c}
+                                            </button>
+                                        </li>
+                                    ))}
+                                    {filteredCategories.length === 0 && (
+                                        <li className="px-4 py-2 text-xs text-base-content/50">
+                                            Không tìm thấy kết quả
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
+                        )}
                     </div>
-                    <div>
-                        <label className="label py-0"><span className="label-text text-sm">Thương hiệu</span></label>
-                        <select
-                            className="select select-bordered select-sm w-full min-w-[120px]"
-                            value={filters.brand}
-                            onChange={(e) => setFilters((f) => ({ ...f, brand: e.target.value }))}
+                    <div className="form-control relative w-40">
+                        <label className="label py-0">
+                            <span className="label-text text-sm">Thương hiệu</span>
+                        </label>
+                        <div
+                            className="relative"
+                            onClick={() => setBrandDropdownOpen((o) => !o)}
                         >
-                            <option value="">— Tất cả —</option>
-                            {optionBrands.map((v) => (
-                                <option key={v} value={v}>{v}</option>
-                            ))}
-                        </select>
+                            <input
+                                readOnly
+                                className="input input-bordered input-sm w-full cursor-pointer"
+                                value={filters.brand || 'Tất cả'}
+                            />
+                            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-base-content/70">
+                                ▼
+                            </span>
+                        </div>
+                        {brandDropdownOpen && (
+                            <div className="absolute z-30 mt-1 bg-base-100 rounded-box shadow-lg border border-base-300">
+                                <div className="p-2 border-b border-base-200 bg-base-100">
+                                    <input
+                                        type="text"
+                                        className="input input-sm w-full outline-none border-primary/25 focus:border-primary/50"
+                                        placeholder="Tìm thương hiệu..."
+                                        value={brandSearch}
+                                        onChange={(e) => setBrandSearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                <ul className="menu menu-sm max-h-56 w-full overflow-y-auto bg-base-100">
+                                    <li>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setFilters((f) => ({ ...f, brand: '' }));
+                                                setPagination((p) => ({ ...p, page: 1 }));
+                                                setBrandDropdownOpen(false);
+                                                setBrandSearch('');
+                                            }}
+                                            className="text-base-content/70"
+                                        >
+                                            Tất cả
+                                        </button>
+                                    </li>
+                                    {filteredBrands.map((b) => (
+                                        <li key={b}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setFilters((f) => ({ ...f, brand: b }));
+                                                    setPagination((p) => ({ ...p, page: 1 }));
+                                                    setBrandDropdownOpen(false);
+                                                    setBrandSearch('');
+                                                }}
+                                                className={
+                                                    filters.brand === b
+                                                        ? 'font-medium bg-base-200'
+                                                        : undefined
+                                                }
+                                            >
+                                                {b}
+                                            </button>
+                                        </li>
+                                    ))}
+                                    {filteredBrands.length === 0 && (
+                                        <li className="px-4 py-2 text-xs text-base-content/50">
+                                            Không tìm thấy kết quả
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
+                        )}
                     </div>
-                    <button type="submit" className="btn btn-primary btn-sm gap-1">
-                        <Search className="w-4 h-4" />
-                        Tìm kiếm
-                    </button>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
                         Xóa bộ lọc
                     </button>
-                </form>
+                </div>
                 <button type="button" className="btn btn-primary gap-2" onClick={openCreateModal}>
                     <Plus className="w-4 h-4" />
                     Tạo phiếu kiểm kho
@@ -277,6 +456,7 @@ const StockCheckTab = () => {
                             <thead className='bg-blue-100 sticky top-0 z-20'>
                                 <tr>
                                     <th className="font-medium text-neutral text-xs">Mã phiếu</th>
+                                    <th className="font-medium text-neutral text-xs">Chi nhánh</th>
                                     <th className="font-medium text-neutral text-xs">Người tạo</th>
                                     <th className="font-medium text-neutral text-xs">Ngày tạo</th>
                                     <th className="font-medium text-neutral text-xs">Trạng thái</th>
@@ -287,6 +467,9 @@ const StockCheckTab = () => {
                                 {list.map((sc) => (
                                     <tr key={sc._id} className="hover:bg-base-200/60 transition-colors font-light">
                                         <td className="font-medium">{sc.code}</td>
+                                        <td>
+                                            {sc.location ? `${sc.location.code} - ${sc.location.name}` : '—'}
+                                        </td>
                                         <td>
                                             {sc.createdBy
                                                 ? `${sc.createdBy.firstName || ''} ${sc.createdBy.lastName || ''}`.trim() || sc.createdBy.username
@@ -362,6 +545,20 @@ const StockCheckTab = () => {
                                     />
                                 </div>
                                 <div>
+                                    <label className="label"><span className="label-text font-semibold">Chi nhánh <span className="text-error">*</span></span></label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={createLocationId}
+                                        onChange={(e) => setCreateLocationId(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">-- Chọn chi nhánh --</option>
+                                        {locations.map((loc) => (
+                                            <option key={loc._id} value={loc._id}>{loc.code} - {loc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="col-span-2">
                                     <label className="label"><span className="label-text">Ghi chú</span></label>
                                     <input
                                         type="text"
@@ -469,7 +666,7 @@ const StockCheckTab = () => {
                                 .map((p) => (
                                     <li key={p._id}>
                                         <button type="button" onClick={() => addProductToRows(p)}>
-                                            <span className="font-medium">{p.sku}</span> — {p.name} (tồn: {p.quantity ?? 0})
+                                            <span className="font-medium">{p.sku}</span> — {p.name} (tồn: {p.stockAtLocation ?? p.totalStock ?? 0})
                                         </button>
                                     </li>
                                 ))}
@@ -493,6 +690,9 @@ const StockCheckTab = () => {
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h3 className="font-bold text-lg">Phiếu kiểm kho: {detailStockCheck.code}</h3>
+                                <p className="text-sm text-base-content/60 mt-1">
+                                    Chi nhánh: {detailStockCheck.location ? `${detailStockCheck.location.code} - ${detailStockCheck.location.name}` : '—'}
+                                </p>
                                 <p className="text-sm text-base-content/60 mt-1">
                                     Người tạo: {detailStockCheck.createdBy ? `${detailStockCheck.createdBy.firstName || ''} ${detailStockCheck.createdBy.lastName || ''}`.trim() || detailStockCheck.createdBy.username : '—'} — {formatDate(detailStockCheck.createdAt)}
                                 </p>

@@ -3,11 +3,6 @@ import { DollarSign, Search, Save } from 'lucide-react';
 import { getProducts, updateProduct } from '@/services/productService';
 import { toast } from 'sonner';
 
-const formatVND = (num) => {
-    if (num == null || isNaN(num)) return '—';
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
-};
-
 const PriceSettingsTab = () => {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -63,6 +58,13 @@ const PriceSettingsTab = () => {
         const price = getPrice(p);
         const costNum = typeof costPrice === 'number' ? costPrice : (parseFloat(costPrice) || 0);
         const priceNum = typeof price === 'number' ? price : (parseFloat(price) || 0);
+
+        // Không cho phép thiết lập giá âm
+        if (costNum < 0 || priceNum < 0) {
+            toast.error('Giá vốn và giá bán không được nhỏ hơn 0');
+            return;
+        }
+
         setSavingId(p._id);
         try {
             await updateProduct(p._id, {

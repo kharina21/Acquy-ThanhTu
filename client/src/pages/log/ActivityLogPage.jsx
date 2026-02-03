@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuthStore } from '@/stores/useAuthStore';
 import { useUserRole } from '@/hooks/useUserRole';
 import api from '@/lib/axios';
 
@@ -16,7 +15,6 @@ const formatDate = (dateString) => {
 };
 
 const ActivityLogPage = () => {
-    const { user } = useAuthStore();
     const { isAdmin } = useUserRole();
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);

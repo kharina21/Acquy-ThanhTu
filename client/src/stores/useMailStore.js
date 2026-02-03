@@ -5,12 +5,12 @@ import { useLogStore } from './useLogStore';
 import { useAuthStore } from './useAuthStore';
 
 export const useMailStore = create(
-    (set, get) => ({
+    (set) => ({
         isLoading: false,
         sendVerificationCode: async () => {
             try {
                 set({ isLoading: true });
-                const response = await api.post('/auth/send-verification-email');
+                await api.post('/auth/send-verification-email');
                 toast.success('Mã xác thực đã được gửi đến email của bạn');
 
             } catch (error) {
@@ -25,7 +25,7 @@ export const useMailStore = create(
         verifyEmail: async (code) => {
             try {
                 set({ isLoading: true });
-                const response = await api.post('/auth/verify-email', { code });
+                await api.post('/auth/verify-email', { code });
                 await useAuthStore.getState().fetchUser();
                 toast.success('Xác thực email thành công');
                 // Refresh activity logs

@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/useAuthStore';
-import React, { useEffect } from 'react'
+import React from 'react';
 import { Navigate, Outlet } from 'react-router';
 /**
  * Protected Route - Chỉ kiểm tra authentication và redirect dựa trên role

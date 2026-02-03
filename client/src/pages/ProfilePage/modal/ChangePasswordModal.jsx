@@ -44,7 +44,7 @@ const ChangePasswordModal = ({ setShowChangePasswordModal }) => {
     const onSubmitChangePassword = async (data) => {
         try {
             setIsChangingPassword(true);
-            const response = await api.put('/auth/change-password', {
+            await api.put('/auth/change-password', {
                 currentPassword: data.currentPassword,
                 newPassword: data.newPassword,
             });

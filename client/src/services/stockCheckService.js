@@ -15,12 +15,13 @@ export const getNextStockCheckCode = async () => {
 
 /**
  * Danh sách phiếu kiểm kho (phân trang).
- * Params: page, limit, fromDate (YYYY-MM-DD), toDate (YYYY-MM-DD), brand, category
+ * Params: page, limit, locationId, fromDate, toDate, brand, category
  */
 export const getStockChecks = async (params = {}) => {
     try {
-        const { page = 1, limit = 10, fromDate, toDate, brand, category } = params;
+        const { page = 1, limit = 10, locationId, fromDate, toDate, brand, category } = params;
         const requestParams = { page, limit };
+        if (locationId) requestParams.locationId = locationId;
         if (fromDate) requestParams.fromDate = fromDate;
         if (toDate) requestParams.toDate = toDate;
         if (brand) requestParams.brand = brand;
