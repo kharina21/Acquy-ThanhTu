@@ -20,6 +20,10 @@
     /* Primary – từ #4e54c8 */
     --color-primary: oklch(45% 0.18 275);
     --color-primary-content: oklch(92% 0.03 275);
+    --color-primary-border: oklch(45% 0.18 275 / 0.3);
+    --color-primary-border-hover: oklch(45% 0.18 275 / 0.5);
+    --color-primary-border-focus: oklch(45% 0.18 275);
+    --color-primary-shadow: oklch(45% 0.18 275 / 0.2);
 
     /* Secondary – tím hồng nhẹ để bổ trợ indigo */
     --color-secondary: oklch(65% 0.2 330);
@@ -73,6 +77,10 @@
     --color-base-content: oklch(97.807% 0.029 256.847);
     --color-primary: oklch(54% 0.245 262.881);
     --color-primary-content: oklch(93% 0.032 255.585);
+    --color-primary-border: oklch(54% 0.245 262.881 / 0.3);
+    --color-primary-border-hover: oklch(54% 0.245 262.881 / 0.5);
+    --color-primary-border-focus: oklch(54% 0.245 262.881);
+    --color-primary-shadow: oklch(54% 0.245 262.881 / 0.2);
     --color-secondary: oklch(65% 0.241 354.308);
     --color-secondary-content: oklch(94% 0.028 342.258);
     --color-accent: oklch(77% 0.152 181.912);
@@ -119,6 +127,63 @@ body {
     input[type='password']::-ms-clear {
         display: none !important;
     }
+}
+
+/* Custom input styling - đồng bộ màu primary cho tất cả input */
+/* Sử dụng !important để override DaisyUI styles */
+.input.input-bordered {
+    border-color: var(--color-primary-border) !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    outline: none !important;
+}
+
+.input.input-bordered:focus {
+    border-color: var(--color-primary-border-focus) !important;
+    border-width: 1px !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--color-primary-shadow) !important;
+}
+
+.input.input-bordered:hover:not(:disabled) {
+    border-color: var(--color-primary-border-hover) !important;
+}
+
+/* Tương tự cho textarea và select */
+.textarea.textarea-bordered {
+    border-color: var(--color-primary-border) !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    outline: none !important;
+}
+
+.textarea.textarea-bordered:focus {
+    border-color: var(--color-primary-border-focus) !important;
+    border-width: 1px !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--color-primary-shadow) !important;
+}
+
+.textarea.textarea-bordered:hover:not(:disabled) {
+    border-color: var(--color-primary-border-hover) !important;
+}
+
+.select.select-bordered {
+    border-color: var(--color-primary-border) !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    outline: none !important;
+}
+
+.select.select-bordered:focus {
+    border-color: var(--color-primary-border-focus) !important;
+    border-width: 1px !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--color-primary-shadow) !important;
+}
+
+.select.select-bordered:hover:not(:disabled) {
+    border-color: var(--color-primary-border-hover) !important;
 }
 
 /* custom color */

@@ -52,8 +52,9 @@ export function rowToProduct(row, index) {
     const notes = row['Ghi chú'] != null ? String(row['Ghi chú']).trim() : '';
 
     return {
-        category: category || '',
-        brand: brand || '',
+        // các field này chỉ là input để backend map -> Category/Brand ref
+        categoryName: category || '',
+        brandName: brand || '',
         sku: sku || `IM-${index + 1}`,
         barcode: barcode || '',
         name: name || `Sản phẩm ${index + 1}`,
@@ -69,11 +70,7 @@ export function rowToProduct(row, index) {
     };
 }
 
-/**
- * Parse buffer Excel (file upload) thành mảng object sản phẩm.
- * @param {Buffer} buffer - Nội dung file Excel
- * @returns {{ products: Array, errors: Array }}
- */
+
 export function parseExcelBuffer(buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];

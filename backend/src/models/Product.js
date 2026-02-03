@@ -2,8 +2,16 @@ import mongoose from 'mongoose';
 
 const productSchema = new mongoose.Schema(
     {
-        category: { type: String, default: '' },
-        brand: { type: String, default: '' },
+        category: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category',
+            default: null,
+        },
+        brand: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Brand',
+            default: null,
+        },
         sku: { type: String, required: true, trim: true },
         barcode: { type: String, default: '' },
         name: { type: String, required: true, trim: true },
@@ -21,7 +29,7 @@ const productSchema = new mongoose.Schema(
 );
 
 productSchema.index({ sku: 1 }, { unique: true });
-productSchema.index({ name: 'text', brand: 'text', sku: 'text' });
+productSchema.index({ name: 'text', sku: 'text' });
 
 const Product = mongoose.model('Product', productSchema);
 

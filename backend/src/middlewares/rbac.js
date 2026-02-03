@@ -1,9 +1,6 @@
 import User from '../models/User.js';
 
-/**
- * Middleware để kiểm tra user có role cụ thể
- * @param {...string} roleNames - Tên các role được phép
- */
+
 export const hasRole = (...roleNames) => {
     return async (req, res, next) => {
         try {
@@ -21,8 +18,11 @@ export const hasRole = (...roleNames) => {
             const hasRequiredRole = roleNames.some((roleName) => userRoleNames.includes(roleName));
 
             if (!hasRequiredRole) {
+                console.log(`[RBAC] User ${user.username} (${user._id}) has roles: [${userRoleNames.join(', ')}], but required: [${roleNames.join(', ')}]`);
                 return res.status(403).json({
                     message: 'Forbidden: Insufficient role permissions',
+                    userRoles: userRoleNames,
+                    requiredRoles: roleNames,
                 });
             }
 
@@ -33,11 +33,7 @@ export const hasRole = (...roleNames) => {
     };
 };
 
-/**
- * Middleware để kiểm tra user có permission cụ thể
- * @param {string} resource - Tài nguyên cần kiểm tra
- * @param {string} action - Hành động cần kiểm tra (create, read, update, delete, manage)
- */
+
 export const hasPermission = (resource, action) => {
     return async (req, res, next) => {
         try {
@@ -83,25 +79,14 @@ export const hasPermission = (resource, action) => {
     };
 };
 
-/**
- * Helper function để kiểm tra user có role (dùng trong controller)
- * @param {Object} user - User object đã populate roles
- * @param {...string} roleNames - Tên các role cần kiểm tra
- * @returns {boolean}
- */
+
 export const checkRole = (user, ...roleNames) => {
     if (!user || !user.roles) return false;
     const userRoleNames = user.roles.map((role) => role.name);
     return roleNames.some((roleName) => userRoleNames.includes(roleName));
 };
 
-/**
- * Helper function để kiểm tra user có permission (dùng trong controller)
- * @param {Object} user - User object đã populate roles và permissions
- * @param {string} resource - Tài nguyên cần kiểm tra
- * @param {string} action - Hành động cần kiểm tra
- * @returns {boolean}
- */
+
 export const checkPermission = (user, resource, action) => {
     if (!user || !user.roles) return false;
 

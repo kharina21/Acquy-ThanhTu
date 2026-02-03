@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet } from 'lucide-react';
+import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet, Barcode, FolderDown } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import {
     getProducts,
@@ -11,6 +11,11 @@ import {
     importProductsFromExcel,
     generateSampleExcelBlob,
 } from '@/services/productService';
+import { getCategories, createCategory, updateCategory, deleteCategory } from '@/services/categoryService';
+import { getBrands, createBrand, updateBrand, deleteBrand } from '@/services/brandService';
+import CategoryBrandSelect from '@/components/common/CategoryBrandSelect';
+import CategoryModal from '@/pages/CategoryManagementPage/CategoryModal';
+import BrandModal from '@/components/common/BrandModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { toast } from 'sonner';
 
@@ -20,8 +25,8 @@ const formatVND = (num) => {
 };
 
 const emptyProductForm = () => ({
-    category: '',
-    brand: '',
+    category: null, // Lưu ID
+    brand: null, // Lưu ID
     sku: '',
     barcode: '',
     name: '',
@@ -40,7 +45,7 @@ const ProductListTab = () => {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
+    const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 0 });
     const [importing, setImporting] = useState(false);
     const [importFile, setImportFile] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
@@ -52,28 +57,18 @@ const ProductListTab = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createFormData, setCreateFormData] = useState(emptyProductForm());
     const [productOptions, setProductOptions] = useState({ category: [], brand: [] });
-    const [addedCategories, setAddedCategories] = useState([]);
-    const [addedBrands, setAddedBrands] = useState([]);
-    const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
-    const [newCategoryInput, setNewCategoryInput] = useState('');
-    const [addCategoryFormType, setAddCategoryFormType] = useState('create');
-    const [showAddBrandModal, setShowAddBrandModal] = useState(false);
-    const [newBrandInput, setNewBrandInput] = useState('');
-    const [addBrandFormType, setAddBrandFormType] = useState('create');
+    const [categories, setCategories] = useState([]);
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [editingCategory, setEditingCategory] = useState(null);
+    const [showBrandModal, setShowBrandModal] = useState(false);
+    const [editingBrand, setEditingBrand] = useState(null);
+    const [brands, setBrands] = useState([]);
+    const [categoryRefreshKey, setCategoryRefreshKey] = useState(0);
+    const [brandRefreshKey, setBrandRefreshKey] = useState(0);
     const [showBarcodeModal, setShowBarcodeModal] = useState(false);
     const [barcodePrintQty, setBarcodePrintQty] = useState(1);
     const [barcodeShowPrice, setBarcodeShowPrice] = useState(true);
     const [barcodeShowStoreName, setBarcodeShowStoreName] = useState(true);
-
-    const optionCategories = useMemo(() => {
-        const set = new Set([...(productOptions.category || []), ...addedCategories]);
-        return [...set].filter(Boolean).sort((a, b) => String(a).localeCompare(b));
-    }, [productOptions.category, addedCategories]);
-
-    const optionBrands = useMemo(() => {
-        const set = new Set([...(productOptions.brand || []), ...addedBrands]);
-        return [...set].filter(Boolean).sort((a, b) => String(a).localeCompare(b));
-    }, [productOptions.brand, addedBrands]);
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -94,8 +89,32 @@ const ProductListTab = () => {
         if (res.success && res.data) setProductOptions(res.data);
     };
 
+    const fetchCategories = async () => {
+        try {
+            const res = await getCategories({ isActive: true });
+            if (res.success && res.data) {
+                setCategories(res.data.categories || []);
+            }
+        } catch (error) {
+            console.error('Error fetching categories:', error);
+        }
+    };
+
+    const fetchBrands = async () => {
+        try {
+            const res = await getBrands({ isActive: true });
+            if (res.success && res.data) {
+                setBrands(res.data.brands || []);
+            }
+        } catch (error) {
+            console.error('Error fetching brands:', error);
+        }
+    };
+
     useEffect(() => {
         fetchProductOptions();
+        fetchCategories();
+        fetchBrands();
     }, []);
 
     const handleSearchSubmit = (e) => {
@@ -138,6 +157,7 @@ const ProductListTab = () => {
                     toast.success(result.message || 'Import thành công');
                     fetchProducts();
                     fetchProductOptions();
+                    fetchCategories(); // Refresh categories sau khi import
                 } else {
                     toast.error(result.message || 'Import thất bại');
                 }
@@ -159,9 +179,10 @@ const ProductListTab = () => {
 
     const openEditModal = () => {
         if (!selectedProduct) return;
+        // Lấy category name từ product.category (populate) hoặc fallback (legacy string)
         setEditFormData({
-            category: selectedProduct.category ?? '',
-            brand: selectedProduct.brand ?? '',
+            category: selectedProduct.category?._id || selectedProduct.category || null,
+            brand: selectedProduct.brand?._id || selectedProduct.brand || null,
             sku: selectedProduct.sku ?? '',
             barcode: selectedProduct.barcode ?? '',
             name: selectedProduct.name ?? '',
@@ -186,6 +207,8 @@ const ProductListTab = () => {
         try {
             const payload = {
                 ...editFormData,
+                category: editFormData.category || null, // Gửi ID trực tiếp
+                brand: editFormData.brand || null, // Gửi ID trực tiếp
                 costPrice: Number(editFormData.costPrice) || 0,
                 price: Number(editFormData.price) || 0,
                 quantity: Number(editFormData.quantity) || 0,
@@ -197,6 +220,7 @@ const ProductListTab = () => {
             setSelectedProduct(null);
             setEditFormData(emptyProductForm());
             fetchProducts();
+            fetchCategories(); // Refresh categories để hiển thị category mới tạo
         } catch (err) {
             const msg = err?.response?.data?.message || err?.message || 'Cập nhật thất bại';
             toast.error(msg);
@@ -306,52 +330,126 @@ const ProductListTab = () => {
         setShowCreateModal(true);
     };
 
-    const openAddCategoryModal = (formType) => {
-        setAddCategoryFormType(formType);
-        setNewCategoryInput('');
-        setShowAddCategoryModal(true);
+    const handleCreateCategory = () => {
+        setEditingCategory(null);
+        setShowCategoryModal(true);
     };
 
-    const openAddBrandModal = (formType) => {
-        setAddBrandFormType(formType);
-        setNewBrandInput('');
-        setShowAddBrandModal(true);
+    const handleEditCategory = (category) => {
+        setEditingCategory(category);
+        setShowCategoryModal(true);
     };
 
-    const handleAddCategory = (e) => {
-        e.preventDefault();
-        const value = newCategoryInput.trim();
-        if (!value) {
-            toast.error('Vui lòng nhập tên loại hàng');
-            return;
+    const handleSaveCategory = async (formData) => {
+        try {
+            if (editingCategory) {
+                await updateCategory(editingCategory._id, formData);
+                toast.success('Cập nhật loại hàng thành công');
+            } else {
+                const res = await createCategory(formData);
+                if (res.success) {
+                    toast.success('Tạo loại hàng thành công');
+                    // Tự động chọn category vừa tạo
+                    if (showCreateModal) {
+                        setCreateFormData(prev => ({ ...prev, category: res.data.category._id }));
+                    } else if (showEditModal) {
+                        setEditFormData(prev => ({ ...prev, category: res.data.category._id }));
+                    }
+                }
+            }
+            setShowCategoryModal(false);
+            fetchCategories();
+            setCategoryRefreshKey((k) => k + 1);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi lưu loại hàng');
         }
-        setAddedCategories((prev) => (prev.includes(value) ? prev : [...prev, value]));
-        if (addCategoryFormType === 'create') {
-            setCreateFormData((prev) => ({ ...prev, category: value }));
-        } else {
-            setEditFormData((prev) => ({ ...prev, category: value }));
-        }
-        setNewCategoryInput('');
-        setShowAddCategoryModal(false);
-        toast.success('Đã thêm loại hàng');
     };
 
-    const handleAddBrand = (e) => {
-        e.preventDefault();
-        const value = newBrandInput.trim();
-        if (!value) {
-            toast.error('Vui lòng nhập tên thương hiệu');
-            return;
+    const handleDeleteCategory = async () => {
+        if (!editingCategory?._id) return;
+        if (!window.confirm('Bạn có chắc chắn muốn xóa loại hàng này?')) return;
+        try {
+            const res = await deleteCategory(editingCategory._id);
+            if (res.success) {
+                toast.success('Xóa loại hàng thành công');
+                const deletedCategoryId = String(editingCategory._id);
+                // Nếu form đang chọn category này thì reset về null
+                setCreateFormData((prev) =>
+                    prev.category && String(prev.category) === deletedCategoryId ? { ...prev, category: null } : prev
+                );
+                setEditFormData((prev) =>
+                    prev.category && String(prev.category) === deletedCategoryId ? { ...prev, category: null } : prev
+                );
+                setShowCategoryModal(false);
+                setEditingCategory(null);
+                fetchCategories();
+                fetchProductOptions();
+                setCategoryRefreshKey((k) => k + 1);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi xóa loại hàng');
         }
-        setAddedBrands((prev) => (prev.includes(value) ? prev : [...prev, value]));
-        if (addBrandFormType === 'create') {
-            setCreateFormData((prev) => ({ ...prev, brand: value }));
-        } else {
-            setEditFormData((prev) => ({ ...prev, brand: value }));
+    };
+
+    const handleCreateBrand = () => {
+        setEditingBrand(null);
+        setShowBrandModal(true);
+    };
+
+    const handleEditBrand = (brand) => {
+        setEditingBrand(brand);
+        setShowBrandModal(true);
+    };
+
+    const handleSaveBrand = async (formData) => {
+        try {
+            if (editingBrand) {
+                await updateBrand(editingBrand._id, formData);
+                toast.success('Cập nhật thương hiệu thành công');
+            } else {
+                const res = await createBrand(formData);
+                if (res.success) {
+                    toast.success('Tạo thương hiệu thành công');
+                    // Tự động chọn brand vừa tạo
+                    if (showCreateModal) {
+                        setCreateFormData(prev => ({ ...prev, brand: res.data.brand._id }));
+                    } else if (showEditModal) {
+                        setEditFormData(prev => ({ ...prev, brand: res.data.brand._id }));
+                    }
+                }
+            }
+            setShowBrandModal(false);
+            fetchBrands();
+            setBrandRefreshKey((k) => k + 1);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi lưu thương hiệu');
         }
-        setNewBrandInput('');
-        setShowAddBrandModal(false);
-        toast.success('Đã thêm thương hiệu');
+    };
+
+    const handleDeleteBrand = async () => {
+        if (!editingBrand?._id) return;
+        if (!window.confirm('Bạn có chắc chắn muốn xóa thương hiệu này?')) return;
+        try {
+            const res = await deleteBrand(editingBrand._id);
+            if (res.success) {
+                toast.success('Xóa thương hiệu thành công');
+                const deletedBrandId = String(editingBrand._id);
+                // Nếu form đang chọn brand này thì reset về null
+                setCreateFormData((prev) =>
+                    prev.brand && String(prev.brand) === deletedBrandId ? { ...prev, brand: null } : prev
+                );
+                setEditFormData((prev) =>
+                    prev.brand && String(prev.brand) === deletedBrandId ? { ...prev, brand: null } : prev
+                );
+                setShowBrandModal(false);
+                setEditingBrand(null);
+                fetchBrands();
+                fetchProductOptions();
+                setBrandRefreshKey((k) => k + 1);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi xóa thương hiệu');
+        }
     };
 
     const closeCreateModal = () => {
@@ -365,16 +463,21 @@ const ProductListTab = () => {
         try {
             const payload = {
                 ...createFormData,
+                category: createFormData.category || null, // Gửi ID trực tiếp
+                brand: createFormData.brand || null, // Gửi ID trực tiếp
                 costPrice: Number(createFormData.costPrice) || 0,
                 price: Number(createFormData.price) || 0,
                 quantity: Number(createFormData.quantity) || 0,
                 warrantyMonths: createFormData.warrantyMonths === '' ? null : Number(createFormData.warrantyMonths) || null,
             };
+            delete payload.category; // Xóa category field
             await createProduct(payload);
             toast.success('Thêm sản phẩm thành công');
             closeCreateModal();
             fetchProducts();
             fetchProductOptions();
+            fetchCategories(); // Refresh categories để hiển thị category mới tạo
+            fetchBrands(); // Refresh brands để hiển thị brand mới tạo
         } catch (err) {
             const msg = err?.response?.data?.message || err?.message || 'Thêm sản phẩm thất bại';
             toast.error(msg);
@@ -417,7 +520,7 @@ const ProductListTab = () => {
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <form onSubmit={handleSearchSubmit} className="flex gap-2 flex-1 min-w-[200px]">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40 z-10" />
                         <input
                             type="text"
                             placeholder="Tìm theo tên, mã hàng, thương hiệu..."
@@ -453,7 +556,7 @@ const ProductListTab = () => {
                         onClick={handleImportClick}
                         disabled={importing}
                     >
-                        <Upload className="w-4 h-4" />
+                        <FolderDown className="w-4 h-4" />
                         {importing ? 'Đang import...' : 'Import từ Excel'}
                     </button>
                 </div>
@@ -470,23 +573,24 @@ const ProductListTab = () => {
                         <p>Chưa có sản phẩm. Bấm &quot;Thêm sản phẩm&quot; hoặc import từ file Excel (dùng file mẫu) để thêm.</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="table table-zebra">
-                            <thead>
-                                <tr>
-                                    <th>Mã hàng</th>
-                                    <th>Tên hàng</th>
-                                    <th>Thương hiệu</th>
-                                    <th>Dung lượng (Ah)</th>
-                                    <th className="text-right">Đơn giá nhập</th>
-                                    <th className="text-right">Đơn giá bán</th>
-                                    <th className="text-right">Tồn kho</th>
-                                    <th>Bảo hành</th>
-                                    <th className="text-center">Đang kinh doanh</th>
-                                    <th>Ghi chú</th>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
+
+                        <table className="table">
+                            <thead className='bg-blue-100 sticky top-0 z-20'>
+                                <tr >
+                                    <th className="font-medium text-neutral text-xs">Mã hàng</th>
+                                    <th className="font-medium text-neutral text-xs">Tên hàng</th>
+                                    <th className="font-medium text-neutral text-xs">Thương hiệu</th>
+                                    <th className="font-medium text-neutral text-xs">Dung lượng (Ah)</th>
+                                    <th className="text-right font-medium text-neutral text-xs">Đơn giá nhập</th>
+                                    <th className="text-right font-medium text-neutral text-xs">Đơn giá bán</th>
+                                    <th className="text-right font-medium text-neutral text-xs">Tồn kho</th>
+                                    <th className="font-medium text-neutral text-xs">Bảo hành</th>
+                                    <th className="text-center font-medium text-neutral text-xs">Đang kinh doanh</th>
+                                    <th className="font-medium text-neutral text-xs">Ghi chú</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className='text-xs'>
                                 {products.map((p) => (
                                     <tr
                                         key={p._id || p.id}
@@ -494,18 +598,18 @@ const ProductListTab = () => {
                                         tabIndex={0}
                                         onClick={() => handleRowClick(p)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleRowClick(p)}
-                                        className="cursor-pointer hover:bg-base-200/60 transition-colors"
+                                        className="cursor-pointer hover:bg-base-200/60 transition-colors font-light"
                                     >
-                                        <td className="font-medium">{p.sku}</td>
+                                        <td>{p.sku}</td>
                                         <td>{p.name}</td>
-                                        <td>{p.brand || '—'}</td>
-                                        <td>{p.capacity || '—'}</td>
+                                        <td>{p.brand?.name || '...'}</td>
+                                        <td>{p.capacity || '...'}</td>
                                         <td className="text-right">{formatVND(p.costPrice)}</td>
                                         <td className="text-right">{formatVND(p.price)}</td>
-                                        <td className="text-right">{p.quantity ?? '—'}</td>
-                                        <td>{p.warrantyText || (p.warrantyMonths != null ? `${p.warrantyMonths} tháng` : '—')}</td>
+                                        <td className="text-right">{p.quantity ?? '...'}</td>
+                                        <td>{p.warrantyText || (p.warrantyMonths != null ? `${p.warrantyMonths} tháng` : '...')}</td>
                                         <td className="text-center">{p.isActive ? 'Có' : 'Không'}</td>
-                                        <td className="max-w-[200px] truncate" title={p.notes || ''}>{p.notes || '—'}</td>
+                                        <td className="max-w-[200px] truncate" title={p.notes || ''}>{p.notes || '...'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -548,7 +652,7 @@ const ProductListTab = () => {
                             </h3>
                             <button
                                 type="button"
-                                className="btn btn-ghost btn-sm btn-circle"
+                                className="btn btn-ghost btn-sm btn-square border-none"
                                 onClick={closeDetailModal}
                                 aria-label="Đóng"
                             >
@@ -558,9 +662,9 @@ const ProductListTab = () => {
                         <div className="space-y-3 text-sm">
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                                 <span className="text-base-content/60">Loại hàng</span>
-                                <span>{selectedProduct.category || '—'}</span>
+                                <span>{selectedProduct.category?.name || '—'}</span>
                                 <span className="text-base-content/60">Thương hiệu</span>
-                                <span>{selectedProduct.brand || '—'}</span>
+                                <span>{selectedProduct.brand?.name || '—'}</span>
                                 <span className="text-base-content/60">Mã hàng</span>
                                 <span className="font-medium">{selectedProduct.sku}</span>
                                 <span className="text-base-content/60">Mã vạch</span>
@@ -639,14 +743,14 @@ const ProductListTab = () => {
             {/* Modal chọn loại giấy in tem mã */}
             {showBarcodeModal && selectedProduct && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="barcode-modal-title">
-                    <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <div className="modal-box max-w-7xl max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-4">
                             <h3 id="barcode-modal-title" className="font-bold text-lg">Chọn loại giấy in tem mã</h3>
-                            <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowBarcodeModal(false)} aria-label="Đóng">
+                            <button type="button" className="btn btn-ghost btn-sm btn-square border-none" onClick={() => setShowBarcodeModal(false)} aria-label="Đóng">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="grid md:grid-cols-3 gap-6">
+                        <div className="grid md:grid-cols-4 gap-6">
                             {/* Cột trái: Thiết lập in */}
                             <div className="md:col-span-1 space-y-4">
                                 <div>
@@ -654,59 +758,71 @@ const ProductListTab = () => {
                                     <input
                                         type="number"
                                         min={1}
-                                        max={5000}
-                                        className="input input-bordered w-full"
+                                        max={500}
+                                        className="input outline-none w-full focus:border-primary"
                                         value={barcodePrintQty}
-                                        onChange={(e) => setBarcodePrintQty(Math.min(5000, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+                                        onChange={(e) => setBarcodePrintQty(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                                     />
                                 </div>
                                 <div>
                                     <label className="label"><span className="label-text">Mã hàng</span></label>
-                                    <input type="text" className="input input-bordered w-full bg-base-200" value={selectedProduct.sku || ''} readOnly />
+                                    <input type="text" className="input outline-none w-full focus:border-primary bg-base-200" value={selectedProduct.sku || ''} readOnly />
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <label className="label cursor-pointer gap-2">
                                         <input type="checkbox" className="checkbox checkbox-sm" checked={barcodeShowPrice} onChange={(e) => setBarcodeShowPrice(e.target.checked)} />
                                         <span className="label-text">Giá kèm VND</span>
                                     </label>
-                                    <label className="label cursor-pointer gap-2">
-                                        <input type="checkbox" className="checkbox checkbox-sm" checked={barcodeShowStoreName} onChange={(e) => setBarcodeShowStoreName(e.target.checked)} />
-                                        <span className="label-text">In tên cửa hàng</span>
-                                    </label>
+
                                 </div>
-                                <button type="button" className="btn btn-ghost btn-sm gap-2 w-full" onClick={handleExportBarcodeExcel}>
+                                <button type="button" className="btn btn-success btn-sm gap-2 w-full" onClick={handleExportBarcodeExcel}>
                                     <FileSpreadsheet className="w-4 h-4" />
                                     Xuất file Excel
                                 </button>
                                 <div className="text-xs text-base-content/60 bg-base-200/50 rounded-lg p-3 space-y-1">
                                     <p className="font-semibold">Lưu ý:</p>
                                     <p>Nếu mã vạch in không đầy đủ, hãy dùng mẫu giấy lớn hơn hoặc rút ngắn mã hàng.</p>
-                                    <p>Hỗ trợ in tối đa 5000 tem/lần, không chứa ký tự đặc biệt hoặc chữ có dấu.</p>
+                                    <p>Hỗ trợ in tối đa 500 tem/lần, không chứa ký tự đặc biệt hoặc chữ có dấu.</p>
                                 </div>
                             </div>
                             {/* Cột phải: Mẫu giấy */}
-                            <div className="md:col-span-2">
+                            <div className="md:col-span-3">
                                 <p className="text-sm font-semibold mb-3">Chọn mẫu giấy in nhãn</p>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {[
-                                        { id: '1', name: 'Mẫu giấy cuộn 3 nhãn (104×22mm)', width: '104' },
-                                        { id: '2', name: 'Mẫu giấy cuộn 2 nhãn (72×22mm)', width: '72' },
-                                        { id: '3', name: 'Mẫu giấy cuộn 2 nhãn (74×22mm)', width: '74' },
-                                        { id: '4', name: 'Mẫu giấy cuộn 1 nhãn (50×30mm)', width: '50' },
-                                        { id: '5', name: 'Mẫu giấy 12 nhãn Tomy 103 (202×162mm)', width: '202' },
-                                        { id: '6', name: 'Mẫu giấy 65 nhãn A4 - Tomy 145', width: 'A4' },
-                                        { id: '7', name: 'Mẫu tem hàng trang sức (75×10mm)', width: '75' },
+                                        { id: '1', name: 'Mẫu giấy cuộn 3 nhãn (104×22mm)', url: '/assets/print_paper/Mẫu giấy cuộn 3 nhãn 104x22mm.jpg', width: '104' },
+                                        { id: '2', name: 'Mẫu giấy cuộn 2 nhãn (72×22mm)', url: '/assets/print_paper/Mẫu giấy cuộn 2 nhãn 72x22mm.png', width: '72' },
+                                        { id: '3', name: 'Mẫu giấy cuộn 2 nhãn (74×22mm)', url: '/assets/print_paper/Mẫu giấy cuộn 2 nhãn 74x22mm.png', width: '74' },
+                                        { id: '4', name: 'Mẫu giấy cuộn 1 nhãn (50×30mm)', url: '/assets/print_paper/Mẫu giấy cuộn 1 nhãn 50x30mm.png', width: '50' },
+                                        { id: '5', name: 'Mẫu giấy 12 nhãn Tomy 103 (202×162mm)', url: '/assets/print_paper/Mẫu giấy 12 nhãn 202x162mm.jpg', width: '202' },
+                                        { id: '6', name: 'Mẫu giấy 65 nhãn A4 - Tomy 145', url: '/assets/print_paper/Mẫu giấy 65 nhãn A4 145.jpg', width: 'A4' },
+                                        { id: '7', name: 'Mẫu tem hàng trang sức (75×10mm)', url: '/assets/print_paper/Mẫu tem hàng trang sức 75x10mm.jpg', width: '75' },
                                     ].map((tpl) => (
-                                        <div key={tpl.id} className="border border-base-300 rounded-lg p-4 flex flex-col">
-                                            <p className="text-sm font-medium mb-2 flex-1">{tpl.name}</p>
-                                            <button
-                                                type="button"
-                                                className="btn btn-primary btn-sm gap-1"
-                                                onClick={() => handlePrintBarcode(tpl)}
-                                            >
-                                                <Printer className="w-4 h-4" />
-                                                Xem bản in
-                                            </button>
+                                        <div
+                                            key={tpl.id}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <div className=" mb-2">
+                                                <div className="w-35 h-28 p-2 flex items-center justify-center rounded-lg overflow-hidden border border-base-300">
+                                                    <img
+                                                        src={tpl.url}
+                                                        alt={tpl.name}
+                                                        className="object-contain w-full h-full"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium mb-2">{tpl.name}</p>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary btn-sm gap-1"
+                                                    onClick={() => handlePrintBarcode(tpl)}
+                                                >
+                                                    <Barcode className="w-4 h-4" />
+                                                    Xem bản in
+                                                </button>
+                                            </div>
+
                                         </div>
                                     ))}
                                 </div>
@@ -728,42 +844,26 @@ const ProductListTab = () => {
                         </h3>
                         <form onSubmit={handleUpdateProduct} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Loại hàng</span></label>
-                                    <div className="flex gap-2">
-                                        <select
-                                            className="select select-bordered flex-1"
-                                            value={editFormData.category}
-                                            onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                                        >
-                                            <option value="">— Chọn —</option>
-                                            {optionCategories.map((v) => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={() => openAddCategoryModal('edit')} title="Thêm loại hàng">
-                                            <Plus className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Thương hiệu</span></label>
-                                    <div className="flex gap-2">
-                                        <select
-                                            className="select select-bordered flex-1"
-                                            value={editFormData.brand}
-                                            onChange={(e) => setEditFormData({ ...editFormData, brand: e.target.value })}
-                                        >
-                                            <option value="">— Chọn —</option>
-                                            {optionBrands.map((v) => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={() => openAddBrandModal('edit')} title="Thêm thương hiệu">
-                                            <Plus className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
+                                <CategoryBrandSelect
+                                    type="category"
+                                    label="Loại hàng"
+                                    value={editFormData.category}
+                                    refreshKey={categoryRefreshKey}
+                                    onChange={(id) => setEditFormData({ ...editFormData, category: id })}
+                                    onCreateNew={handleCreateCategory}
+                                    onEdit={handleEditCategory}
+                                    placeholder="Chọn loại hàng"
+                                />
+                                <CategoryBrandSelect
+                                    type="brand"
+                                    label="Thương hiệu"
+                                    value={editFormData.brand}
+                                    refreshKey={brandRefreshKey}
+                                    onChange={(id) => setEditFormData({ ...editFormData, brand: id })}
+                                    onCreateNew={handleCreateBrand}
+                                    onEdit={handleEditBrand}
+                                    placeholder="Chọn thương hiệu"
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -923,42 +1023,26 @@ const ProductListTab = () => {
                         </h3>
                         <form onSubmit={handleCreateProduct} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label"><span className="label-text">Loại hàng</span></label>
-                                    <div className="flex gap-2">
-                                        <select
-                                            className="select select-bordered flex-1"
-                                            value={createFormData.category}
-                                            onChange={(e) => setCreateFormData({ ...createFormData, category: e.target.value })}
-                                        >
-                                            <option value="">— Chọn —</option>
-                                            {optionCategories.map((v) => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={() => openAddCategoryModal('create')} title="Thêm loại hàng">
-                                            <Plus className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="label"><span className="label-text">Thương hiệu</span></label>
-                                    <div className="flex gap-2">
-                                        <select
-                                            className="select select-bordered flex-1"
-                                            value={createFormData.brand}
-                                            onChange={(e) => setCreateFormData({ ...createFormData, brand: e.target.value })}
-                                        >
-                                            <option value="">— Chọn —</option>
-                                            {optionBrands.map((v) => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={() => openAddBrandModal('create')} title="Thêm thương hiệu">
-                                            <Plus className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
+                                <CategoryBrandSelect
+                                    type="category"
+                                    label="Loại hàng"
+                                    value={createFormData.category}
+                                    refreshKey={categoryRefreshKey}
+                                    onChange={(id) => setCreateFormData({ ...createFormData, category: id })}
+                                    onCreateNew={handleCreateCategory}
+                                    onEdit={handleEditCategory}
+                                    placeholder="Chọn loại hàng"
+                                />
+                                <CategoryBrandSelect
+                                    type="brand"
+                                    label="Thương hiệu"
+                                    value={createFormData.brand}
+                                    refreshKey={brandRefreshKey}
+                                    onChange={(id) => setCreateFormData({ ...createFormData, brand: id })}
+                                    onCreateNew={handleCreateBrand}
+                                    onEdit={handleEditBrand}
+                                    placeholder="Chọn thương hiệu"
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1110,61 +1194,32 @@ const ProductListTab = () => {
             )}
 
             {/* Modal thêm loại hàng */}
-            {showAddCategoryModal && (
-                <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="add-category-title">
-                    <div className="modal-box max-w-sm">
-                        <h3 id="add-category-title" className="font-bold text-lg mb-3">Thêm loại hàng</h3>
-                        <form onSubmit={handleAddCategory} className="space-y-3">
-                            <div>
-                                <label className="label"><span className="label-text">Tên loại hàng</span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    placeholder="VD: Ắc quy"
-                                    value={newCategoryInput}
-                                    onChange={(e) => setNewCategoryInput(e.target.value)}
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="modal-action">
-                                <button type="button" className="btn btn-ghost" onClick={() => setShowAddCategoryModal(false)}>Hủy</button>
-                                <button type="submit" className="btn btn-primary">Thêm</button>
-                            </div>
-                        </form>
-                    </div>
-                    <form method="dialog" className="modal-backdrop">
-                        <button type="button" onClick={() => setShowAddCategoryModal(false)}>Đóng</button>
-                    </form>
-                </dialog>
+            {/* Modal category */}
+            {showCategoryModal && (
+                <CategoryModal
+                    category={editingCategory}
+                    onClose={() => {
+                        setShowCategoryModal(false);
+                        setEditingCategory(null);
+                    }}
+                    onSubmit={handleSaveCategory}
+                    onDelete={editingCategory ? handleDeleteCategory : undefined}
+                    submitting={false}
+                />
             )}
 
-            {/* Modal thêm thương hiệu */}
-            {showAddBrandModal && (
-                <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="add-brand-title">
-                    <div className="modal-box max-w-sm">
-                        <h3 id="add-brand-title" className="font-bold text-lg mb-3">Thêm thương hiệu</h3>
-                        <form onSubmit={handleAddBrand} className="space-y-3">
-                            <div>
-                                <label className="label"><span className="label-text">Tên thương hiệu</span></label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    placeholder="VD: ATLASBX"
-                                    value={newBrandInput}
-                                    onChange={(e) => setNewBrandInput(e.target.value)}
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="modal-action">
-                                <button type="button" className="btn btn-ghost" onClick={() => setShowAddBrandModal(false)}>Hủy</button>
-                                <button type="submit" className="btn btn-primary">Thêm</button>
-                            </div>
-                        </form>
-                    </div>
-                    <form method="dialog" className="modal-backdrop">
-                        <button type="button" onClick={() => setShowAddBrandModal(false)}>Đóng</button>
-                    </form>
-                </dialog>
+            {/* Modal brand */}
+            {showBrandModal && (
+                <BrandModal
+                    brand={editingBrand}
+                    onClose={() => {
+                        setShowBrandModal(false);
+                        setEditingBrand(null);
+                    }}
+                    onSubmit={handleSaveBrand}
+                    onDelete={editingBrand ? handleDeleteBrand : undefined}
+                    submitting={false}
+                />
             )}
 
             <ConfirmationModal

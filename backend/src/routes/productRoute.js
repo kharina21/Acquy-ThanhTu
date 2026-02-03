@@ -36,7 +36,7 @@ const upload = multer({
 
 // Tất cả routes đều cần đăng nhập và role admin hoặc owner
 router.use(authenticate);
-router.use(hasRole('admin', 'owner'));
+router.use(hasRole('admin', 'manager'));
 
 router.get('/', getAllProducts);
 router.get('/options', getProductOptions);

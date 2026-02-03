@@ -23,9 +23,9 @@ import { hasRole } from '../middlewares/rbac.js';
 
 const router = express.Router();
 
-// Tất cả routes đều cần authenticate và có role admin hoặc owner
+// Tất cả routes đều cần authenticate và có role admin hoặc manager
 router.use(authenticate);
-router.use(hasRole('admin', 'owner'));
+router.use(hasRole('admin', 'manager'));
 
 // Lấy danh sách tất cả roles (để hiển thị trong dropdown)
 router.get('/roles', getAllRoles);

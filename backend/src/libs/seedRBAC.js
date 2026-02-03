@@ -59,25 +59,39 @@ const seedRoles = async (permissions) => {
     const roles = [
         {
             name: 'user',
-            description: 'Regular user role',
+            description: 'Người dùng thông thường',
             permissions: [permissionMap.user?.read, permissionMap.product?.read, permissionMap.order?.create, permissionMap.order?.read].filter(Boolean),
         },
         {
-            name: 'seller',
-            description: 'Seller role with product management',
+            name: 'staff',
+            description: 'Nhân viên - Quyền hạn cơ bản để thực hiện các tác vụ hàng ngày',
             permissions: [
                 permissionMap.user?.read,
+                permissionMap.product?.read,
+                permissionMap.product?.update,
+                permissionMap.order?.create,
+                permissionMap.order?.read,
+                permissionMap.order?.update,
+            ].filter(Boolean),
+        },
+        {
+            name: 'manager',
+            description: 'Quản lý - Quyền quản lý sản phẩm, đơn hàng và nhân viên',
+            permissions: [
+                permissionMap.user?.read,
+                permissionMap.user?.update,
                 permissionMap.product?.create,
                 permissionMap.product?.read,
                 permissionMap.product?.update,
                 permissionMap.product?.delete,
                 permissionMap.order?.read,
                 permissionMap.order?.update,
+                permissionMap.order?.delete,
             ].filter(Boolean),
         },
         {
             name: 'admin',
-            description: 'Administrator with full access',
+            description: 'Quản trị viên - Toàn quyền truy cập và quản lý hệ thống',
             permissions: permissions.map((p) => p._id),
         },
     ];

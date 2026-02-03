@@ -18,26 +18,29 @@ const ProductManagementPage = () => {
 
     return (
         <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
-            <div className="max-w-7xl mx-auto">
-                <h1 className="text-2xl font-bold text-base-content mb-6">Quản lý sản phẩm</h1>
+            <div className="container mx-auto">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <h1 className="text-2xl font-bold text-base-content mb-6">Quản lý sản phẩm</h1>
 
-                <div role="tablist" className="tabs tabs-boxed bg-base-100 p-1 rounded-lg mb-6 w-full max-w-2xl">
-                    {TABS.map((tab) => {
-                        const Icon = tab.icon;
-                        return (
-                            <button
-                                key={tab.id}
-                                role="tab"
-                                aria-selected={activeTab === tab.id}
-                                className={`tab gap-2 flex-1 md:flex-none ${activeTab === tab.id ? 'tab-active' : ''}`}
-                                onClick={() => setActiveTab(tab.id)}
-                            >
-                                <Icon className="w-4 h-4" />
-                                {tab.label}
-                            </button>
-                        );
-                    })}
+                    <div role="tablist" className="tabs tabs-boxed bg-base-100 p-1 rounded-lg mb-6 w-full max-w-2xl">
+                        {TABS.map((tab) => {
+                            const Icon = tab.icon;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    role="tab"
+                                    aria-selected={activeTab === tab.id}
+                                    className={`tab gap-2 flex-1 md:flex-none ${activeTab === tab.id ? 'tab-active' : ''}`}
+                                    onClick={() => setActiveTab(tab.id)}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
+
 
                 <div role="tabpanel">
                     <ActiveComponent />

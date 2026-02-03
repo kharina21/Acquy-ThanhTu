@@ -218,13 +218,23 @@ const UserTable = ({
         setShowPasswordModal(true);
     };
 
+    // Get role description in Vietnamese
+    const getRoleDescription = (roleName, defaultDescription) => {
+        const descriptions = {
+            admin: 'Quản trị viên - Toàn quyền truy cập và quản lý hệ thống',
+            staff: 'Nhân viên - Quyền hạn cơ bản để thực hiện các tác vụ hàng ngày',
+            manager: 'Quản lý - Quyền quản lý sản phẩm, đơn hàng và nhân viên',
+            user: 'Người dùng thông thường',
+        };
+        return descriptions[roleName] || defaultDescription || '';
+    };
+
     // Get role badge color
     const getRoleBadgeColor = (roleName) => {
         const colors = {
             admin: 'badge-error',
             owner: 'badge-warning',
             manager: 'badge-info',
-            seller: 'badge-success',
             staff: 'badge-primary',
             user: 'badge-neutral',
         };
@@ -333,23 +343,23 @@ const UserTable = ({
                 </div>
             ) : (
                 <>
-                    <div className="overflow-x-auto">
-                        <table className="table table-zebra w-full">
-                            <thead>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
+                        <table className="table">
+                            <thead className='bg-blue-100 sticky top-0 z-20'>
                                 <tr>
-                                    <th>Người dùng</th>
-                                    <th>Email</th>
-                                    <th>Số điện thoại</th>
-                                    <th>Roles</th>
-                                    <th>Xác thực</th>
-                                    <th>Trạng thái</th>
-                                    <th>Ngày tạo</th>
-                                    <th className="text-center">Thao tác</th>
+                                    <th className="font-medium text-neutral text-xs">Người dùng</th>
+                                    <th className="font-medium text-neutral text-xs">Email</th>
+                                    <th className="font-medium text-neutral text-xs">Số điện thoại</th>
+                                    <th className="font-medium text-neutral text-xs">Roles</th>
+                                    <th className="font-medium text-neutral text-xs">Xác thực</th>
+                                    <th className="font-medium text-neutral text-xs">Trạng thái</th>
+                                    <th className="font-medium text-neutral text-xs">Ngày tạo</th>
+                                    <th className="text-center font-medium text-neutral text-xs">Thao tác</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className='text-xs'>
                                 {users.map((user) => (
-                                    <tr key={user._id}>
+                                    <tr key={user._id} className="hover:bg-base-200/60 transition-colors font-light">
                                         <td>
                                             <div className="flex items-center gap-3">
                                                 <div>
@@ -463,7 +473,7 @@ const UserTable = ({
                     </div>
 
                     {/* Pagination */}
-                    <div className="flex justify-between items-center p-4 border-t border-base-300">
+                    <div className="flex justify-between items-center p-4 border-t border-base-200">
                         <div>
                             <p className="text-sm text-base-content/60">
                                 Hiển thị {users.length} / {pagination.total} người dùng
@@ -529,8 +539,8 @@ const UserTable = ({
                                             />
                                             <div>
                                                 <span className="label-text font-semibold">{role.name}</span>
-                                                {role.description && (
-                                                    <div className="text-xs text-base-content/60">{role.description}</div>
+                                                {getRoleDescription(role.name, role.description) && (
+                                                    <div className="text-xs text-base-content/60">{getRoleDescription(role.name, role.description)}</div>
                                                 )}
                                             </div>
                                         </label>

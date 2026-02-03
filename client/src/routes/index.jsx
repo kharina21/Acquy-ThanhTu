@@ -9,6 +9,7 @@ import HomePage from '../pages/HomePage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
+import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 
@@ -58,6 +59,7 @@ export const AppRoutes = () => {
                         <Route path="/admin" element={<AdminDashboard />} />
                         <Route path="/admin/dashboard" element={<AdminDashboard />} />
                         <Route path="/admin/products" element={<ProductManagementPage />} />
+                        <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
                         {/* Thêm các admin routes khác ở đây */}
                     </Route>
@@ -72,6 +74,8 @@ export const AppRoutes = () => {
                     {/* Manager Routes */}
                     <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
                         <Route path="/manager/dashboard" element={<ManagerDashboard />} />
+                        <Route path="/admin/products" element={<ProductManagementPage />} />
+                        <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         {/* Thêm các manager routes khác ở đây */}
                     </Route>
 

@@ -12,19 +12,16 @@ const PriceSettingsTab = () => {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-    const [searchSku, setSearchSku] = useState('');
-    const [searchName, setSearchName] = useState('');
-    const [searchApplied, setSearchApplied] = useState('');
+    const [search, setSearch] = useState('');
     const [edits, setEdits] = useState({});
     const [savingId, setSavingId] = useState(null);
 
     const fetchProducts = async () => {
         setLoading(true);
-        const search = [searchApplied.trim()].filter(Boolean).join(' ');
         const res = await getProducts({
             page: pagination.page,
             limit: pagination.limit,
-            search: search || undefined,
+            search: search.trim() || undefined,
         });
         if (res.success && res.data) {
             setProducts(res.data.products || []);
@@ -35,11 +32,10 @@ const PriceSettingsTab = () => {
 
     useEffect(() => {
         fetchProducts();
-    }, [pagination.page, searchApplied]);
+    }, [pagination.page, search]);
 
-    const handleSearch = (e) => {
+    const handleSearchSubmit = (e) => {
         e.preventDefault();
-        setSearchApplied((searchSku + ' ' + searchName).trim());
         setPagination((p) => ({ ...p, page: 1 }));
     };
 
@@ -97,34 +93,23 @@ const PriceSettingsTab = () => {
                 Chỉnh sửa giá vốn và giá bán (bảng giá chung) cho từng mặt hàng.
             </p>
 
-            <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3 mb-4">
-                <div className="flex-1 min-w-[160px]">
-                    <label className="label py-0"><span className="label-text text-sm">Tìm mã hàng</span></label>
+            <form onSubmit={handleSearchSubmit} className="flex gap-2 mb-4">
+                <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40" />
                     <input
                         type="text"
-                        className="input input-bordered input-sm w-full"
-                        placeholder="Mã hàng..."
-                        value={searchSku}
-                        onChange={(e) => setSearchSku(e.target.value)}
+                        placeholder="Tìm theo mã hàng, tên hàng, thương hiệu..."
+                        className="input input-bordered w-full pl-10"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                     />
                 </div>
-                <div className="flex-1 min-w-[160px]">
-                    <label className="label py-0"><span className="label-text text-sm">Tìm tên hàng</span></label>
-                    <input
-                        type="text"
-                        className="input input-bordered input-sm w-full"
-                        placeholder="Tên hàng..."
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                    />
-                </div>
-                <button type="submit" className="btn btn-primary btn-sm gap-1">
-                    <Search className="w-4 h-4" />
+                <button type="submit" className="btn btn-primary">
                     Tìm kiếm
                 </button>
             </form>
 
-            <div className="overflow-x-auto rounded-lg border border-base-300">
+            <div className="overflow-x-auto overflow-y-auto max-h-[700px] rounded-lg border border-base-300">
                 {loading ? (
                     <div className="flex justify-center items-center p-12">
                         <span className="loading loading-spinner loading-lg text-primary" />
@@ -134,19 +119,19 @@ const PriceSettingsTab = () => {
                         Không có sản phẩm nào. Thử bỏ bớt điều kiện tìm kiếm.
                     </div>
                 ) : (
-                    <table className="table table-zebra">
-                        <thead>
+                    <table className="table">
+                        <thead className='bg-blue-100 sticky top-0 z-20'>
                             <tr>
-                                <th className="w-32">Mã hàng</th>
-                                <th>Tên hàng</th>
-                                <th className="text-right w-40">Giá vốn (VNĐ)</th>
-                                <th className="text-right w-40">Bảng giá chung (VNĐ)</th>
-                                <th className="w-24"></th>
+                                <th className="w-32 font-medium text-neutral text-xs">Mã hàng</th>
+                                <th className="font-medium text-neutral text-xs">Tên hàng</th>
+                                <th className="text-right w-40 font-medium text-neutral text-xs">Giá vốn (VNĐ)</th>
+                                <th className="text-right w-40 font-medium text-neutral text-xs">Bảng giá chung (VNĐ)</th>
+                                <th className="w-24 font-medium text-neutral text-xs"></th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody className='text-xs'>
                             {products.map((p) => (
-                                <tr key={p._id}>
+                                <tr key={p._id} className="hover:bg-base-200/60 transition-colors font-light">
                                     <td className="font-medium">{p.sku}</td>
                                     <td>{p.name}</td>
                                     <td className="text-right">

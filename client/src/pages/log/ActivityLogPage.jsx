@@ -230,22 +230,22 @@ const ActivityLogPage = () => {
                         </div>
                     ) : (
                         <>
-                            <div className='overflow-x-auto'>
-                                <table className='table table-zebra w-full'>
-                                    <thead>
+                            <div className='overflow-x-auto overflow-y-auto max-h-[700px]'>
+                                <table className='table'>
+                                    <thead className='bg-blue-100 sticky top-0 z-20'>
                                         <tr>
-                                            <th>Thời gian</th>
-                                            <th>User</th>
-                                            <th>Hành động</th>
-                                            <th>Tài nguyên</th>
-                                            <th>Mô tả</th>
-                                            <th>Trạng thái</th>
-                                            <th>IP Address</th>
+                                            <th className="font-medium text-neutral text-xs">Thời gian</th>
+                                            <th className="font-medium text-neutral text-xs">User</th>
+                                            <th className="font-medium text-neutral text-xs">Hành động</th>
+                                            <th className="font-medium text-neutral text-xs">Tài nguyên</th>
+                                            <th className="font-medium text-neutral text-xs">Mô tả</th>
+                                            <th className="font-medium text-neutral text-xs">Trạng thái</th>
+                                            <th className="font-medium text-neutral text-xs">IP Address</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody className='text-xs'>
                                         {logs.map((log) => (
-                                            <tr key={log._id}>
+                                            <tr key={log._id} className="hover:bg-base-200/60 transition-colors font-light">
                                                 <td>{formatDate(log.createdAt)}</td>
                                                 <td>{log.userId?.username || 'Unknown'}</td>
                                                 <td>
@@ -278,7 +278,7 @@ const ActivityLogPage = () => {
                             </div>
 
                             {/* Pagination */}
-                            <div className='flex justify-between items-center p-4 border-t'>
+                            <div className='flex justify-between items-center p-4 border-t border-base-200'>
                                 <div>
                                     <p className='text-sm'>
                                         Hiển thị {logs.length} / {pagination.total} logs

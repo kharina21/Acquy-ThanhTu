@@ -24,7 +24,8 @@
         "test": "echo \"Error: no test specified\" && exit 1",
         "start": "node src/server.js",
         "dev": "nodemon src/server.js",
-        "seed:rbac": "node src/libs/seedRBAC.js"
+        "seed:rbac": "node src/libs/seedRBAC.js",
+        "migrate:products:category-brand": "node src/scripts/migrate-products-category-brand.js"
     },
     "type": "module",
     "author": "kha21",

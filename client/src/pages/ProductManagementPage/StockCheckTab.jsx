@@ -272,20 +272,20 @@ const StockCheckTab = () => {
                         <p>Chưa có phiếu kiểm kho. Bấm &quot;Tạo phiếu kiểm kho&quot; để tạo mới.</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="table table-zebra">
-                            <thead>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
+                        <table className="table">
+                            <thead className='bg-blue-100 sticky top-0 z-20'>
                                 <tr>
-                                    <th>Mã phiếu</th>
-                                    <th>Người tạo</th>
-                                    <th>Ngày tạo</th>
-                                    <th>Trạng thái</th>
-                                    <th></th>
+                                    <th className="font-medium text-neutral text-xs">Mã phiếu</th>
+                                    <th className="font-medium text-neutral text-xs">Người tạo</th>
+                                    <th className="font-medium text-neutral text-xs">Ngày tạo</th>
+                                    <th className="font-medium text-neutral text-xs">Trạng thái</th>
+                                    <th className="font-medium text-neutral text-xs"></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className='text-xs'>
                                 {list.map((sc) => (
-                                    <tr key={sc._id}>
+                                    <tr key={sc._id} className="hover:bg-base-200/60 transition-colors font-light">
                                         <td className="font-medium">{sc.code}</td>
                                         <td>
                                             {sc.createdBy
