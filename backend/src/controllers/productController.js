@@ -4,6 +4,7 @@ import ProductStock from '../models/ProductStock.js';
 import StockCheck from '../models/StockCheck.js';
 import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
+import UsageDevice from '../models/UsageDevice.js';
 import { parseExcelBuffer } from '../utils/parseExcelProduct.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { generateStockCheckCode } from '../utils/stockCheckCode.js';
@@ -23,6 +24,14 @@ async function findBrandByName(brandName) {
     // Tìm brand với case-insensitive và trim
     return await Brand.findOne({
         name: { $regex: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+    });
+}
+
+async function findUsageDeviceByName(usageName) {
+    const name = String(usageName || '').trim();
+    if (!name) return null;
+    return await UsageDevice.findOne({
+        name: { $regex: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
     });
 }
 
@@ -73,14 +82,29 @@ export const getAllProducts = async (req, res) => {
         const limit = parseInt(req.query.limit) || 15;
         const search = (req.query.search || '').trim();
         const locationId = req.query.locationId?.trim();
+        const brand = (req.query.brand || '').trim();
+        const usageDevice = (req.query.usageDevice || '').trim();
+        const priceMin = Number(req.query.priceMin) || 0;
+        const priceMax = Number(req.query.priceMax) || 0;
         const skip = (page - 1) * limit;
 
-        const query = {};
+        const query = { isDeleted: false };
         if (search) {
             query.$or = [
                 { name: { $regex: search, $options: 'i' } },
                 { sku: { $regex: search, $options: 'i' } },
             ];
+        }
+        if (brand && mongoose.Types.ObjectId.isValid(brand)) {
+            query.brand = brand;
+        }
+        if (usageDevice && mongoose.Types.ObjectId.isValid(usageDevice)) {
+            query.usageDevice = usageDevice;
+        }
+        if (priceMin > 0 || priceMax > 0) {
+            query.price = {};
+            if (priceMin > 0) query.price.$gte = priceMin;
+            if (priceMax > 0) query.price.$lte = priceMax;
         }
 
         // Lấy products không populate trước để kiểm tra
@@ -90,19 +114,21 @@ export const getAllProducts = async (req, res) => {
             .limit(limit)
             .lean();
 
-        // Xử lý populate category/brand an toàn - chỉ populate nếu ref là ObjectId hợp lệ
+        // Xử lý populate category/brand/usageDevice an toàn - chỉ populate nếu ref là ObjectId hợp lệ
         const processedProducts = await Promise.all(
             products.map(async (product) => {
-                // Populate category và brand cùng lúc nếu là ObjectId hợp lệ
+                // Populate category, brand, usageDevice cùng lúc nếu là ObjectId hợp lệ
                 const needsPopulate =
                     (product.category && mongoose.Types.ObjectId.isValid(product.category)) ||
-                    (product.brand && mongoose.Types.ObjectId.isValid(product.brand));
+                    (product.brand && mongoose.Types.ObjectId.isValid(product.brand)) ||
+                    (product.usageDevice && mongoose.Types.ObjectId.isValid(product.usageDevice));
 
                 if (needsPopulate) {
                     try {
                         const populated = await Product.findById(product._id)
                             .populate('category', 'name description')
                             .populate('brand', 'name description')
+                            .populate('usageDevice', 'name description')
                             .lean();
                         if (populated?.category) {
                             product.category = populated.category;
@@ -113,6 +139,11 @@ export const getAllProducts = async (req, res) => {
                             product.brand = populated.brand;
                         } else if (product.brand) {
                             product.brand = null;
+                        }
+                        if (populated?.usageDevice) {
+                            product.usageDevice = populated.usageDevice;
+                        } else if (product.usageDevice) {
+                            product.usageDevice = null;
                         }
                     } catch (error) {
                         product.category = null;
@@ -198,16 +229,17 @@ export const getProductById = async (req, res) => {
     try {
         const { id } = req.params;
         const product = await Product.findById(id).lean();
-        if (!product) {
+        if (!product || product.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
         }
 
-        // Xử lý populate category/brand an toàn
+        // Xử lý populate category/brand/usageDevice an toàn
         if (product.category && mongoose.Types.ObjectId.isValid(product.category)) {
             try {
                 const populated = await Product.findById(id)
                     .populate('category', 'name description')
                     .populate('brand', 'name description')
+                    .populate('usageDevice', 'name description')
                     .lean();
                 if (populated?.category?.name) {
                     product.category = populated.category;
@@ -260,7 +292,7 @@ export const createProduct = async (req, res) => {
         const barcode = req.body.barcode?.trim();
         const orConditions = [{ sku }];
         if (barcode) orConditions.push({ barcode });
-        const existing = await Product.findOne({ $or: orConditions });
+        const existing = await Product.findOne({ $or: orConditions, isDeleted: false });
         if (existing) {
             if (existing.sku === sku) {
                 return res.status(400).json({ message: 'Mã hàng (SKU) đã tồn tại' });
@@ -309,6 +341,7 @@ export const createProduct = async (req, res) => {
         const populatedProduct = await Product.findById(product._id)
             .populate('category', 'name description')
             .populate('brand', 'name description')
+            .populate('usageDevice', 'name description')
             .lean();
         res.status(201).json({ success: true, data: { product: populatedProduct }, message: 'Tạo sản phẩm thành công' });
     } catch (error) {
@@ -324,17 +357,17 @@ export const updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
         const oldProduct = await Product.findById(id).lean();
-        if (!oldProduct) {
+        if (!oldProduct || oldProduct.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
         }
         const sku = req.body.sku?.trim();
         const barcode = req.body.barcode?.trim();
-        let existing = await Product.findOne({ sku, _id: { $ne: id } });
+        let existing = await Product.findOne({ sku, _id: { $ne: id }, isDeleted: false });
         if (existing) {
             return res.status(400).json({ message: 'Mã hàng (SKU) đã tồn tại' });
         }
         if (barcode) {
-            existing = await Product.findOne({ barcode, _id: { $ne: id } });
+            existing = await Product.findOne({ barcode, _id: { $ne: id }, isDeleted: false });
             if (existing) {
                 return res.status(400).json({ message: 'Mã vạch đã tồn tại' });
             }
@@ -422,11 +455,14 @@ export const updateProduct = async (req, res) => {
 export const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        const product = await Product.findByIdAndDelete(id);
-        if (!product) {
+        const product = await Product.findById(id);
+        if (!product || product.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
         }
-        res.status(200).json({ success: true, message: 'Xóa sản phẩm thành công' });
+        product.isDeleted = true;
+        product.isActive = false;
+        await product.save();
+        res.status(200).json({ success: true, message: 'Đã ngừng kinh doanh sản phẩm (xóa mềm)' });
     } catch (error) {
         console.error('deleteProduct error:', error.message);
         res.status(500).json({ message: 'Lỗi khi xóa sản phẩm', error: error.message });
@@ -443,7 +479,14 @@ export const importFromExcel = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng gửi file Excel (field: file)' });
         }
         const locationId = (req.body?.locationId || req.query?.locationId || '').toString().trim() || null;
-        const { products, errors } = parseExcelBuffer(req.file.buffer);
+        const { products, errors, headerError } = parseExcelBuffer(req.file.buffer);
+        if (headerError) {
+            return res.status(400).json({
+                success: false,
+                message: errors[0]?.message || 'File Excel không đúng định dạng. Vui lòng dùng file mẫu mới nhất.',
+                data: { imported: 0, errors },
+            });
+        }
         if (products.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -455,13 +498,13 @@ export const importFromExcel = async (req, res) => {
         const duplicateSkus = [];
         const duplicateBarcodes = [];
         for (const p of products) {
-            const existingBySku = await Product.findOne({ sku: p.sku });
+            const existingBySku = await Product.findOne({ sku: p.sku, isDeleted: false });
             if (existingBySku) {
                 duplicateSkus.push(p.sku);
                 continue;
             }
             if (p.barcode && p.barcode.trim()) {
-                const existingByBarcode = await Product.findOne({ barcode: p.barcode.trim() });
+                const existingByBarcode = await Product.findOne({ barcode: p.barcode.trim(), isDeleted: false });
                 if (existingByBarcode) {
                     duplicateBarcodes.push(p.barcode.trim());
                     continue;
@@ -504,6 +547,23 @@ export const importFromExcel = async (req, res) => {
                 }
             }
             delete productData.brandName; // không lưu brandName nữa
+
+            // Xử lý usageDevice: match tên với UsageDevice trong DB, nếu không có thì tự động tạo
+            if (productData.usageDeviceName && String(productData.usageDeviceName).trim()) {
+                const usageNameTrimmed = String(productData.usageDeviceName).trim();
+                let usageDevice = await findUsageDeviceByName(usageNameTrimmed);
+                if (!usageDevice) {
+                    usageDevice = await UsageDevice.create({
+                        name: usageNameTrimmed,
+                        description: '',
+                    });
+                    console.log(`[Import Excel] Đã tự động tạo thiết bị sử dụng: "${usageNameTrimmed}"`);
+                }
+                if (usageDevice) {
+                    productData.usageDevice = usageDevice._id;
+                }
+            }
+            delete productData.usageDeviceName; // không lưu usageDeviceName nữa
             const quantityFromExcel = productData.quantity !== undefined ? Number(productData.quantity) ?? 0 : 0;
             delete productData.quantity;
             delete productData.totalStock;
@@ -549,7 +609,7 @@ export const importFromExcel = async (req, res) => {
 export const bulkUpdatePrice = async (req, res) => {
     try {
         const { category, brand, type, value } = req.body;
-        const query = {};
+        const query = { isDeleted: false };
         // Backward compatibility:
         // - category: accept Category ObjectId (string)
         // - brand: accept brandName (string)

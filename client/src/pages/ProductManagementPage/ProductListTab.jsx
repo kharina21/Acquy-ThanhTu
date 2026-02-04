@@ -19,6 +19,7 @@ import BrandModal from '@/components/common/BrandModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
+import { getUsageDevices } from '@/services/usageDeviceService';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '—';
@@ -31,6 +32,7 @@ const emptyProductForm = () => ({
     sku: '',
     barcode: '',
     name: '',
+    usageDevice: null,
     capacity: '',
     costPrice: 0,
     price: 0,
@@ -46,6 +48,8 @@ const ProductListTab = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 0 });
+    const [selectedRowIds, setSelectedRowIds] = useState([]);
+    const [bulkProcessing, setBulkProcessing] = useState(false);
     const [importing, setImporting] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
@@ -61,6 +65,7 @@ const ProductListTab = () => {
     const [showBrandModal, setShowBrandModal] = useState(false);
     const [editingBrand, setEditingBrand] = useState(null);
     const [brands, setBrands] = useState([]);
+    const [usageDevices, setUsageDevices] = useState([]);
     const [categoryRefreshKey, setCategoryRefreshKey] = useState(0);
     const [brandRefreshKey, setBrandRefreshKey] = useState(0);
     const [showBarcodeModal, setShowBarcodeModal] = useState(false);
@@ -72,6 +77,13 @@ const ProductListTab = () => {
     const [editImageIndex, setEditImageIndex] = useState(0);
     const [createImageIndex, setCreateImageIndex] = useState(0);
 
+    // Lọc theo tên thương hiệu / tên thiết bị sử dụng (để hỗ trợ cả dữ liệu cũ lẫn mới)
+    const [filterBrand, setFilterBrand] = useState('');
+    const [filterUsageDevice, setFilterUsageDevice] = useState('');
+    // 0 = không lọc, >0 = giá trị VNĐ
+    const [filterPriceMin, setFilterPriceMin] = useState(0);
+    const [filterPriceMax, setFilterPriceMax] = useState(0);
+
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
 
     const fetchProducts = async () => {
@@ -81,12 +93,17 @@ const ProductListTab = () => {
             limit: pagination.limit,
             search,
             locationId: currentLocationId || undefined,
+            brand: filterBrand || undefined,
+            usageDevice: filterUsageDevice || undefined,
+            priceMin: filterPriceMin || undefined,
+            priceMax: filterPriceMax || undefined,
         });
         if (res.success) {
             setProducts(res.data.products);
             setPagination(res.data.pagination);
         }
         setLoading(false);
+        setSelectedRowIds([]);
     };
 
     useEffect(() => {
@@ -101,6 +118,10 @@ const ProductListTab = () => {
             limit: pagination.limit,
             search,
             locationId: currentLocationId || undefined,
+            brand: filterBrand || undefined,
+            usageDevice: filterUsageDevice || undefined,
+            priceMin: filterPriceMin || undefined,
+            priceMax: filterPriceMax || undefined,
         })
             .then((res) => {
                 if (!cancelled && res.success) {
@@ -112,7 +133,25 @@ const ProductListTab = () => {
                 if (!cancelled) setLoading(false);
             });
         return () => { cancelled = true; };
-    }, [pagination.page, search, currentLocationId]);
+    }, [pagination.page, search, currentLocationId, filterBrand, filterUsageDevice, filterPriceMin, filterPriceMax]);
+
+    const toggleSelectRow = (id) => {
+        setSelectedRowIds((prev) =>
+            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+        );
+    };
+
+    const toggleSelectAll = () => {
+        if (products.length === 0) return;
+        if (selectedRowIds.length === products.length) {
+            setSelectedRowIds([]);
+        } else {
+            setSelectedRowIds(products.map((p) => p._id || p.id).filter(Boolean));
+        }
+    };
+
+    // Sau khi đã lọc ở backend, danh sách hiển thị chính là mảng products
+    const filteredProducts = products;
 
     const fetchCategories = async () => {
         try {
@@ -136,12 +175,24 @@ const ProductListTab = () => {
         }
     };
 
+    const fetchUsageDevices = async () => {
+        try {
+            const res = await getUsageDevices();
+            if (res.success && res.data) {
+                setUsageDevices(res.data.usageDevices || []);
+            }
+        } catch (error) {
+            console.error('Error fetching usage devices:', error);
+        }
+    };
+
     const _CATEGORIES_COUNT = categories.length;
     const _BRANDS_COUNT = brands.length;
 
     useEffect(() => {
         fetchCategories();
         fetchBrands();
+        fetchUsageDevices();
     }, []);
 
     const handleDownloadSample = () => {
@@ -207,6 +258,7 @@ const ProductListTab = () => {
             sku: selectedProduct.sku ?? '',
             barcode: selectedProduct.barcode ?? '',
             name: selectedProduct.name ?? '',
+            usageDevice: selectedProduct.usageDevice?._id || selectedProduct.usageDevice || null,
             capacity: selectedProduct.capacity ?? '',
             costPrice: selectedProduct.costPrice ?? 0,
             price: selectedProduct.price ?? 0,
@@ -536,6 +588,84 @@ const ProductListTab = () => {
         }
     };
 
+    const handleBulkDelete = async () => {
+        if (selectedRowIds.length === 0) return;
+        if (!window.confirm(`Bạn có chắc muốn xóa ${selectedRowIds.length} sản phẩm đã chọn?`)) return;
+        setBulkProcessing(true);
+        try {
+            const productMap = Object.fromEntries(
+                products.map((p) => [(p._id || p.id).toString(), p])
+            );
+            const deletableIds = selectedRowIds.filter((id) => {
+                const p = productMap[id];
+                const qty = p?.totalStock ?? 0;
+                if (qty > 0) {
+                    toast.error(`Không thể xóa ${p?.sku || p?.name || 'sản phẩm'} vì tồn kho > 0`);
+                    return false;
+                }
+                return true;
+            });
+            if (deletableIds.length === 0) {
+                setBulkProcessing(false);
+                return;
+            }
+            const results = await Promise.allSettled(
+                deletableIds.map((id) => deleteProduct(id))
+            );
+            const successCount = results.filter((r) => r.status === 'fulfilled').length;
+            if (successCount > 0) {
+                toast.success(`Đã xóa ${successCount} sản phẩm`);
+                fetchProducts();
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Xóa sản phẩm hàng loạt thất bại');
+        } finally {
+            setBulkProcessing(false);
+        }
+    };
+
+    const handleBulkSetActive = async (isActive) => {
+        if (selectedRowIds.length === 0) return;
+        setBulkProcessing(true);
+        try {
+            const productMap = Object.fromEntries(
+                products.map((p) => [(p._id || p.id).toString(), p])
+            );
+            const targets = selectedRowIds
+                .map((id) => productMap[id])
+                .filter(Boolean);
+
+            const results = await Promise.allSettled(
+                targets.map((p) =>
+                    updateProduct(p._id || p.id, {
+                        sku: p.sku,
+                        barcode: p.barcode,
+                        name: p.name,
+                        category: p.category?._id || p.category || null,
+                        brand: p.brand?._id || p.brand || null,
+                        usageDevice: p.usageDevice?._id || p.usageDevice || null,
+                        capacity: p.capacity,
+                        costPrice: p.costPrice,
+                        price: p.price,
+                        images: p.images || (p.image ? [p.image] : []),
+                        isActive,
+                    })
+                )
+            );
+            const successCount = results.filter((r) => r.status === 'fulfilled').length;
+            if (successCount > 0) {
+                toast.success(
+                    `${isActive ? 'Đã bật' : 'Đã tắt'} đang kinh doanh cho ${successCount} sản phẩm`
+                );
+                fetchProducts();
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Cập nhật trạng thái hàng loạt thất bại');
+        } finally {
+            setBulkProcessing(false);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -556,6 +686,34 @@ const ProductListTab = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {products.length > 0 && (
+                        <div className="flex items-center gap-2 mr-2">
+                            <button
+                                type="button"
+                                className="btn btn-outline btn-xs"
+                                disabled={selectedRowIds.length === 0 || bulkProcessing}
+                                onClick={handleBulkDelete}
+                            >
+                                Xóa đã chọn
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-outline btn-xs"
+                                disabled={selectedRowIds.length === 0 || bulkProcessing}
+                                onClick={() => handleBulkSetActive(true)}
+                            >
+                                Đang kinh doanh
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-outline btn-xs"
+                                disabled={selectedRowIds.length === 0 || bulkProcessing}
+                                onClick={() => handleBulkSetActive(false)}
+                            >
+                                Ngừng kinh doanh
+                            </button>
+                        </div>
+                    )}
                     <button
                         type="button"
                         className="btn btn-primary btn-sm gap-2"
@@ -584,84 +742,224 @@ const ProductListTab = () => {
                 </div>
             </div>
 
-            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
-                {loading ? (
-                    <div className="flex justify-center items-center p-12">
-                        <span className="loading loading-spinner loading-lg text-primary" />
+            <div className="flex gap-4">
+                {/* Sidebar bộ lọc */}
+                <div className="w-72 shrink-0 bg-base-100 rounded-lg shadow p-4 space-y-4">
+                    <div>
+                        <h3 className="text-sm font-semibold mb-2">Thiết bị sử dụng</h3>
+                        <select
+                            className="select select-sm select-bordered w-full"
+                            value={filterUsageDevice}
+                            onChange={(e) => {
+                                setFilterUsageDevice(e.target.value);
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
+                        >
+                            <option value="">Tất cả thiết bị</option>
+                            {usageDevices.map((u) => (
+                                <option key={u._id} value={u._id}>
+                                    {u.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
-                ) : products.length === 0 ? (
-                    <div className="p-12 text-center text-base-content/60">
-                        <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>Chưa có sản phẩm. Bấm &quot;Thêm sản phẩm&quot; hoặc import từ file Excel (dùng file mẫu) để thêm.</p>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
 
-                        <table className="table">
-                            <thead className='bg-blue-100 sticky top-0 z-20'>
-                                <tr >
-                                    <th className="font-medium text-neutral text-xs">Mã hàng</th>
-                                    <th className="font-medium text-neutral text-xs">Tên hàng</th>
-                                    <th className="font-medium text-neutral text-xs">Thương hiệu</th>
-                                    <th className="font-medium text-neutral text-xs">Dung lượng (Ah)</th>
-                                    <th className="text-right font-medium text-neutral text-xs">Đơn giá nhập</th>
-                                    <th className="text-right font-medium text-neutral text-xs">Đơn giá bán</th>
-                                    <th className="text-right font-medium text-neutral text-xs">Tồn kho{currentLocationId ? ' (chi nhánh)' : ''}</th>
-                                    <th className="font-medium text-neutral text-xs">Bảo hành</th>
-                                    <th className="text-center font-medium text-neutral text-xs">Đang kinh doanh</th>
-                                    <th className="font-medium text-neutral text-xs">Ghi chú</th>
-                                </tr>
-                            </thead>
-                            <tbody className='text-xs'>
-                                {products.map((p) => (
-                                    <tr
-                                        key={p._id || p.id}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => handleRowClick(p)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleRowClick(p)}
-                                        className="cursor-pointer hover:bg-base-200/60 transition-colors font-light"
-                                    >
-                                        <td>{p.sku}</td>
-                                        <td>{p.name}</td>
-                                        <td>{p.brand?.name || '...'}</td>
-                                        <td>{p.capacity || '...'}</td>
-                                        <td className="text-right">{formatVND(p.costPrice)}</td>
-                                        <td className="text-right">{formatVND(p.price)}</td>
-                                        <td className="text-right">{p.stockAtLocation !== undefined ? p.stockAtLocation : (p.totalStock ?? '...')}</td>
-                                        <td>{p.warrantyText || '...'}</td>
-                                        <td className="text-center">{p.isActive ? 'Có' : 'Không'}</td>
-                                        <td className="max-w-[200px] truncate" title={p.notes || ''}>{p.notes || '...'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div>
+                        <h3 className="text-sm font-semibold mb-2">Thương hiệu</h3>
+                        <select
+                            className="select select-sm select-bordered w-full"
+                            value={filterBrand}
+                            onChange={(e) => {
+                                setFilterBrand(e.target.value);
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
+                        >
+                            <option value="">Tất cả thương hiệu</option>
+                            {brands.map((b) => (
+                                <option key={b._id} value={b._id}>
+                                    {b.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
-                )}
-                {!loading && products.length > 0 && pagination.totalPages > 1 && (
-                    <div className="flex justify-between items-center p-4 border-t border-base-200">
-                        <p className="text-sm text-base-content/60">
-                            Hiển thị {products.length} / {pagination.total} sản phẩm
-                        </p>
-                        <div className="join">
-                            <button
-                                className="join-item btn btn-sm"
-                                disabled={pagination.page <= 1}
-                                onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                            >
-                                «
-                            </button>
-                            <button className="join-item btn btn-sm">Trang {pagination.page} / {pagination.totalPages}</button>
-                            <button
-                                className="join-item btn btn-sm"
-                                disabled={pagination.page >= pagination.totalPages}
-                                onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                            >
-                                »
-                            </button>
+
+                    <div>
+                        <h3 className="text-sm font-semibold mb-2">Giá bán</h3>
+                        <div className="space-y-1">
+                            <input
+                                type="range"
+                                min={0}
+                                max={20}
+                                step={1}
+                                className="range range-xs range-primary"
+                                value={filterPriceMax ? filterPriceMax / 1_000_000 : 0}
+                                onChange={(e) => {
+                                    const million = Number(e.target.value) || 0;
+                                    setFilterPriceMax(million * 1_000_000);
+                                    setPagination((p) => ({ ...p, page: 1 }));
+                                }}
+                            />
+                            <div className="text-xs text-base-content/70">
+                                {filterPriceMax > 0
+                                    ? `Giá bán ≤ ${formatVND(filterPriceMax)}`
+                                    : 'Tất cả mức giá (0 - 20.000.000)'}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="input input-xs input-bordered w-1/2"
+                                    placeholder="Min"
+                                    value={filterPriceMin || ''}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        setFilterPriceMin(val < 0 ? 0 : val);
+                                        setPagination((p) => ({ ...p, page: 1 }));
+                                    }}
+                                />
+                                <span className="text-xs">đến</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="input input-xs input-bordered w-1/2"
+                                    placeholder="Max"
+                                    value={filterPriceMax || ''}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        setFilterPriceMax(val < 0 ? 0 : val);
+                                        setPagination((p) => ({ ...p, page: 1 }));
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
-                )}
+
+                    <button
+                        type="button"
+                        className="btn btn-ghost btn-xs w-full"
+                        onClick={() => {
+                            setFilterBrand('');
+                            setFilterUsageDevice('');
+                            setFilterPriceMin(0);
+                            setFilterPriceMax(0);
+                            setPagination((p) => ({ ...p, page: 1 }));
+                        }}
+                    >
+                        Xóa tất cả lọc
+                    </button>
+                </div>
+
+                {/* Bảng danh sách */}
+                <div className="flex-1 bg-base-100 rounded-lg shadow overflow-hidden">
+                    {loading ? (
+                        <div className="flex justify-center items-center p-12">
+                            <span className="loading loading-spinner loading-lg text-primary" />
+                        </div>
+                    ) : filteredProducts.length === 0 ? (
+                        <div className="p-12 text-center text-base-content/60">
+                            <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p>Không tìm thấy sản phẩm phù hợp bộ lọc hiện tại.</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
+                            <table className="table">
+                                <thead className="bg-blue-100 sticky top-0 z-20">
+                                    <tr>
+                                        <th className="w-8">
+                                            <input
+                                                type="checkbox"
+                                                className="checkbox checkbox-xs rounded-none"
+                                                checked={
+                                                    filteredProducts.length > 0 &&
+                                                    selectedRowIds.length === filteredProducts.length
+                                                }
+                                                onChange={toggleSelectAll}
+                                            />
+                                        </th>
+                                        <th className="font-medium text-neutral text-xs">Mã hàng</th>
+                                        <th className="font-medium text-neutral text-xs">Tên hàng</th>
+                                        <th className="font-medium text-neutral text-xs">Thiết bị sử dụng</th>
+                                        <th className="font-medium text-neutral text-xs">Thương hiệu</th>
+                                        <th className="font-medium text-neutral text-xs">Dung lượng (Ah)</th>
+                                        <th className="text-right font-medium text-neutral text-xs">Đơn giá nhập</th>
+                                        <th className="text-right font-medium text-neutral text-xs">Đơn giá bán</th>
+                                        <th className="text-right font-medium text-neutral text-xs">
+                                            Tồn kho
+                                            {currentLocationId ? ' (chi nhánh)' : ''}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-xs">
+                                    {filteredProducts.map((p) => (
+                                        <tr
+                                            key={p._id || p.id}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => handleRowClick(p)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleRowClick(p)}
+                                            className="cursor-pointer hover:bg-base-200/60 transition-colors font-light"
+                                        >
+                                            <td onClick={(e) => e.stopPropagation()}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="checkbox checkbox-xs rounded-none"
+                                                    checked={selectedRowIds.includes(
+                                                        (p._id || p.id).toString()
+                                                    )}
+                                                    onChange={() =>
+                                                        toggleSelectRow((p._id || p.id).toString())
+                                                    }
+                                                />
+                                            </td>
+                                            <td>{p.sku}</td>
+                                            <td>{p.name}</td>
+                                            <td>{p.usageDevice?.name || p.usageDevice || '...'}</td>
+                                            <td>{p.brand?.name || '...'}</td>
+                                            <td>{p.capacity || '...'}</td>
+                                            <td className="text-right">{formatVND(p.costPrice)}</td>
+                                            <td className="text-right">{formatVND(p.price)}</td>
+                                            <td className="text-right">
+                                                {p.stockAtLocation !== undefined
+                                                    ? p.stockAtLocation
+                                                    : p.totalStock ?? '...'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {!loading && filteredProducts.length > 0 && pagination.totalPages > 1 && (
+                        <div className="flex justify-between items-center p-4 border-t border-base-200">
+                            <p className="text-sm text-base-content/60">
+                                Hiển thị {filteredProducts.length} / {pagination.total} sản phẩm
+                            </p>
+                            <div className="join">
+                                <button
+                                    className="join-item btn btn-sm"
+                                    disabled={pagination.page <= 1}
+                                    onClick={() =>
+                                        setPagination((p) => ({ ...p, page: p.page - 1 }))
+                                    }
+                                >
+                                    «
+                                </button>
+                                <button className="join-item btn btn-sm">
+                                    Trang {pagination.page} / {pagination.totalPages}
+                                </button>
+                                <button
+                                    className="join-item btn btn-sm"
+                                    disabled={pagination.page >= pagination.totalPages}
+                                    onClick={() =>
+                                        setPagination((p) => ({ ...p, page: p.page + 1 }))
+                                    }
+                                >
+                                    »
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Modal chi tiết sản phẩm */}
@@ -747,6 +1045,10 @@ const ProductListTab = () => {
                                         <div className="sm:col-span-2 flex flex-col gap-0.5">
                                             <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Tên hàng</span>
                                             <span className="font-medium text-base-content">{selectedProduct.name}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Thiết bị sử dụng</span>
+                                            <span>{selectedProduct.usageDevice?.name || selectedProduct.usageDevice || '—'}</span>
                                         </div>
                                         <div className="flex flex-col gap-0.5">
                                             <span className="text-xs font-medium text-base-content/60 uppercase tracking-wide">Dung lượng (Ah)</span>
@@ -1034,9 +1336,35 @@ const ProductListTab = () => {
                                     <section>
                                         <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Thông tin cơ bản</h4>
                                         <div className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <CategoryBrandSelect type="category" label="Loại hàng" value={editFormData.category} refreshKey={categoryRefreshKey} onChange={(id) => setEditFormData({ ...editFormData, category: id })} onCreateNew={handleCreateCategory} onEdit={handleEditCategory} placeholder="Chọn loại hàng" />
-                                                <CategoryBrandSelect type="brand" label="Thương hiệu" value={editFormData.brand} refreshKey={brandRefreshKey} onChange={(id) => setEditFormData({ ...editFormData, brand: id })} onCreateNew={handleCreateBrand} onEdit={handleEditBrand} placeholder="Chọn thương hiệu" />
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <CategoryBrandSelect
+                                                    type="category"
+                                                    label="Loại hàng"
+                                                    value={editFormData.category}
+                                                    refreshKey={categoryRefreshKey}
+                                                    onChange={(id) => setEditFormData({ ...editFormData, category: id })}
+                                                    onCreateNew={handleCreateCategory}
+                                                    onEdit={handleEditCategory}
+                                                    placeholder="Chọn loại hàng"
+                                                />
+                                                <CategoryBrandSelect
+                                                    type="usageDevice"
+                                                    label="Thiết bị sử dụng"
+                                                    value={editFormData.usageDevice}
+                                                    refreshKey={0}
+                                                    onChange={(id) => setEditFormData({ ...editFormData, usageDevice: id })}
+                                                    placeholder="Chọn thiết bị sử dụng"
+                                                />
+                                                <CategoryBrandSelect
+                                                    type="brand"
+                                                    label="Thương hiệu"
+                                                    value={editFormData.brand}
+                                                    refreshKey={brandRefreshKey}
+                                                    onChange={(id) => setEditFormData({ ...editFormData, brand: id })}
+                                                    onCreateNew={handleCreateBrand}
+                                                    onEdit={handleEditBrand}
+                                                    placeholder="Chọn thương hiệu"
+                                                />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
@@ -1238,9 +1566,35 @@ const ProductListTab = () => {
                                     <section>
                                         <h4 className="text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3">Thông tin cơ bản</h4>
                                         <div className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <CategoryBrandSelect type="category" label="Loại hàng" value={createFormData.category} refreshKey={categoryRefreshKey} onChange={(id) => setCreateFormData({ ...createFormData, category: id })} onCreateNew={handleCreateCategory} onEdit={handleEditCategory} placeholder="Chọn loại hàng" />
-                                                <CategoryBrandSelect type="brand" label="Thương hiệu" value={createFormData.brand} refreshKey={brandRefreshKey} onChange={(id) => setCreateFormData({ ...createFormData, brand: id })} onCreateNew={handleCreateBrand} onEdit={handleEditBrand} placeholder="Chọn thương hiệu" />
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <CategoryBrandSelect
+                                                    type="category"
+                                                    label="Loại hàng"
+                                                    value={createFormData.category}
+                                                    refreshKey={categoryRefreshKey}
+                                                    onChange={(id) => setCreateFormData({ ...createFormData, category: id })}
+                                                    onCreateNew={handleCreateCategory}
+                                                    onEdit={handleEditCategory}
+                                                    placeholder="Chọn loại hàng"
+                                                />
+                                                <CategoryBrandSelect
+                                                    type="usageDevice"
+                                                    label="Thiết bị sử dụng"
+                                                    value={createFormData.usageDevice}
+                                                    refreshKey={0}
+                                                    onChange={(id) => setCreateFormData({ ...createFormData, usageDevice: id })}
+                                                    placeholder="Chọn thiết bị sử dụng"
+                                                />
+                                                <CategoryBrandSelect
+                                                    type="brand"
+                                                    label="Thương hiệu"
+                                                    value={createFormData.brand}
+                                                    refreshKey={brandRefreshKey}
+                                                    onChange={(id) => setCreateFormData({ ...createFormData, brand: id })}
+                                                    onCreateNew={handleCreateBrand}
+                                                    onEdit={handleEditBrand}
+                                                    placeholder="Chọn thương hiệu"
+                                                />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>

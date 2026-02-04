@@ -3,14 +3,16 @@ import React from 'react';
 
 const FilterField = ({ filters, setFilters, pagination, setPagination, roles }) => {
     const clearFilters = () => {
-        setFilters({
+        // Giữ nguyên các filter không liên quan (vd: kind cho màn nhân viên)
+        setFilters((prev) => ({
+            ...prev,
             search: '',
             role: '',
             isVerified: '',
             status: '',
             dateFrom: '',
             dateTo: '',
-        });
+        }));
         setPagination({ ...pagination, page: 1 });
     };
 

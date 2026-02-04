@@ -10,6 +10,7 @@ export const getAllUsers = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const search = req.query.search || '';
         const roleFilter = req.query.role || '';
+        const kindFilter = req.query.kind || ''; // 'staff' | 'customer' | ''
         const isVerifiedFilter = req.query.isVerified;
         const statusFilter = req.query.status || '';
         const dateFrom = req.query.dateFrom;
@@ -19,11 +20,31 @@ export const getAllUsers = async (req, res) => {
         // Build query
         const query = {};
 
-        // Filter by role
+        // Filter by role (cụ thể)
         if (roleFilter) {
             const role = await Role.findOne({ name: roleFilter });
             if (role) {
                 query.roles = role._id;
+            }
+        } else if (kindFilter) {
+            // Lọc theo loại tài khoản (staff / customer) khi không chọn role cụ thể
+            if (kindFilter === 'staff') {
+                const staffRoleNames = ['seller', 'warehouse_manager', 'manager', 'staff'];
+                const staffRoles = await Role.find({ name: { $in: staffRoleNames } }).select('_id');
+                const ids = staffRoles.map((r) => r._id);
+                if (ids.length) {
+                    query.roles = { $in: ids };
+                } else {
+                    // Nếu chưa seed roles, trả rỗng
+                    query.roles = { $in: [] };
+                }
+            } else if (kindFilter === 'customer') {
+                const userRole = await Role.findOne({ name: 'user' }).select('_id');
+                if (userRole) {
+                    query.roles = userRole._id;
+                } else {
+                    query.roles = { $in: [] };
+                }
             }
         }
 
@@ -135,6 +156,14 @@ export const createUser = async (req, res) => {
             return res.status(400).json({ message: 'Email đã tồn tại' });
         }
 
+        // Kiểm tra phoneNumber (nếu có) đã tồn tại
+        if (phoneNumber) {
+            const existingPhone = await User.findOne({ phoneNumber });
+            if (existingPhone) {
+                return res.status(400).json({ message: 'Số điện thoại đã được sử dụng bởi người dùng khác' });
+            }
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -224,6 +253,14 @@ export const updateUser = async (req, res) => {
             const existingUser = await User.findOne({ email, _id: { $ne: id } });
             if (existingUser) {
                 return res.status(400).json({ message: 'Email đã được sử dụng bởi người dùng khác' });
+            }
+        }
+
+        // Kiểm tra phoneNumber có bị trùng với user khác không
+        if (phoneNumber && phoneNumber !== user.phoneNumber) {
+            const existingPhone = await User.findOne({ phoneNumber, _id: { $ne: id } });
+            if (existingPhone) {
+                return res.status(400).json({ message: 'Số điện thoại đã được sử dụng bởi người dùng khác' });
             }
         }
 

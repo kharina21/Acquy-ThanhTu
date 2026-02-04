@@ -8,6 +8,7 @@ import ResetPasswordPage from '../pages/ResetPasswordPage';
 import HomePage from '../pages/HomePage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
+import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
@@ -59,6 +60,7 @@ export const AppRoutes = () => {
                         <Route path="/admin/products" element={<ProductManagementPage />} />
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
+                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 

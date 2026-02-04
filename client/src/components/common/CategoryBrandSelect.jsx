@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, ChevronUp, Pencil } from 'lucide-react';
 import { getCategories, createCategory, updateCategory } from '@/services/categoryService';
 import { getBrands, createBrand, updateBrand } from '@/services/brandService';
+import { getUsageDevices, createUsageDevice, updateUsageDevice } from '@/services/usageDeviceService';
 
 const CategoryBrandSelect = ({
-    type, // 'category' hoặc 'brand'
+    type, // 'category', 'brand' hoặc 'usageDevice'
     value, // ID hiện tại
     onChange, // (id, name) => void
     onCreateNew, // () => void - callback khi click "Tạo mới"
@@ -20,16 +21,19 @@ const CategoryBrandSelect = ({
     const [selectedItem, setSelectedItem] = useState(null);
     const dropdownRef = useRef(null);
 
-    const service = type === 'category'
-        ? { get: getCategories, create: createCategory, update: updateCategory }
-        : { get: getBrands, create: createBrand, update: updateBrand };
+    const service =
+        type === 'category'
+            ? { get: getCategories, create: createCategory, update: updateCategory, key: 'categories' }
+            : type === 'brand'
+                ? { get: getBrands, create: createBrand, update: updateBrand, key: 'brands' }
+                : { get: getUsageDevices, create: createUsageDevice, update: updateUsageDevice, key: 'usageDevices' };
 
     const fetchItems = async () => {
         setLoading(true);
         try {
             const res = await service.get();
             if (res.success) {
-                const itemsList = res.data[type === 'category' ? 'categories' : 'brands'] || [];
+                const itemsList = res.data[service.key] || [];
                 setItems(itemsList);
 
                 // Tìm selected item

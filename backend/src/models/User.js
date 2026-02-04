@@ -51,6 +51,15 @@ const userSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Unique phoneNumber nhưng cho phép rỗng (null / '')
+userSchema.index(
+    { phoneNumber: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { phoneNumber: { $nin: [null, ''] } },
+    }
+);
+
 const User = mongoose.model('User', userSchema);
 
 export default User;

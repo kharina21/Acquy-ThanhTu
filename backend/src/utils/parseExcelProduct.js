@@ -1,5 +1,23 @@
 import XLSX from 'xlsx';
 
+// Danh sách header bắt buộc (phải khớp đúng với file mẫu)
+export const EXPECTED_HEADERS = [
+    'Loại hàng',
+    'Thiết bị sử dụng',
+    'Thương hiệu',
+    'Mã hàng',
+    'Mã vạch',
+    'Tên hàng',
+    'Dung lượng (Ah)',
+    'Đơn giá nhập (VNĐ)',
+    'Đơn giá bán (VNĐ)',
+    'Tồn kho',
+    'Hình ảnh',
+    'Đang kinh doanh',
+    'Bảo hành',
+    'Ghi chú',
+];
+
 /**
  * Chuẩn hóa số từ ô Excel (VN: 1.550.000 -> 1550000)
  */
@@ -17,6 +35,7 @@ function parsePrice(value) {
  */
 export function rowToProduct(row, index) {
     const category = row['Loại hàng'] != null ? String(row['Loại hàng']).trim() : '';
+    const usageDeviceName = row['Thiết bị sử dụng'] != null ? String(row['Thiết bị sử dụng']).trim() : '';
     const brand = row['Thương hiệu'] != null ? String(row['Thương hiệu']).trim() : '';
     const sku = row['Mã hàng'] != null ? String(row['Mã hàng']).trim() : '';
     const barcode = row['Mã vạch'] != null ? String(row['Mã vạch']).trim() : '';
@@ -43,6 +62,7 @@ export function rowToProduct(row, index) {
 
     return {
         categoryName: category || '',
+        usageDeviceName: usageDeviceName || '',
         brandName: brand || '',
         sku: sku || `IM-${index + 1}`,
         barcode: barcode || '',
@@ -63,6 +83,31 @@ export function rowToProduct(row, index) {
 export function parseExcelBuffer(buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    // Đọc riêng dòng header để kiểm tra định dạng
+    const headerRows = XLSX.utils.sheet_to_json(firstSheet, {
+        header: 1,
+        range: 0,
+        blankrows: false,
+    });
+    const headerRow = headerRows[0] || [];
+
+    if (!headerRow.length) {
+        const errors = [{ row: 1, message: 'File Excel trống hoặc không có dòng tiêu đề (header).' }];
+        return { products: [], errors, headerError: true };
+    }
+
+    const missingHeaders = EXPECTED_HEADERS.filter((h) => !headerRow.includes(h));
+    if (missingHeaders.length > 0) {
+        const errors = [
+            {
+                row: 1,
+                message: `File Excel không đúng định dạng. Thiếu các cột: ${missingHeaders.join(', ')}. Hãy tải lại file mẫu và nhập đúng các cột này.`,
+            },
+        ];
+        return { products: [], errors, headerError: true };
+    }
+
     const data = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
     const products = [];
     const errors = [];
@@ -73,5 +118,5 @@ export function parseExcelBuffer(buffer) {
             errors.push({ row: index + 2, message: err.message || 'Lỗi dòng' });
         }
     });
-    return { products, errors };
+    return { products, errors, headerError: false };
 }

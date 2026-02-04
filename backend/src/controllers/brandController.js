@@ -172,6 +172,7 @@ export const deleteBrand = async (req, res) => {
 
         // Nếu đã migrate sang reference, kiểm tra Product.brand ref; nếu chưa thì fallback brandName
         const productCount = await Product.countDocuments({
+            isDeleted: false,
             $or: [{ brand: brand._id }, { brandName: brand.name }],
         });
 

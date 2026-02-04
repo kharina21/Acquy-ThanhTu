@@ -37,7 +37,7 @@ export default function AdminLayout({ children }) {
 
     return (
         <div className='drawer lg:drawer-open h-screen overflow-hidden'>
-            <input id='my-drawer-4' type='checkbox' className='drawer-toggle' />
+            <input id='my-drawer-4' type='checkbox' className='drawer-toggle' defaultChecked />
             <div className='drawer-content h-screen overflow-hidden flex flex-col'>
                 {/* Navbar */}
                 <nav className='navbar px-4 w-full bg-white border-b border-base-content/10 flex items-center justify-between'>
@@ -188,6 +188,17 @@ export default function AdminLayout({ children }) {
                             >
                                 <UsersRound className='my-1.5 inline-block size-4' aria-hidden="true" />
                                 <span className="is-drawer-close:hidden truncate">Người dùng</span>
+                            </Link>
+                        </li>
+                        <li className={cn(pathname === '/admin/staffs' && 'bg-base-content/10 border border-primary/30')}>
+                            <Link
+                                to='/admin/staffs'
+                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                data-tip="Nhân viên"
+                                aria-label="Quản lý nhân viên"
+                            >
+                                <UserRoundPen className='my-1.5 inline-block size-4' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate">Nhân viên</span>
                             </Link>
                         </li>
                         <li className={cn(pathname === '/admin/customers' && 'bg-base-content/10 border border-primary/30')}>

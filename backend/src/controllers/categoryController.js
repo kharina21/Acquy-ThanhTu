@@ -186,9 +186,9 @@ export const deleteCategory = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy loại hàng' });
         }
 
-        // Kiểm tra xem có sản phẩm nào đang sử dụng category này không
+        // Kiểm tra xem có sản phẩm nào đang sử dụng category này không (chỉ tính sản phẩm chưa xóa)
         // Product.category là ObjectId reference, không phải string
-        const productCount = await Product.countDocuments({ category: id });
+        const productCount = await Product.countDocuments({ category: id, isDeleted: false });
         if (productCount > 0) {
             return res.status(400).json({
                 message: `Không thể xóa loại hàng này vì có ${productCount} sản phẩm đang sử dụng`,

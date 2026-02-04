@@ -151,6 +151,10 @@ const UserTable = ({
     };
     // Open edit modal
     const openEditModal = (user) => {
+        if (isAdminUser(user)) {
+            toast.error('Không được chỉnh sửa thông tin tài khoản quản trị viên');
+            return;
+        }
         setSelectedUser(user);
         setFormData({
             username: user.username,
@@ -168,6 +172,10 @@ const UserTable = ({
 
     // Open role modal (mỗi user 1 vai trò)
     const openRoleModal = (user) => {
+        if (isAdminUser(user)) {
+            toast.error('Không được sửa đổi quyền tài khoản quản trị viên');
+            return;
+        }
         setSelectedUser(user);
         const currentRole = user.roles?.[0]?.name;
         setFormData({
@@ -179,6 +187,10 @@ const UserTable = ({
 
     // Open password modal
     const openPasswordModal = (user) => {
+        if (isAdminUser(user)) {
+            toast.error('Không được đặt lại mật khẩu tài khoản quản trị viên');
+            return;
+        }
         setSelectedUser(user);
         setFormData({ password: '' });
         setShowPasswordModal(true);
@@ -197,7 +209,7 @@ const UserTable = ({
         return descriptions[roleName] || defaultDescription || '';
     };
 
-    // User có vai trò admin thì không được xóa / sửa quyền
+    // User có vai trò admin thì không được thao tác trong UI
     const isAdminUser = (user) => user?.roles?.some((r) => r.name === 'admin');
 
     // Get role badge color
@@ -238,6 +250,11 @@ const UserTable = ({
     // Handle update status
     const handleUpdateStatus = (userId, newStatus, currentStatus, selectElement) => {
         const user = users.find(u => u._id === userId);
+        if (isAdminUser(user)) {
+            toast.error('Không được thay đổi trạng thái tài khoản quản trị viên');
+            if (selectElement) selectElement.value = currentStatus;
+            return;
+        }
         setConfirmModal({
             isOpen: true,
             title: 'Thay đổi trạng thái',
@@ -370,13 +387,14 @@ const UserTable = ({
                                             <select
                                                 className={`select select-sm select-bordered w-full max-w-xs ${getStatusBadgeColor(user.status || 'active')} focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1`}
                                                 value={user.status || 'active'}
+                                                disabled={isAdminUser(user)}
                                                 onChange={(e) => {
                                                     const newStatus = e.target.value;
                                                     const currentStatus = user.status || 'active';
                                                     if (newStatus !== currentStatus) {
                                                         const selectElement = e.target;
                                                         handleUpdateStatus(user._id, newStatus, currentStatus, selectElement);
-                                                        // Reset immediately - will be updated after confirmation
+                                                        // Reset immediately - sẽ được cập nhật sau khi xác nhận
                                                         selectElement.value = currentStatus;
                                                     }
                                                 }}
@@ -390,16 +408,22 @@ const UserTable = ({
                                         </td>
                                         <td className="text-sm">{formatDateTime(user.createdAt)}</td>
                                         <td>
-                                            <div className="flex gap-2 justify-center">
-                                                <button
-                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
-                                                    onClick={() => openEditModal(user)}
-                                                    title="Chỉnh sửa"
-                                                    aria-label={`Chỉnh sửa người dùng ${user.firstName} ${user.lastName}`}
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </button>
-                                                {!isAdminUser(user) && (
+                                            {isAdminUser(user) ? (
+                                                <div className="text-[11px] text-base-content/60 italic text-center leading-snug">
+                                                    Tài khoản quản trị viên
+                                                    <br />
+                                                    Không cho phép thao tác
+                                                </div>
+                                            ) : (
+                                                <div className="flex gap-2 justify-center">
+                                                    <button
+                                                        className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                                                        onClick={() => openEditModal(user)}
+                                                        title="Chỉnh sửa"
+                                                        aria-label={`Chỉnh sửa người dùng ${user.firstName} ${user.lastName}`}
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </button>
                                                     <button
                                                         className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                                                         onClick={() => openRoleModal(user)}
@@ -408,16 +432,14 @@ const UserTable = ({
                                                     >
                                                         <Shield className="w-4 h-4" />
                                                     </button>
-                                                )}
-                                                <button
-                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
-                                                    onClick={() => openPasswordModal(user)}
-                                                    title="Đặt lại mật khẩu"
-                                                    aria-label={`Đặt lại mật khẩu cho ${user.firstName} ${user.lastName}`}
-                                                >
-                                                    <Key className="w-4 h-4" />
-                                                </button>
-                                                {!isAdminUser(user) && (
+                                                    <button
+                                                        className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                                                        onClick={() => openPasswordModal(user)}
+                                                        title="Đặt lại mật khẩu"
+                                                        aria-label={`Đặt lại mật khẩu cho ${user.firstName} ${user.lastName}`}
+                                                    >
+                                                        <Key className="w-4 h-4" />
+                                                    </button>
                                                     <button
                                                         className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
                                                         onClick={() => handleDeleteUser(user._id)}
@@ -426,8 +448,8 @@ const UserTable = ({
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -496,7 +518,7 @@ const UserTable = ({
                             <div className="modal-action">
                                 <button
                                     type="button"
-                                    className="btn btn-ghost"
+                                    className="btn btn-ghost btn-sm"
                                     onClick={() => {
                                         setShowRoleModal(false);
                                         resetForm();
@@ -504,7 +526,7 @@ const UserTable = ({
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={submitting || !formData.roles?.[0]}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || !formData.roles?.[0]}>
                                     {submitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>
@@ -632,7 +654,7 @@ const UserTable = ({
                             <div className="modal-action">
                                 <button
                                     type="button"
-                                    className="btn btn-ghost"
+                                    className="btn btn-ghost btn-sm"
                                     onClick={() => {
                                         setShowEditModal(false);
                                         resetForm();
@@ -640,7 +662,7 @@ const UserTable = ({
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
                                     {submitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>
@@ -685,7 +707,7 @@ const UserTable = ({
                             <div className="modal-action">
                                 <button
                                     type="button"
-                                    className="btn btn-ghost"
+                                    className="btn btn-ghost btn-sm"
                                     onClick={() => {
                                         setShowPasswordModal(false);
                                         resetForm();
@@ -693,7 +715,7 @@ const UserTable = ({
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
                                     {submitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>

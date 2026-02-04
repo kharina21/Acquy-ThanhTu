@@ -18,14 +18,19 @@ const productSchema = new mongoose.Schema(
         sku: { type: String, required: true, trim: true },
         barcode: { type: String, default: '' },
         name: { type: String, required: true, trim: true },
+        usageDevice: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'UsageDevice',
+            default: null,
+        }, // Thiết bị sử dụng
         capacity: { type: String, default: '' },
         costPrice: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
         image: { type: String, default: '' },
         images: { type: [String], default: [] },
         isActive: { type: Boolean, default: true },
+        isDeleted: { type: Boolean, default: false },
         warrantyText: { type: String, default: '' },
-        warrantyMonths: { type: Number, default: null },
         notes: { type: String, default: '' },
     },
     { timestamps: true }
@@ -33,6 +38,7 @@ const productSchema = new mongoose.Schema(
 
 productSchema.index({ sku: 1 }, { unique: true });
 productSchema.index({ name: 'text', sku: 'text' });
+productSchema.index({ isDeleted: 1 });
 
 const Product = mongoose.model('Product', productSchema);
 

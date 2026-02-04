@@ -50,7 +50,7 @@ const createUserSchema = z.object({
     status: z.enum(['active', 'inactive', 'banned', 'suspended']).default('active'),
 });
 
-const Header = ({ roles, triggerRefresh }) => {
+const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', subtitle = 'Quản lý tài khoản và phân quyền người dùng', showCreateButton = true }) => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [roleSelected, setRoleSelected] = useState(''); // Mỗi user chỉ 1 vai trò
@@ -148,21 +148,23 @@ const Header = ({ roles, triggerRefresh }) => {
     return (
         <div className="flex justify-between items-center mb-6">
             <div>
-                <h1 className="text-3xl font-bold text-base-content mb-2">Quản lý người dùng</h1>
-                <p className="text-base-content/60">Quản lý tài khoản và phân quyền người dùng</p>
+                <h1 className="text-3xl font-bold text-base-content mb-2">{title}</h1>
+                <p className="text-base-content/60">{subtitle}</p>
             </div>
-            <button
-                className="btn btn-primary gap-2"
-                onClick={() => {
-                    reset();
-                    setRoleSelected('');
-                    setServerError('');
-                    setShowCreateModal(true);
-                }}
-            >
-                <UserRoundPlus className="w-5 h-5" />
-                Tạo người dùng
-            </button>
+            {showCreateButton && (
+                <button
+                    className="btn btn-primary btn-sm gap-2"
+                    onClick={() => {
+                        reset();
+                        setRoleSelected('');
+                        setServerError('');
+                        setShowCreateModal(true);
+                    }}
+                >
+                    <UserRoundPlus className="w-5 h-5" />
+                    Tạo người dùng
+                </button>
+            )}
 
             {/* Create User Modal */}
             {showCreateModal && (
@@ -352,7 +354,7 @@ const Header = ({ roles, triggerRefresh }) => {
                             <div className="modal-action">
                                 <button
                                     type="button"
-                                    className="btn btn-ghost"
+                                    className="btn btn-ghost btn-sm"
                                     onClick={() => {
                                         setShowCreateModal(false);
                                         reset();
@@ -362,7 +364,7 @@ const Header = ({ roles, triggerRefresh }) => {
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={isSubmitting}>
                                     {isSubmitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>

@@ -3,12 +3,13 @@ import api from '@/lib/axios';
 
 /**
  * Service quản lý sản phẩm.
- * Format Excel: 13 cột - Loại hàng, Thương hiệu, Mã hàng, Mã vạch, Tên hàng, Dung lượng (Ah),
+ * Format Excel: 14 cột - Loại hàng, Thiết bị sử dụng, Thương hiệu, Mã hàng, Mã vạch, Tên hàng, Dung lượng (Ah),
  * Đơn giá nhập (VNĐ), Đơn giá bán (VNĐ), Tồn kho, Hình ảnh, Đang kinh doanh, Bảo hành, Ghi chú.
  */
 
 const HEADERS = [
     'Loại hàng',
+    'Thiết bị sử dụng',
     'Thương hiệu',
     'Mã hàng',
     'Mã vạch',
@@ -29,9 +30,9 @@ const HEADERS = [
 export const generateSampleExcelBlob = () => {
     const sampleData = [
         HEADERS,
-        ['Ắc quy', 'ATLASBX', 'Xpro 90', '', 'Ắc Quy X-PRO 90AH', '90Ah', 1550000, 1750000, 35, '', 1, '12 tháng', ''],
-        ['Ắc quy', 'ATLASBX', 'N45LS', '', 'Ắc Quy ATLASBX N45LS (Cọc Thuận)', '45Ah', 780000, 980000, 25, '', 1, '12 tháng', ''],
-        ['Ắc quy', 'PINACO', 'NS40', '', 'Ắc Quy PINACO NS40', '40Ah', 800000, 1000000, 16, '', 1, '30 ngày', 'Ắc quy nắp liền (Miễn bảo dưỡng)'],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'Xpro 90', '', 'Ắc Quy X-PRO 90AH', '90Ah', 1550000, 1750000, 35, '', 1, '12 tháng', ''],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'N45LS', '', 'Ắc Quy ATLASBX N45LS (Cọc Thuận)', '45Ah', 780000, 980000, 25, '', 1, '12 tháng', ''],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'PINACO', 'NS40', '', 'Ắc Quy PINACO NS40', '40Ah', 800000, 1000000, 16, '', 1, '30 ngày', 'Ắc quy nắp liền (Miễn bảo dưỡng)'],
     ];
     const ws = XLSX.utils.aoa_to_sheet(sampleData);
     const wb = XLSX.utils.book_new();
@@ -45,10 +46,18 @@ export const generateSampleExcelBlob = () => {
  */
 export const getProducts = async (params = {}) => {
     try {
-        const { page = 1, limit = 10, search = '', locationId } = params;
-        const { data } = await api.get('/products', {
-            params: { page, limit, search: search || undefined, locationId: locationId || undefined },
+        const { page = 1, limit = 10, search = '', ...rest } = params;
+        const query = {
+            page,
+            limit,
+            search: search || undefined,
+        };
+        Object.entries(rest).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query[key] = value;
+            }
         });
+        const { data } = await api.get('/products', { params: query });
         return data?.success
             ? data
             : { success: false, data: { products: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } } };
