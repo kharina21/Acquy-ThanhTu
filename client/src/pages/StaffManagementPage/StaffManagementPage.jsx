@@ -95,11 +95,20 @@ const StaffManagementPage = () => {
     });
     const [weekStart, setWeekStart] = useState(() => {
         const today = new Date();
-        const day = today.getDay() || 7; // Mon=1...Sun=7
-        if (day !== 1) {
-            today.setDate(today.getDate() - day + 1);
+        const day = today.getDay(); // 0=Chủ nhật, 1=Thứ 2, ..., 6=Thứ 7
+        // Tính toán để lùi về Thứ 2 của tuần hiện tại
+        if (day === 0) {
+            // Nếu là Chủ nhật, lùi 6 ngày về Thứ 2
+            today.setDate(today.getDate() - 6);
+        } else if (day !== 1) {
+            // Nếu không phải Thứ 2, lùi về Thứ 2 (lùi day-1 ngày)
+            today.setDate(today.getDate() - (day - 1));
         }
-        return today.toISOString().slice(0, 10);
+        // Format date thành YYYY-MM-DD dùng local date components để tránh timezone issues
+        const dateYear = today.getFullYear();
+        const dateMonth = String(today.getMonth() + 1).padStart(2, '0');
+        const dateDay = String(today.getDate()).padStart(2, '0');
+        return `${dateYear}-${dateMonth}-${dateDay}`;
     });
 
     const fetchLocations = async () => {
@@ -158,9 +167,15 @@ const StaffManagementPage = () => {
             setLoadingSchedules(true);
             // Tự động set khoảng ngày theo tuần hiện tại
             const start = weekStart;
-            const endDate = new Date(weekStart);
+            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+            const [year, month, day] = weekStart.split('-').map(Number);
+            const endDate = new Date(year, month - 1, day);
             endDate.setDate(endDate.getDate() + 6);
-            const end = endDate.toISOString().slice(0, 10);
+            // Format date thành YYYY-MM-DD dùng local date components
+            const endYear = endDate.getFullYear();
+            const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
+            const endDay = String(endDate.getDate()).padStart(2, '0');
+            const end = `${endYear}-${endMonth}-${endDay}`;
 
             // Tăng limit để fetch đủ schedules cho cả tuần (7 ngày * số nhân viên có thể có nhiều ca)
             const params = {
@@ -727,9 +742,15 @@ const StaffManagementPage = () => {
                                         type="button"
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => {
-                                            const d = new Date(weekStart);
+                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                            const [year, month, day] = weekStart.split('-').map(Number);
+                                            const d = new Date(year, month - 1, day);
                                             d.setDate(d.getDate() - 7);
-                                            setWeekStart(d.toISOString().slice(0, 10));
+                                            // Format date thành YYYY-MM-DD dùng local date components
+                                            const dateYear = d.getFullYear();
+                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
+                                            const dateDay = String(d.getDate()).padStart(2, '0');
+                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
                                             setSchedulePagination((prev) => ({ ...prev, page: 1 }));
                                         }}
                                     >
@@ -740,11 +761,20 @@ const StaffManagementPage = () => {
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => {
                                             const today = new Date();
-                                            const day = today.getDay() || 7;
-                                            if (day !== 1) {
-                                                today.setDate(today.getDate() - day + 1);
+                                            const day = today.getDay(); // 0=Chủ nhật, 1=Thứ 2, ..., 6=Thứ 7
+                                            // Tính toán để lùi về Thứ 2 của tuần hiện tại
+                                            if (day === 0) {
+                                                // Nếu là Chủ nhật, lùi 6 ngày về Thứ 2
+                                                today.setDate(today.getDate() - 6);
+                                            } else if (day !== 1) {
+                                                // Nếu không phải Thứ 2, lùi về Thứ 2 (lùi day-1 ngày)
+                                                today.setDate(today.getDate() - (day - 1));
                                             }
-                                            setWeekStart(today.toISOString().slice(0, 10));
+                                            // Format date thành YYYY-MM-DD dùng local date components
+                                            const dateYear = today.getFullYear();
+                                            const dateMonth = String(today.getMonth() + 1).padStart(2, '0');
+                                            const dateDay = String(today.getDate()).padStart(2, '0');
+                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
                                             setSchedulePagination((prev) => ({ ...prev, page: 1 }));
                                         }}
                                     >
@@ -754,9 +784,15 @@ const StaffManagementPage = () => {
                                         type="button"
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => {
-                                            const d = new Date(weekStart);
+                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                            const [year, month, day] = weekStart.split('-').map(Number);
+                                            const d = new Date(year, month - 1, day);
                                             d.setDate(d.getDate() + 7);
-                                            setWeekStart(d.toISOString().slice(0, 10));
+                                            // Format date thành YYYY-MM-DD dùng local date components
+                                            const dateYear = d.getFullYear();
+                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
+                                            const dateDay = String(d.getDate()).padStart(2, '0');
+                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
                                             setSchedulePagination((prev) => ({ ...prev, page: 1 }));
                                         }}
                                     >
@@ -790,35 +826,37 @@ const StaffManagementPage = () => {
                                     <thead className="bg-blue-100">
                                         <tr>
                                             <th className="w-64 border border-base-300">Nhân viên</th>
-                                            {Array.from({ length: 7 }).map((_, idx) => {
-                                                const d = new Date(weekStart);
-                                                d.setDate(d.getDate() + idx);
-                                                const day = d.getDay();
-                                                const weekday =
-                                                    day === 1
-                                                        ? 'Thứ hai'
-                                                        : day === 2
-                                                            ? 'Thứ ba'
-                                                            : day === 3
-                                                                ? 'Thứ tư'
-                                                                : day === 4
-                                                                    ? 'Thứ năm'
-                                                                    : day === 5
-                                                                        ? 'Thứ sáu'
-                                                                        : day === 6
-                                                                            ? 'Thứ bảy'
-                                                                            : 'Chủ nhật';
-                                                return (
-                                                    <th key={idx} className="text-center min-w-40 border border-base-300">
-                                                        <div className="flex flex-col items-center text-xs">
-                                                            <span>{weekday}</span>
-                                                            <span className="font-semibold">
-                                                                {d.getDate()}/{d.getMonth() + 1}
-                                                            </span>
-                                                        </div>
-                                                    </th>
-                                                );
-                                            })}
+                                            {(() => {
+                                                // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                                const [year, month, day] = weekStart.split('-').map(Number);
+                                                const weekStartDate = new Date(year, month - 1, day);
+
+                                                // Tạo mảng 7 ngày: Thứ 2 (idx=0) đến Chủ nhật (idx=6)
+                                                // weekStart luôn là Thứ 2, nên ta tạo: Thứ 2, Thứ 3, Thứ 4, Thứ 5, Thứ 6, Thứ 7, Chủ nhật
+                                                const days = [];
+                                                for (let i = 0; i < 7; i++) {
+                                                    const d = new Date(weekStartDate);
+                                                    d.setDate(weekStartDate.getDate() + i);
+                                                    days.push(d);
+                                                }
+                                                // Tên các ngày theo thứ tự hiển thị: Thứ 2, Thứ 3, Thứ 4, Thứ 5, Thứ 6, Thứ 7, Chủ nhật
+                                                // Dùng index thay vì getDay() để đảm bảo thứ tự hiển thị đúng
+                                                const weekdayNames = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'];
+                                                return days.map((d, idx) => {
+                                                    // Dùng index để đảm bảo thứ tự: idx=0 là Thứ 2, idx=6 là Chủ nhật
+                                                    const weekday = weekdayNames[idx];
+                                                    return (
+                                                        <th key={idx} className="text-center min-w-40 border border-base-300">
+                                                            <div className="flex flex-col items-center text-xs">
+                                                                <span>{weekday}</span>
+                                                                <span className="font-semibold">
+                                                                    {d.getDate()}/{d.getMonth() + 1}
+                                                                </span>
+                                                            </div>
+                                                        </th>
+                                                    );
+                                                });
+                                            })()}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -835,16 +873,19 @@ const StaffManagementPage = () => {
                                                     </div>
                                                 </td>
                                                 {Array.from({ length: 7 }).map((_, idx) => {
-                                                    // Tính toán date cho từng ngày trong tuần, tránh timezone issues
-                                                    const weekStartDate = new Date(weekStart);
+                                                    // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                                    const [year, month, day] = weekStart.split('-').map(Number);
+                                                    const weekStartDate = new Date(year, month - 1, day);
+
+                                                    // Tính toán date cho từng ngày trong tuần
                                                     const d = new Date(weekStartDate);
                                                     d.setDate(weekStartDate.getDate() + idx);
-                                                    const day = d.getDay(); // 0 = Chủ nhật, 6 = Thứ bảy
-                                                    // Format date thành YYYY-MM-DD để tránh timezone issues
-                                                    const year = d.getFullYear();
-                                                    const month = String(d.getMonth() + 1).padStart(2, '0');
-                                                    const dayNum = String(d.getDate()).padStart(2, '0');
-                                                    const dateKey = `${year}-${month}-${dayNum}`;
+
+                                                    // Format date thành YYYY-MM-DD
+                                                    const dateYear = d.getFullYear();
+                                                    const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
+                                                    const dateDay = String(d.getDate()).padStart(2, '0');
+                                                    const dateKey = `${dateYear}-${dateMonth}-${dateDay}`;
                                                     const cellSchedules = schedules.filter((sch) => {
                                                         // Xử lý cả Date object và string - đảm bảo format đúng
                                                         let schDate = '';
@@ -961,8 +1002,12 @@ const StaffManagementPage = () => {
                                                                     type="button"
                                                                     className="cursor-pointer justify-start h-7 px-1 text-[11px] text-primary hover:bg-primary/10 opacity-0 group-hover/cell:opacity-100 transition-opacity"
                                                                     onClick={() => {
-                                                                        const iso = d.toISOString().slice(0, 10);
-                                                                        openScheduleCreateModal(emp._id, iso);
+                                                                        // Dùng local date components để tránh timezone issues
+                                                                        const year = d.getFullYear();
+                                                                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                                                                        const day = String(d.getDate()).padStart(2, '0');
+                                                                        const dateStr = `${year}-${month}-${day}`;
+                                                                        openScheduleCreateModal(emp._id, dateStr);
                                                                     }}
                                                                 >
                                                                     + Thêm lịch
