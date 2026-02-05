@@ -21,9 +21,19 @@ export function Header({ user, onLogout }) {
 
           <div className="flex items-center gap-4">
             {/* Thanh tìm kiếm */}
-            <div className="relative hidden md:block">
-              <input type="text" placeholder="Tìm kiếm..." className="px-3 py-1.5 border rounded-md text-sm w-48" />
-              <Search className="absolute right-2 top-2 w-4 h-4 text-gray-400" />
+            <div className="relative hidden lg:block flex-1 max-w-xl mx-10">
+              <input
+                type="text"
+                placeholder="Bạn cần tìm loại ắc quy nào? (VD: GS, Pinaco, Atlas...)"
+                className="w-full px-5 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-full text-sm 
+               focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 
+               transition-all outline-none pr-12"
+              />
+              <div className="absolute right-1 top-1 bottom-1 flex items-center">
+                <Button size="icon" variant="ghost" className="rounded-full hover:bg-blue-50 text-blue-600">
+                  <Search className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
 
             {/* Xử lý nút Đăng nhập / User */}
@@ -33,7 +43,7 @@ export function Header({ user, onLogout }) {
                   <Button variant="outline" size="sm" className="gap-2">
                     <User className="w-4 h-4" /> {user.name}
                   </Button>
-                  
+
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent align="end" className="w-48">
