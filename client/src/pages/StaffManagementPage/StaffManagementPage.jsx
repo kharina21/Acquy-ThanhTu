@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router';
 import Header from '../UserManagementPage/Header';
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
@@ -6,7 +7,7 @@ import { getUsers } from '@/services/userService';
 import { getWorkSchedules, createWorkSchedule, updateWorkSchedule, deleteWorkSchedule } from '@/services/workScheduleService';
 import { getShifts, createShift, updateShift, deleteShift } from '@/services/shiftService';
 import { toast } from 'sonner';
-import { Edit, Trash2, Plus, X } from 'lucide-react';
+import { Edit, Trash2, Plus, X, ChevronRight, ChevronLeft } from 'lucide-react';
 
 // Helper function để parse time string (HH:mm) thành {hour, minute}
 const parseTime = (timeStr) => {
@@ -29,6 +30,9 @@ const hourOptions = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '
 const minuteOptions = ['00', '15', '30', '45'];
 
 const StaffManagementPage = () => {
+    const location = useLocation();
+    const isSchedulePage = location.pathname === '/admin/staffs/schedule';
+
     const [employees, setEmployees] = useState([]);
     const [locations, setLocations] = useState([]);
     const [pagination, setPagination] = useState({
@@ -54,7 +58,6 @@ const StaffManagementPage = () => {
     });
     const [staffUsers, setStaffUsers] = useState([]);
     const [selectedUserId, setSelectedUserId] = useState('');
-    const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'schedule'
 
     const [scheduleFilters, setScheduleFilters] = useState({
         locationId: '',
@@ -222,12 +225,12 @@ const StaffManagementPage = () => {
     };
 
     useEffect(() => {
-        if (activeTab === 'schedule') {
+        if (isSchedulePage) {
             fetchSchedules();
             fetchShifts();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, weekStart, schedulePagination.page, schedulePagination.limit, scheduleFilters.locationId, scheduleFilters.employeeId]);
+    }, [isSchedulePage, weekStart, schedulePagination.page, schedulePagination.limit, scheduleFilters.locationId, scheduleFilters.employeeId]);
 
     const openEditModal = (employee) => {
         setEditingEmployee(employee);
@@ -523,33 +526,11 @@ const StaffManagementPage = () => {
     return (
         <div className="flex-1 px-6 py-8 bg-base-200 overflow-y-auto">
             <div className="space-y-4">
-                <Header
-                    roles={[]}
-                    triggerRefresh={fetchEmployees}
-                    title="Quản lý nhân viên"
-                    subtitle="Quản lý hồ sơ nhân sự: chi nhánh, lương cơ bản, ngày vào làm, trạng thái"
-                    showCreateButton={false}
-                />
+                <h1 className="text-2xl font-bold">
+                    {isSchedulePage ? 'Lịch làm việc' : 'Danh sách nhân viên'}
+                </h1>
 
-                {/* Tabs cho Quản lý nhân viên */}
-                <div className="tabs tabs-lifted bg-base-100">
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'profile' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('profile')}
-                    >
-                        Hồ sơ nhân viên
-                    </button>
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'schedule' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('schedule')}
-                    >
-                        Lịch làm việc
-                    </button>
-                </div>
-
-                {activeTab === 'profile' && (
+                {!isSchedulePage && (
                     <div className="space-y-4">
                         {/* Bộ lọc nhân viên + nút tạo hồ sơ */}
                         <div className="bg-base-100 rounded-lg shadow p-4 flex flex-wrap gap-4 items-end justify-between">
@@ -714,7 +695,7 @@ const StaffManagementPage = () => {
                                                 onClick={() => handlePageChange(pagination.page - 1)}
                                                 disabled={pagination.page <= 1}
                                             >
-                                                «
+                                                <ChevronLeft />
                                             </button>
                                             <button
                                                 type="button"
@@ -722,7 +703,7 @@ const StaffManagementPage = () => {
                                                 onClick={() => handlePageChange(pagination.page + 1)}
                                                 disabled={pagination.page >= pagination.totalPages}
                                             >
-                                                »
+                                                <ChevronRight />
                                             </button>
                                         </div>
                                     </div>
@@ -732,7 +713,7 @@ const StaffManagementPage = () => {
                     </div>
                 )}
 
-                {activeTab === 'schedule' && (
+                {isSchedulePage && (
                     <div>
                         <div className="space-y-4">
                             {/* Thanh điều hướng tuần + tìm kiếm */}
@@ -754,8 +735,54 @@ const StaffManagementPage = () => {
                                             setSchedulePagination((prev) => ({ ...prev, page: 1 }));
                                         }}
                                     >
-                                        « Tuần trước
+                                        <ChevronLeft />
                                     </button>
+
+                                    {(() => {
+                                        // Parse weekStart từ string "YYYY-MM-DD"
+                                        const [year, month, day] = weekStart.split('-').map(Number);
+                                        const date = new Date(year, month - 1, day);
+
+                                        // Tìm tuần thứ mấy trong tháng
+                                        // Giả sử tuần bắt đầu từ Thứ 2
+                                        const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+                                        // Tìm thứ của ngày đầu tháng (0: Chủ nhật, 1: Thứ 2, ...)
+                                        let firstDayOfWeek = firstOfMonth.getDay();
+                                        if (firstDayOfWeek === 0) firstDayOfWeek = 7; // Chuyển Chủ nhật thành 7
+
+                                        // Tính số ngày cần dịch để đến thứ 2 của tuần đầu tháng
+                                        const daysOffset = 1 - firstDayOfWeek;
+                                        const firstMonday = new Date(firstOfMonth);
+                                        firstMonday.setDate(firstOfMonth.getDate() + daysOffset);
+
+                                        // Tính số tuần: lấy số ngày giữa ngày đang xét và "firstMonday", chia cho 7 và làm tròn lên
+                                        const diff = Math.floor((date - firstMonday) / (7 * 24 * 60 * 60 * 1000));
+                                        const weekNum = diff + 1;
+
+                                        const monthStr = `th. ${date.getMonth() + 1}`;
+                                        const yearStr = date.getFullYear();
+
+                                        return `Tuần ${weekNum} - ${monthStr} ${yearStr}`;
+                                    })()}
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => {
+                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                            const [year, month, day] = weekStart.split('-').map(Number);
+                                            const d = new Date(year, month - 1, day);
+                                            d.setDate(d.getDate() + 7);
+                                            // Format date thành YYYY-MM-DD dùng local date components
+                                            const dateYear = d.getFullYear();
+                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
+                                            const dateDay = String(d.getDate()).padStart(2, '0');
+                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
+                                            setSchedulePagination((prev) => ({ ...prev, page: 1 }));
+                                        }}
+                                    >
+                                        <ChevronRight />
+                                    </button>
+
                                     <button
                                         type="button"
                                         className="btn btn-ghost btn-xs"
@@ -780,26 +807,9 @@ const StaffManagementPage = () => {
                                     >
                                         Tuần này
                                     </button>
-                                    <button
-                                        type="button"
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => {
-                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
-                                            const [year, month, day] = weekStart.split('-').map(Number);
-                                            const d = new Date(year, month - 1, day);
-                                            d.setDate(d.getDate() + 7);
-                                            // Format date thành YYYY-MM-DD dùng local date components
-                                            const dateYear = d.getFullYear();
-                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
-                                            const dateDay = String(d.getDate()).padStart(2, '0');
-                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
-                                            setSchedulePagination((prev) => ({ ...prev, page: 1 }));
-                                        }}
-                                    >
-                                        Tuần sau »
-                                    </button>
                                 </div>
                             </div>
+                            {/* Thêm ca làm việc */}
                             <div className="flex gap-2">
                                 <button
                                     type="button"

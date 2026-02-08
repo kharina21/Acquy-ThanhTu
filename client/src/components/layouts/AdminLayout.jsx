@@ -152,87 +152,138 @@ export default function AdminLayout({ children }) {
                     aria-label='close sidebar'
                     className='drawer-overlay'
                 ></label>
-                <div className='flex min-h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64'>
+                <div className='flex min-h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300'>
                     {/* Sidebar content here */}
-                    <ul className='menu w-full grow text-white font-semibold text-md space-y-2'>
+                    <ul className='w-full grow text-white space-y-1 px-2 py-4'>
                         {/* Tổng quan (gộp Trang chủ + Dashboard) */}
-                        <li className={cn((pathname === '/admin' || pathname === '/admin/dashboard') && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/admin'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    (pathname === '/admin' || pathname === '/admin/dashboard') && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Tổng quan"
                                 aria-label="Tổng quan"
                             >
-                                <LayoutDashboard className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Tổng quan</span>
+                                <LayoutDashboard className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Tổng quan</span>
                             </Link>
                         </li>
 
-                        <li className={cn(pathname === '/admin/products' && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/admin/products'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    pathname === '/admin/products' && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Sản phẩm"
                                 aria-label="Quản lý sản phẩm"
                             >
-                                <Package className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Sản phẩm</span>
+                                <Package className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Sản phẩm</span>
                             </Link>
                         </li>
-                        <li className={cn(pathname === '/users' && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/users'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    pathname === '/users' && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Người dùng"
                                 aria-label="Quản lý người dùng"
                             >
-                                <UsersRound className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Người dùng</span>
+                                <UsersRound className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Người dùng</span>
                             </Link>
                         </li>
-                        <li className={cn(pathname === '/admin/staffs' && 'bg-base-content/10 border border-primary/30')}>
-                            <Link
-                                to='/admin/staffs'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
-                                data-tip="Nhân viên"
-                                aria-label="Quản lý nhân viên"
-                            >
-                                <UserRoundPen className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Nhân viên</span>
-                            </Link>
+                        <li>
+                            <div className="relative group">
+                                <div
+                                    className={cn(
+                                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center cursor-pointer",
+                                        "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                        (pathname === '/admin/staffs' || pathname === '/admin/staffs/schedule') && 'bg-white/15 shadow-md'
+                                    )}
+                                    data-tip="Nhân viên"
+                                >
+                                    <UserRoundPen className='size-5 shrink-0' aria-hidden="true" />
+                                    <span className="is-drawer-close:hidden truncate font-medium">Nhân viên</span>
+                                </div>
+                                <div className="absolute is-drawer-close:left-full is-drawer-open:top-full is-drawer-close:top-0 is-drawer-open:left-0 is-drawer-close:w-4 is-drawer-open:w-full is-drawer-close:h-full is-drawer-open:h-2 opacity-0 pointer-events-none group-hover:pointer-events-auto z-40"></div>
+                                <div className="absolute is-drawer-close:left-full is-drawer-open:top-full is-drawer-close:top-0 is-drawer-open:left-0 is-drawer-close:ml-1 is-drawer-open:mt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-50">
+                                    <div className="bg-white rounded-lg shadow-xl border border-gray-200 min-w-[200px] py-1 overflow-hidden">
+                                        <Link
+                                            to='/admin/staffs'
+                                            className={cn(
+                                                "block px-4 py-2.5 text-gray-700 hover:bg-gray-100 transition-colors duration-150 text-sm font-medium",
+                                                pathname === '/admin/staffs' && 'bg-primary text-white hover:bg-primary/90'
+                                            )}
+                                        >
+                                            Danh sách nhân viên
+                                        </Link>
+                                        <Link
+                                            to='/admin/staffs/schedule'
+                                            className={cn(
+                                                "block px-4 py-2.5 text-gray-700 hover:bg-gray-100 transition-colors duration-150 text-sm font-medium",
+                                                pathname === '/admin/staffs/schedule' && 'bg-primary text-white hover:bg-primary/90'
+                                            )}
+                                        >
+                                            Lịch làm việc
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
                         </li>
-                        <li className={cn(pathname === '/admin/customers' && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/admin/customers'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    pathname === '/admin/customers' && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Khách hàng"
                                 aria-label="Quản lý khách hàng"
                             >
-                                <UsersRound className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Khách hàng</span>
+                                <UsersRound className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Khách hàng</span>
                             </Link>
                         </li>
-                        <li className={cn(pathname === '/admin/warehouses' && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/admin/warehouses'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    pathname === '/admin/warehouses' && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Kho hàng"
                                 aria-label="Quản lý kho hàng"
                             >
-                                <Boxes className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Kho hàng</span>
+                                <Boxes className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Kho hàng</span>
                             </Link>
                         </li>
 
-                        <li className={cn(pathname === '/profile' && 'bg-base-content/10 border border-primary/30')}>
+                        <li>
                             <Link
                                 to='/profile'
-                                className="is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary"
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                    "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                    pathname === '/profile' && 'bg-white/15 shadow-md'
+                                )}
                                 data-tip="Tài khoản"
                                 aria-label="Xem tài khoản"
                             >
-                                <UserRound className='my-1.5 inline-block size-4' aria-hidden="true" />
-                                <span className="is-drawer-close:hidden truncate">Tài khoản</span>
+                                <UserRound className='size-5 shrink-0' aria-hidden="true" />
+                                <span className="is-drawer-close:hidden truncate font-medium">Tài khoản</span>
                             </Link>
                         </li>
 
@@ -240,6 +291,6 @@ export default function AdminLayout({ children }) {
                     </ul>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
