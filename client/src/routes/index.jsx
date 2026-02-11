@@ -12,11 +12,13 @@ import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPag
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
+import ManagerReportsPage from '../pages/ManagerReportsPage/ManagerReportsPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
+import ManagerDashboard from '../components/dashboard/ManagerDashboard';
 import StaffDashboard from '../components/dashboard/StaffDashboard';
 
 // Route Guards
@@ -54,6 +56,13 @@ export const AppRoutes = () => {
                     <Route path="/profile" element={<ProfilePage />} />
 
                     {/* Admin + Manager: trang quản lý chung */}
+                    {/* Manager: dashboard riêng */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['manager']} />}>
+                        <Route path="/manager" element={<ManagerDashboard />} />
+                        <Route path="/manager/dashboard" element={<Navigate to="/manager" replace />} />
+                        <Route path="/manager/reports" element={<ManagerReportsPage />} />
+                    </Route>
+
                     <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager']} />}>
                         <Route path="/admin" element={<AdminDashboard />} />
                         <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />

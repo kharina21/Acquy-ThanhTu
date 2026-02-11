@@ -27,7 +27,7 @@ const DefaultRoute = () => {
 
     // Redirect dựa trên role (ưu tiên theo thứ tự)
     if (isAdmin) return <Navigate to='/admin' replace />;
-    if (isManager) return <Navigate to='/admin' replace />;
+    if (isManager) return <Navigate to='/manager' replace />;
     if (isWarehouseManager) return <Navigate to='/admin/warehouses' replace />;
     if (isSeller || isStaff) return <Navigate to='/staff/dashboard' replace />;
     if (isUser) return <Navigate to='/home' replace />;

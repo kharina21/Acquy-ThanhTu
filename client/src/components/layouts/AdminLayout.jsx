@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Boxes, Building2, ChevronDown, Columns2, LayoutDashboard, LogOut, MapPin, Package, Settings, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { Boxes, Building2, ChevronDown, Columns2, FileBarChart, LayoutDashboard, LogOut, MapPin, Package, Settings, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 import { getInitials, getPrimaryRole } from '@/lib/utils';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBranchStore } from '@/stores/useBranchStore';
@@ -12,7 +12,7 @@ export default function AdminLayout({ children }) {
     const pathname = useLocation().pathname;
     const navigate = useNavigate();
     const { logout, user } = useAuthStore();
-    const { hasAnyRole } = useUserRole();
+    const { hasAnyRole, isManager } = useUserRole();
     const {
         locations,
         currentLocationId,
@@ -155,14 +155,14 @@ export default function AdminLayout({ children }) {
                 <div className='flex min-h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300'>
                     {/* Sidebar content here */}
                     <ul className='w-full grow text-white space-y-1 px-2 py-4'>
-                        {/* Tổng quan (gộp Trang chủ + Dashboard) */}
+                        {/* Tổng quan - manager → /manager, admin → /admin */}
                         <li>
                             <Link
-                                to='/admin'
+                                to={isManager ? '/manager' : '/admin'}
                                 className={cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
                                     "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
-                                    (pathname === '/admin' || pathname === '/admin/dashboard') && 'bg-white/15 shadow-md'
+                                    (pathname === '/admin' || pathname === '/admin/dashboard' || pathname === '/manager' || pathname === '/manager/dashboard') && 'bg-white/15 shadow-md'
                                 )}
                                 data-tip="Tổng quan"
                                 aria-label="Tổng quan"
@@ -171,6 +171,25 @@ export default function AdminLayout({ children }) {
                                 <span className="is-drawer-close:hidden truncate font-medium">Tổng quan</span>
                             </Link>
                         </li>
+
+                        {/* Báo cáo - chỉ manager */}
+                        {isManager && (
+                            <li>
+                                <Link
+                                    to='/manager/reports'
+                                    className={cn(
+                                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center",
+                                        "hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50",
+                                        pathname === '/manager/reports' && 'bg-white/15 shadow-md'
+                                    )}
+                                    data-tip="Báo cáo"
+                                    aria-label="Báo cáo"
+                                >
+                                    <FileBarChart className='size-5 shrink-0' aria-hidden="true" />
+                                    <span className="is-drawer-close:hidden truncate font-medium">Báo cáo</span>
+                                </Link>
+                            </li>
+                        )}
 
                         <li>
                             <Link
