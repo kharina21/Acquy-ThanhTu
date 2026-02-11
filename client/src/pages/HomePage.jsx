@@ -16,19 +16,19 @@ const HomePage = () => {
 
     // Định nghĩa các hàm xử lý để Header không bị lỗi "undefined"
     const handleLogin = (email, password) => {
-        toast.success(`Đang đăng nhập với: ${email}`);
+        toast.success(`Đang đăng nhập với: ${email} !`);
     };
 
     const handleRegister = (name, email, password) => {
-        toast.success(`Đăng ký cho: ${name}`);
+        toast.success(`Đăng ký cho: ${name} !`);
     };
 
     const handleLogout = async () => {
         try {
             await logout(); // Gọi hàm logout của Zustand để xóa token/user
-            toast.success('Đã đăng xuất thành công');
+            toast.success('Đã đăng xuất thành công ! ');
         } catch (error) {
-            toast.error('Lỗi khi đăng xuất');
+            toast.error('Lỗi khi đăng xuất !');
             console.error(error);
         }
     };
