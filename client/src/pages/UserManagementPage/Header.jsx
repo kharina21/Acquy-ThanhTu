@@ -81,10 +81,16 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
     const onSubmit = async (data) => {
         setServerError('');
 
+        // Bắt buộc admin phải chọn vai trò cho user, không cho để trống
+        if (!roleSelected) {
+            setServerError('Vui lòng chọn vai trò cho người dùng');
+            return;
+        }
+
         try {
             const formData = {
                 ...data,
-                roles: roleSelected ? [roleSelected] : [],
+                roles: [roleSelected],
             };
 
             const res = await createUser(formData);
@@ -175,7 +181,7 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="label">
-                                        <span className="label-text font-semibold">Username <span className='text-error'>*</span></span>
+                                        <span className="label-text font-semibold">Tên tài khoản <span className='text-error'>*</span></span>
                                     </label>
                                     <input
                                         type="text"
@@ -307,7 +313,7 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                                         onChange={(e) => setRoleSelected(e.target.value)}
                                     >
                                         <option value="">-- Chọn vai trò --</option>
-                                        {roles.filter((r) => ['user', 'seller', 'warehouse_manager', 'manager'].includes(r.name)).map((role) => (
+                                        {roles.filter((r) => !['admin'].includes(r.name)).map((role) => (
                                             <option key={role._id} value={role.name}>{role.name}</option>
                                         ))}
                                     </select>

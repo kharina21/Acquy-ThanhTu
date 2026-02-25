@@ -2,6 +2,15 @@ import mongoose from 'mongoose';
 
 const employeeSchema = new mongoose.Schema(
     {
+        /** Mã nhân viên, dạng NV00001, NV00002. Unique, có thể tự đặt hoặc để trống để tự tăng. */
+        empCode: {
+            type: String,
+            trim: true,
+            uppercase: true,
+            default: null,
+            sparse: true,
+            unique: true,
+        },
         user: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
@@ -48,7 +57,6 @@ const employeeSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-employeeSchema.index({ user: 1 });
 employeeSchema.index({ isDeleted: 1, isActive: 1 });
 
 const Employee = mongoose.model('Employee', employeeSchema);

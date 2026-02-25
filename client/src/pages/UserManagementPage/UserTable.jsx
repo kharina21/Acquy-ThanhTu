@@ -216,13 +216,8 @@ const UserTable = ({
     const getRoleBadgeColor = (roleName) => {
         const colors = {
             admin: 'badge-error',
-            manager: 'badge-info',
-            seller: 'badge-primary',
-            warehouse_manager: 'badge-secondary',
-            staff: 'badge-ghost',
-            user: 'badge-neutral',
         };
-        return colors[roleName] || 'badge-neutral';
+        return colors[roleName] || 'badge-primary';
     };
 
     // Get status badge color
@@ -507,12 +502,13 @@ const UserTable = ({
                                     onChange={(e) => setFormData({ ...formData, roles: e.target.value ? [e.target.value] : [] })}
                                 >
                                     <option value="">-- Chọn vai trò --</option>
-                                    {roles.filter((r) => ['user', 'seller', 'warehouse_manager', 'manager'].includes(r.name)).map((role) => (
-                                        <option key={role._id} value={role.name}>
-                                            {role.name}
-                                            {getRoleDescription(role.name, role.description) && ` - ${getRoleDescription(role.name, role.description)}`}
-                                        </option>
-                                    ))}
+                                    {roles
+                                        .filter((r) => r.name !== 'admin')
+                                        .map((role) => (
+                                            <option key={role._id} value={role.name}>
+                                                {role.name}
+                                            </option>
+                                        ))}
                                 </select>
                             </div>
                             <div className="modal-action">

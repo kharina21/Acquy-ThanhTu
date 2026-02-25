@@ -37,7 +37,6 @@ const locationSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-locationSchema.index({ code: 1 }, { unique: true });
 locationSchema.index({ isActive: 1 });
 
 const Location = mongoose.model('Location', locationSchema);

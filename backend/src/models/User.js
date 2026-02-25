@@ -47,8 +47,23 @@ const userSchema = new mongoose.Schema(
             enum: ['active', 'inactive', 'banned', 'suspended'],
             default: 'active',
         },
+        isDeleted: {
+            type: Boolean,
+            default: false,
+        },
     },
     { timestamps: true }
+);
+
+// Unique username chỉ áp dụng cho user chưa xóa (soft delete)
+userSchema.index(
+    { username: 1 },
+    { unique: true, partialFilterExpression: { isDeleted: { $ne: true } } }
+);
+// Unique email chỉ áp dụng cho user chưa xóa
+userSchema.index(
+    { email: 1 },
+    { unique: true, partialFilterExpression: { isDeleted: { $ne: true } } }
 );
 
 // Unique phoneNumber nhưng cho phép rỗng (null / '')

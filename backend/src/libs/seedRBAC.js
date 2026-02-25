@@ -65,12 +65,12 @@ const seedRoles = async (permissions) => {
 
     const roles = [
         {
-            name: 'user',
+            name: 'Người dùng thường',
             description: 'Khách hàng / người dùng web',
             permissions: [permissionMap.user?.read, permissionMap.product?.read, permissionMap.order?.create, permissionMap.order?.read].filter(Boolean),
         },
         {
-            name: 'seller',
+            name: 'Nhân viên bán hàng',
             description: 'Nhân viên bán hàng - Tạo đơn, xem sản phẩm, cập nhật đơn',
             permissions: [
                 permissionMap.user?.read,
@@ -82,7 +82,7 @@ const seedRoles = async (permissions) => {
             ].filter(Boolean),
         },
         {
-            name: 'warehouse_manager',
+            name: 'Quản lý kho',
             description: 'Quản lý kho - Kiểm kho, nhập/xuất, tồn',
             permissions: [
                 permissionMap.user?.read,
@@ -95,7 +95,7 @@ const seedRoles = async (permissions) => {
             ].filter(Boolean),
         },
         {
-            name: 'manager',
+            name: 'Quản lý chi nhánh',
             description: 'Quản lý cửa hàng - Nhân viên, sản phẩm, đơn hàng',
             permissions: [
                 permissionMap.user?.read,

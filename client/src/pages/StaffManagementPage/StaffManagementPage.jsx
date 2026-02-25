@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router';
 import Header from '../UserManagementPage/Header';
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
@@ -6,7 +7,7 @@ import { getUsers } from '@/services/userService';
 import { getWorkSchedules, createWorkSchedule, updateWorkSchedule, deleteWorkSchedule } from '@/services/workScheduleService';
 import { getShifts, createShift, updateShift, deleteShift } from '@/services/shiftService';
 import { toast } from 'sonner';
-import { Edit, Trash2, Plus, X } from 'lucide-react';
+import { Edit, Trash2, Plus, X, ChevronRight, ChevronLeft } from 'lucide-react';
 
 // Helper function để parse time string (HH:mm) thành {hour, minute}
 const parseTime = (timeStr) => {
@@ -29,6 +30,9 @@ const hourOptions = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '
 const minuteOptions = ['00', '15', '30', '45'];
 
 const StaffManagementPage = () => {
+    const location = useLocation();
+    const isSchedulePage = location.pathname === '/admin/staffs/schedule';
+
     const [employees, setEmployees] = useState([]);
     const [locations, setLocations] = useState([]);
     const [pagination, setPagination] = useState({
@@ -54,7 +58,7 @@ const StaffManagementPage = () => {
     });
     const [staffUsers, setStaffUsers] = useState([]);
     const [selectedUserId, setSelectedUserId] = useState('');
-    const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'schedule'
+    const [staffSelectOpen, setStaffSelectOpen] = useState(false);
 
     const [scheduleFilters, setScheduleFilters] = useState({
         locationId: '',
@@ -124,7 +128,11 @@ const StaffManagementPage = () => {
 
     const fetchStaffUsers = async () => {
         try {
-            const res = await getUsers({ kind: 'staff', limit: 1000 });
+            // Lấy tất cả người dùng trừ "Người dùng thường" và "admin"
+            const res = await getUsers({
+                limit: 1000,
+                excludeRoles: ['Người dùng thường', 'admin'],
+            });
             if (res.success) {
                 setStaffUsers(res.data.users || []);
             }
@@ -222,16 +230,17 @@ const StaffManagementPage = () => {
     };
 
     useEffect(() => {
-        if (activeTab === 'schedule') {
+        if (isSchedulePage) {
             fetchSchedules();
             fetchShifts();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, weekStart, schedulePagination.page, schedulePagination.limit, scheduleFilters.locationId, scheduleFilters.employeeId]);
+    }, [isSchedulePage, weekStart, schedulePagination.page, schedulePagination.limit, scheduleFilters.locationId, scheduleFilters.employeeId]);
 
     const openEditModal = (employee) => {
         setEditingEmployee(employee);
         setFormData({
+            empCode: employee.empCode || '',
             salaryType: employee.salaryType || 'monthly',
             baseSalary: employee.baseSalary ?? 0,
             hireDate: employee.hireDate ? employee.hireDate.slice(0, 10) : '',
@@ -245,6 +254,7 @@ const StaffManagementPage = () => {
     const openCreateModal = () => {
         setEditingEmployee(null);
         setFormData({
+            empCode: '',
             salaryType: 'monthly',
             baseSalary: 0,
             hireDate: '',
@@ -253,6 +263,7 @@ const StaffManagementPage = () => {
             isActive: true,
         });
         setSelectedUserId('');
+        setStaffSelectOpen(false);
         setShowModal(true);
     };
 
@@ -260,6 +271,7 @@ const StaffManagementPage = () => {
         e.preventDefault();
         try {
             const payload = {
+                empCode: (formData.empCode || '').trim() || undefined,
                 salaryType: formData.salaryType,
                 baseSalary: Number(formData.baseSalary) || 0,
                 hireDate: formData.hireDate || null,
@@ -280,7 +292,13 @@ const StaffManagementPage = () => {
                 }
                 const createPayload = {
                     userId: selectedUserId,
-                    ...payload,
+                    empCode: payload.empCode || undefined,
+                    salaryType: payload.salaryType,
+                    baseSalary: payload.baseSalary,
+                    hireDate: payload.hireDate,
+                    locations: payload.locations,
+                    note: payload.note,
+                    isActive: payload.isActive,
                 };
                 const res = await createEmployee(createPayload);
                 if (res.success) {
@@ -327,8 +345,14 @@ const StaffManagementPage = () => {
     };
 
     // Những tài khoản nhân viên chưa có hồ sơ Employee
+    // Lấy tất cả tài khoản nhân viên trừ các role "user" và "admin", và chưa có hồ sơ Employee
     const availableStaffUsers = staffUsers.filter(
-        (u) => !employees.some((emp) => emp.user && emp.user._id === u._id)
+        (u) =>
+            !employees.some((emp) => emp.user && emp.user._id === u._id) &&
+            Array.isArray(u.roles) &&
+            u.roles.every(
+                (r) => r.name !== 'Người dùng thường' && r.name !== 'admin'
+            )
     );
 
     const toggleLocationSelection = (locationId) => {
@@ -523,33 +547,11 @@ const StaffManagementPage = () => {
     return (
         <div className="flex-1 px-6 py-8 bg-base-200 overflow-y-auto">
             <div className="space-y-4">
-                <Header
-                    roles={[]}
-                    triggerRefresh={fetchEmployees}
-                    title="Quản lý nhân viên"
-                    subtitle="Quản lý hồ sơ nhân sự: chi nhánh, lương cơ bản, ngày vào làm, trạng thái"
-                    showCreateButton={false}
-                />
+                <h1 className="text-2xl font-bold">
+                    {isSchedulePage ? 'Lịch làm việc' : 'Danh sách nhân viên'}
+                </h1>
 
-                {/* Tabs cho Quản lý nhân viên */}
-                <div className="tabs tabs-lifted bg-base-100">
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'profile' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('profile')}
-                    >
-                        Hồ sơ nhân viên
-                    </button>
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'schedule' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('schedule')}
-                    >
-                        Lịch làm việc
-                    </button>
-                </div>
-
-                {activeTab === 'profile' && (
+                {!isSchedulePage && (
                     <div className="space-y-4">
                         {/* Bộ lọc nhân viên + nút tạo hồ sơ */}
                         <div className="bg-base-100 rounded-lg shadow p-4 flex flex-wrap gap-4 items-end justify-between">
@@ -616,6 +618,7 @@ const StaffManagementPage = () => {
                                     <table className="table table-sm">
                                         <thead className="bg-blue-100">
                                             <tr>
+                                                <th>Mã NV</th>
                                                 <th>Nhân viên</th>
                                                 <th>Chi nhánh làm việc</th>
                                                 <th>Kiểu lương</th>
@@ -628,6 +631,9 @@ const StaffManagementPage = () => {
                                         <tbody>
                                             {employees.map((emp) => (
                                                 <tr key={emp._id}>
+                                                    <td>
+                                                        <span className="font-mono font-medium">{emp.empCode || '-'}</span>
+                                                    </td>
                                                     <td>
                                                         <div className="flex flex-col">
                                                             <span className="font-semibold">
@@ -714,7 +720,7 @@ const StaffManagementPage = () => {
                                                 onClick={() => handlePageChange(pagination.page - 1)}
                                                 disabled={pagination.page <= 1}
                                             >
-                                                «
+                                                <ChevronLeft />
                                             </button>
                                             <button
                                                 type="button"
@@ -722,7 +728,7 @@ const StaffManagementPage = () => {
                                                 onClick={() => handlePageChange(pagination.page + 1)}
                                                 disabled={pagination.page >= pagination.totalPages}
                                             >
-                                                »
+                                                <ChevronRight />
                                             </button>
                                         </div>
                                     </div>
@@ -732,7 +738,7 @@ const StaffManagementPage = () => {
                     </div>
                 )}
 
-                {activeTab === 'schedule' && (
+                {isSchedulePage && (
                     <div>
                         <div className="space-y-4">
                             {/* Thanh điều hướng tuần + tìm kiếm */}
@@ -754,8 +760,54 @@ const StaffManagementPage = () => {
                                             setSchedulePagination((prev) => ({ ...prev, page: 1 }));
                                         }}
                                     >
-                                        « Tuần trước
+                                        <ChevronLeft />
                                     </button>
+
+                                    {(() => {
+                                        // Parse weekStart từ string "YYYY-MM-DD"
+                                        const [year, month, day] = weekStart.split('-').map(Number);
+                                        const date = new Date(year, month - 1, day);
+
+                                        // Tìm tuần thứ mấy trong tháng
+                                        // Giả sử tuần bắt đầu từ Thứ 2
+                                        const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+                                        // Tìm thứ của ngày đầu tháng (0: Chủ nhật, 1: Thứ 2, ...)
+                                        let firstDayOfWeek = firstOfMonth.getDay();
+                                        if (firstDayOfWeek === 0) firstDayOfWeek = 7; // Chuyển Chủ nhật thành 7
+
+                                        // Tính số ngày cần dịch để đến thứ 2 của tuần đầu tháng
+                                        const daysOffset = 1 - firstDayOfWeek;
+                                        const firstMonday = new Date(firstOfMonth);
+                                        firstMonday.setDate(firstOfMonth.getDate() + daysOffset);
+
+                                        // Tính số tuần: lấy số ngày giữa ngày đang xét và "firstMonday", chia cho 7 và làm tròn lên
+                                        const diff = Math.floor((date - firstMonday) / (7 * 24 * 60 * 60 * 1000));
+                                        const weekNum = diff + 1;
+
+                                        const monthStr = `th. ${date.getMonth() + 1}`;
+                                        const yearStr = date.getFullYear();
+
+                                        return `Tuần ${weekNum} - ${monthStr} ${yearStr}`;
+                                    })()}
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => {
+                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
+                                            const [year, month, day] = weekStart.split('-').map(Number);
+                                            const d = new Date(year, month - 1, day);
+                                            d.setDate(d.getDate() + 7);
+                                            // Format date thành YYYY-MM-DD dùng local date components
+                                            const dateYear = d.getFullYear();
+                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
+                                            const dateDay = String(d.getDate()).padStart(2, '0');
+                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
+                                            setSchedulePagination((prev) => ({ ...prev, page: 1 }));
+                                        }}
+                                    >
+                                        <ChevronRight />
+                                    </button>
+
                                     <button
                                         type="button"
                                         className="btn btn-ghost btn-xs"
@@ -780,26 +832,9 @@ const StaffManagementPage = () => {
                                     >
                                         Tuần này
                                     </button>
-                                    <button
-                                        type="button"
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => {
-                                            // Parse weekStart từ string "YYYY-MM-DD" để tránh timezone issues
-                                            const [year, month, day] = weekStart.split('-').map(Number);
-                                            const d = new Date(year, month - 1, day);
-                                            d.setDate(d.getDate() + 7);
-                                            // Format date thành YYYY-MM-DD dùng local date components
-                                            const dateYear = d.getFullYear();
-                                            const dateMonth = String(d.getMonth() + 1).padStart(2, '0');
-                                            const dateDay = String(d.getDate()).padStart(2, '0');
-                                            setWeekStart(`${dateYear}-${dateMonth}-${dateDay}`);
-                                            setSchedulePagination((prev) => ({ ...prev, page: 1 }));
-                                        }}
-                                    >
-                                        Tuần sau »
-                                    </button>
                                 </div>
                             </div>
+                            {/* Thêm ca làm việc */}
                             <div className="flex gap-2">
                                 <button
                                     type="button"
@@ -1043,24 +1078,114 @@ const StaffManagementPage = () => {
                                         </div>
                                     </div>
                                 ) : (
+                                    <>
+                                        <div className="relative">
+                                            <label className="label">
+                                                <span className="label-text font-semibold">
+                                                    Chọn tài khoản nhân viên <span className="text-error">*</span>
+                                                </span>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                className="input input-bordered input-sm w-full text-left flex items-center justify-between"
+                                                onClick={() => setStaffSelectOpen((v) => !v)}
+                                                aria-expanded={staffSelectOpen}
+                                                aria-haspopup="listbox"
+                                            >
+                                                <span>
+                                                    {selectedUserId
+                                                        ? (() => {
+                                                              const u = availableStaffUsers.find((x) => x._id === selectedUserId);
+                                                              return u
+                                                                  ? [u.empCode, `${(u.firstName || '')} ${(u.lastName || '')}`.trim(), u.roles?.[0]?.name].filter(Boolean).join(' · ')
+                                                                  : '-- Chọn nhân viên --';
+                                                          })()
+                                                        : '-- Chọn nhân viên --'}
+                                                </span>
+                                                <span className="text-base-content/50">{staffSelectOpen ? '▼' : '▶'}</span>
+                                            </button>
+                                            {staffSelectOpen && (
+                                                <>
+                                                    <div
+                                                        className="fixed inset-0 z-10"
+                                                        aria-hidden="true"
+                                                        onClick={() => setStaffSelectOpen(false)}
+                                                    />
+                                                    <div className="absolute z-20 mt-1 w-full bg-base-100 border border-base-300 rounded-lg shadow-lg overflow-hidden max-h-64 overflow-y-auto animate-slide-down">
+                                                        <table className="table table-xs">
+                                                            <thead className="bg-base-200 sticky top-0">
+                                                                <tr>
+                                                                    <th className="font-semibold">Mã NV</th>
+                                                                    <th className="font-semibold">Họ tên</th>
+                                                                    <th className="font-semibold">Vai trò</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {availableStaffUsers.map((u) => (
+                                                                    <tr
+                                                                        key={u._id}
+                                                                        className={`cursor-pointer hover:bg-primary/10 ${selectedUserId === u._id ? 'bg-primary/10' : ''}`}
+                                                                        onClick={() => {
+                                                                            setSelectedUserId(u._id);
+                                                                            setFormData((prev) => ({
+                                                                                ...prev,
+                                                                                empCode: u.empCode || '',
+                                                                            }));
+                                                                            setStaffSelectOpen(false);
+                                                                        }}
+                                                                    >
+                                                                        <td className="font-mono">{u.empCode || '-'}</td>
+                                                                        <td>{`${(u.firstName || '')} ${(u.lastName || '')}`.trim() || '-'}</td>
+                                                                        <td>{u.roles?.[0]?.name || '-'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        {availableStaffUsers.length === 0 && (
+                                                            <div className="p-4 text-center text-base-content/60 text-sm">Không có tài khoản nhân viên nào để chọn</div>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="label">
+                                                <span className="label-text font-semibold">Mã nhân viên</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                className="input input-bordered input-sm w-full"
+                                                placeholder="Mã tự động"
+                                                value={formData.empCode}
+                                                onChange={(e) =>
+                                                    setFormData((prev) => ({ ...prev, empCode: e.target.value }))
+                                                }
+                                                maxLength={10}
+                                            />
+                                            <span className="label-text-alt text-base-content/60">
+                                                Dạng NV + 5 chữ số (vd: NV00001)
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
+                                {editingEmployee && (
                                     <div>
                                         <label className="label">
-                                            <span className="label-text font-semibold">
-                                                Chọn tài khoản nhân viên <span className="text-error">*</span>
-                                            </span>
+                                            <span className="label-text font-semibold">Mã nhân viên</span>
                                         </label>
-                                        <select
-                                            className="select select-sm w-full"
-                                            value={selectedUserId}
-                                            onChange={(e) => setSelectedUserId(e.target.value)}
-                                        >
-                                            <option value="">-- Chọn nhân viên --</option>
-                                            {availableStaffUsers.map((u) => (
-                                                <option key={u._id} value={u._id}>
-                                                    {u.firstName} {u.lastName} ({u.username}) - {u.email}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <input
+                                            type="text"
+                                            className="input input-bordered input-sm w-full"
+                                            placeholder="NV00001"
+                                            value={formData.empCode}
+                                            onChange={(e) =>
+                                                setFormData((prev) => ({ ...prev, empCode: e.target.value }))
+                                            }
+                                            maxLength={10}
+                                        />
+                                        <span className="label-text-alt text-base-content/60">
+                                            Dạng NV + 5 chữ số (vd: NV00001)
+                                        </span>
                                     </div>
                                 )}
                                 <div className="grid grid-cols-2 gap-4">
