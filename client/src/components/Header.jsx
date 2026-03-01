@@ -11,12 +11,12 @@ export function Header({ user, onLogout }) {
       <div className="bg-white border-b">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xl">P</div>
-            <div>
-              <h1 className="text-blue-700 font-bold text-lg leading-none uppercase">Acquyhanoi.vn</h1>
-              <p className="text-[10px] text-gray-500 uppercase">Đại lý ắc quy Thanh Tú</p>
-            </div>
+          <Link to="/" className="flex items-center">
+            <img
+              src="/logohomepage.png"
+              alt="Acquy Hanoi"
+              className="h-12 w-auto object-contain"
+            />
           </Link>
 
           <div className="flex items-center gap-4">
