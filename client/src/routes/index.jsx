@@ -14,6 +14,7 @@ import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryMana
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
+import ListProduct from '../pages/ListProduct';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -46,6 +47,7 @@ export const AppRoutes = () => {
 
             {/* PUBLIC HOME - Cho phép cả authenticated và unauthenticated users */}
             <Route path="/home" element={<HomePage />} />
+            <Route path="/listproduct" element={<ListProduct />} />
 
             {/* PROTECTED ROUTES - Cần đăng nhập, chỉ truy cập được các trang dựa trên role */}
             <Route element={<ProtectedRoute />}>
