@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Role from '../models/Role.js';
+import Employee from '../models/Employee.js';
 import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
@@ -82,7 +83,7 @@ export const getAllUsers = async (req, res) => {
         }
 
         // Get users with pagination
-        const users = await User.find(query)
+        const usersRaw = await User.find(query)
             .select('-password')
             .populate({
                 path: 'roles',
@@ -90,7 +91,29 @@ export const getAllUsers = async (req, res) => {
             })
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
+
+        // Gắn thêm empCode từ bảng Employee (ưu tiên hồ sơ đang dùng, không thì lấy của hồ sơ đã soft-delete để form có thể tự điền lại)
+        const userIds = usersRaw.map((u) => u._id);
+        const employeeByUser = await Employee.find({ user: { $in: userIds } })
+            .select('user empCode isDeleted')
+            .sort({ isDeleted: 1 })
+            .lean();
+        const empCodeMap = {};
+        for (const emp of employeeByUser) {
+            if (!emp.user) continue;
+            const uid = String(typeof emp.user === 'object' ? emp.user._id : emp.user);
+            if (emp.isDeleted) {
+                if (empCodeMap[uid] == null) empCodeMap[uid] = emp.empCode || null;
+            } else {
+                empCodeMap[uid] = emp.empCode || null;
+            }
+        }
+        const users = usersRaw.map((u) => ({
+            ...u,
+            empCode: empCodeMap[String(u._id)] ?? null,
+        }));
 
         // Get total count
         const total = await User.countDocuments(query);
@@ -164,6 +187,11 @@ export const createUser = async (req, res) => {
             }
         }
 
+        // Bắt buộc admin phải chọn 1 vai trò cho user (không tự gán mặc định)
+        if (!roles || !Array.isArray(roles) || roles.length === 0) {
+            return res.status(400).json({ message: 'Vui lòng chọn vai trò cho người dùng' });
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -180,18 +208,12 @@ export const createUser = async (req, res) => {
             status: status || 'active',
         });
 
-        // Gán 1 vai trò nếu có (mỗi user chỉ 1 role; không cho gán admin)
-        if (roles && Array.isArray(roles) && roles.length > 0) {
-            const roleName = roles[0];
-            if (roleName === 'admin') {
-                return res.status(403).json({ message: 'Không được gán vai trò quản trị viên khi tạo user' });
-            }
-            await assignRoleByName(user, roleName);
-        } else {
-            // Nếu không có role, gán role mặc định
-            const { assignDefaultRole } = await import('../libs/rbacHelpers.js');
-            await assignDefaultRole(user);
+        // Gán 1 vai trò (mỗi user chỉ 1 role; không cho gán admin)
+        const roleName = roles[0];
+        if (roleName === 'admin') {
+            return res.status(403).json({ message: 'Không được gán vai trò quản trị viên khi tạo user' });
         }
+        await assignRoleByName(user, roleName);
 
         // Lấy lại user với roles đã populate
         const userWithRoles = await User.findById(user._id)

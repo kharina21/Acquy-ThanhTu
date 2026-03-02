@@ -38,6 +38,14 @@ export const registerUser = async (req, res) => {
             return res.status(400).json({ message: 'Email đã tồn tại' });
         }
 
+        // Kiểm tra trùng số điện thoại (nếu có nhập)
+        if (phoneNumber) {
+            const existingPhone = await User.findOne({ phoneNumber });
+            if (existingPhone) {
+                return res.status(400).json({ message: 'Số điện thoại đã được sử dụng bởi người dùng khác' });
+            }
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const user = await User.create({
@@ -65,6 +73,23 @@ export const registerUser = async (req, res) => {
         res.status(201).json({ user });
     } catch (error) {
         console.log('Lỗi khi gọi register: ' + error.message);
+
+        // Xử lý lỗi trùng lặp từ Mongo (unique index)
+        if (error.code === 11000) {
+            const duplicateField = Object.keys(error.keyPattern || error.keyValue || {})[0];
+            let message = 'Dữ liệu đã tồn tại';
+
+            if (duplicateField === 'username') {
+                message = 'Username đã tồn tại';
+            } else if (duplicateField === 'email') {
+                message = 'Email đã tồn tại';
+            } else if (duplicateField === 'phoneNumber') {
+                message = 'Số điện thoại đã được sử dụng bởi người dùng khác';
+            }
+
+            return res.status(400).json({ message });
+        }
+
         res.status(500).json({ message: 'Lỗi khi gọi register', error: error.message });
     }
 };
@@ -139,13 +164,20 @@ export const login = async (req, res) => {
     }
 };
 
-// Lấy thông tin user hiện tại (với roles)
+// Lấy thông tin user hiện tại (với roles và permissions cho RBAC sidebar)
 export const getCurrentUser = async (req, res) => {
     try {
-        const user = await User.findById(req.user._id).select('-password').populate({
-            path: 'roles',
-            select: 'name description',
-        });
+        const user = await User.findById(req.user._id)
+            .select('-password')
+            .populate({
+                path: 'roles',
+                select: 'name description',
+                match: { isActive: true },
+                populate: {
+                    path: 'permissions',
+                    select: 'resource action',
+                },
+            });
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
@@ -200,10 +232,17 @@ export const updateProfile = async (req, res) => {
             userId,
             updateData,
             { new: true, runValidators: true }
-        ).select('-password').populate({
-            path: 'roles',
-            select: 'name description',
-        });
+        )
+            .select('-password')
+            .populate({
+                path: 'roles',
+                select: 'name description',
+                match: { isActive: true },
+                populate: {
+                    path: 'permissions',
+                    select: 'resource action',
+                },
+            });
 
         if (!updatedUser) {
             return res.status(404).json({ message: 'User not found' });
@@ -336,14 +375,17 @@ export const verifyEmail = async (req, res) => {
         }
 
         // Cập nhật user thành đã xác thực
-        const user = await User.findByIdAndUpdate(
-            userId,
-            { isVerified: true },
-            { new: true }
-        ).select('-password').populate({
-            path: 'roles',
-            select: 'name description',
-        });
+        const user = await User.findByIdAndUpdate(userId, { isVerified: true }, { new: true })
+            .select('-password')
+            .populate({
+                path: 'roles',
+                select: 'name description',
+                match: { isActive: true },
+                populate: {
+                    path: 'permissions',
+                    select: 'resource action',
+                },
+            });
 
         // Đánh dấu mã đã được sử dụng
         verification.isUsed = true;
