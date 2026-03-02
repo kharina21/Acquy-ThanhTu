@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import axios from "axios";
+import { ShoppingCart } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useCartStore } from "@/stores/useCartStore";
 
 export function ProductSection() {
   const [carProducts, setCarProducts] = useState([]);
   const [motorProducts, setMotorProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const addToCart = useCartStore((s) => s.addToCart);
 
   useEffect(() => {
     fetchProducts();
@@ -46,7 +53,7 @@ export function ProductSection() {
         {products.map((product) => (
           <div
             key={product._id}
-            className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 cursor-pointer"
+            className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 flex flex-col"
           >
             {/* Image */}
             <div className="aspect-square bg-gray-100 rounded mb-3 overflow-hidden flex items-center justify-center">
@@ -61,8 +68,6 @@ export function ProductSection() {
                   Không có ảnh
                 </div>
               )}
-
-
             </div>
 
             {/* Name */}
@@ -75,6 +80,31 @@ export function ProductSection() {
               <span className="text-red-600 font-bold text-lg">
                 {product.price?.toLocaleString()}đ
               </span>
+            </div>
+
+            {/* Nút Mua hàng + Thêm vào giỏ */}
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  addToCart(product, 1);
+                  navigate("/cart");
+                }}
+              >
+                Mua hàng
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => {
+                  addToCart(product, 1);
+                  toast.success("Đã thêm vào giỏ");
+                }}
+              >
+                <ShoppingCart className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         ))}
