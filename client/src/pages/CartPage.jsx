@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCartStore } from '@/stores/useCartStore';
@@ -8,8 +9,27 @@ import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CartPage() {
-  const { user, logout } = useAuthStore();
-  const { items, removeItem, updateQuantity, clearCart } = useCartStore();
+  const { user, accessToken, logout } = useAuthStore();
+  const {
+    items,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    loadCartFromServer,
+    updateQuantityServer,
+    removeItemServer,
+    clearCartServer,
+  } = useCartStore();
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    if (accessToken) {
+      setLoading(true);
+      loadCartFromServer()
+        .finally(() => setLoading(false));
+    }
+  }, [accessToken]);
 
   const handleLogout = async () => {
     try {
@@ -20,7 +40,60 @@ export default function CartPage() {
     }
   };
 
-  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const isLoggedIn = Boolean(accessToken);
+
+  const handleUpdateQuantity = async (productId, newQuantity) => {
+    if (newQuantity < 1) {
+      handleRemoveItem(productId);
+      return;
+    }
+    try {
+      setActionLoading(true);
+      if (isLoggedIn) {
+        await updateQuantityServer(productId, newQuantity);
+      } else {
+        updateQuantity(productId, newQuantity);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Lỗi khi cập nhật số lượng');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveItem = async (productId) => {
+    try {
+      setActionLoading(true);
+      if (isLoggedIn) {
+        await removeItemServer(productId);
+      } else {
+        removeItem(productId);
+      }
+      toast.success('Đã xóa khỏi giỏ');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Lỗi khi xóa');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleClearCart = async () => {
+    try {
+      setActionLoading(true);
+      if (isLoggedIn) {
+        await clearCartServer();
+      } else {
+        clearCart();
+      }
+      toast.success('Đã xóa giỏ hàng');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Lỗi khi xóa giỏ hàng');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const total = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -29,7 +102,11 @@ export default function CartPage() {
       <main className="flex-1 container mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold text-gray-800 mb-6">Giỏ hàng</h1>
 
-        {items.length === 0 ? (
+        {loading ? (
+          <div className="bg-gray-50 rounded-lg p-12 text-center">
+            <p className="text-gray-600">Đang tải giỏ hàng...</p>
+          </div>
+        ) : items.length === 0 ? (
           <div className="bg-gray-50 rounded-lg p-12 text-center">
             <p className="text-gray-600 mb-4">Giỏ hàng trống</p>
             <Link to="/home">
@@ -61,8 +138,9 @@ export default function CartPage() {
                     <div className="flex items-center border border-gray-300 rounded">
                       <button
                         type="button"
-                        className="px-2 py-1 text-gray-600 hover:bg-gray-100"
-                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                        className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                        disabled={actionLoading}
+                        onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
                       >
                         −
                       </button>
@@ -71,8 +149,9 @@ export default function CartPage() {
                       </span>
                       <button
                         type="button"
-                        className="px-2 py-1 text-gray-600 hover:bg-gray-100"
-                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                        className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                        disabled={actionLoading}
+                        onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
                       >
                         +
                       </button>
@@ -81,10 +160,8 @@ export default function CartPage() {
                       variant="ghost"
                       size="icon"
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => {
-                        removeItem(item.productId);
-                        toast.success('Đã xóa khỏi giỏ');
-                      }}
+                      disabled={actionLoading}
+                      onClick={() => handleRemoveItem(item.productId)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -95,7 +172,7 @@ export default function CartPage() {
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-t pt-6">
               <div className="flex gap-2">
-                <Button variant="outline" onClick={clearCart}>
+                <Button variant="outline" disabled={actionLoading} onClick={handleClearCart}>
                   Xóa giỏ hàng
                 </Button>
                 <Link to="/home">

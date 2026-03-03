@@ -5,13 +5,18 @@ import { ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/stores/useCartStore";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useUserRole } from "@/hooks/useUserRole";
 
 export function ProductSection() {
   const [carProducts, setCarProducts] = useState([]);
   const [motorProducts, setMotorProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const addToCart = useCartStore((s) => s.addToCart);
+
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const { hasAnyRole } = useUserRole();
+  const addToCartServer = useCartStore((s) => s.addToCartServer);
 
   useEffect(() => {
     fetchProducts();
@@ -35,6 +40,35 @@ export function ProductSection() {
       console.error("Lỗi lấy sản phẩm:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddToCart = async (product, goToCart = false) => {
+    // Bắt buộc đăng nhập
+    if (!accessToken) {
+      toast.info("Vui lòng đăng nhập để mua hàng.");
+      navigate("/login");
+      return;
+    }
+
+    // Chỉ cho role 'user' hoặc 'Người dùng thường' được mua hàng
+    if (!hasAnyRole('user', 'Người dùng thường')) {
+      toast.error("Tài khoản hiện tại không có quyền mua hàng.");
+      return;
+    }
+
+    try {
+      await addToCartServer(product._id, 1);
+      toast.success("Đã thêm vào giỏ hàng");
+      if (goToCart) {
+        navigate("/cart");
+      }
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Lỗi khi thêm vào giỏ hàng";
+      toast.error(msg);
     }
   };
 
@@ -87,10 +121,7 @@ export function ProductSection() {
               <Button
                 size="sm"
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={() => {
-                  addToCart(product, 1);
-                  navigate("/cart");
-                }}
+                onClick={() => handleAddToCart(product, true)}
               >
                 Mua hàng
               </Button>
@@ -98,10 +129,7 @@ export function ProductSection() {
                 size="sm"
                 variant="outline"
                 className="shrink-0"
-                onClick={() => {
-                  addToCart(product, 1);
-                  toast.success("Đã thêm vào giỏ");
-                }}
+                onClick={() => handleAddToCart(product, false)}
               >
                 <ShoppingCart className="w-4 h-4" />
               </Button>
