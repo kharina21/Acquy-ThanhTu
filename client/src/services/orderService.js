@@ -14,3 +14,8 @@ export const getOrderById = async (id) => {
     const res = await api.get(`/orders/${id}`);
     return res.data;
 };
+
+export const updateOrder = async (id, data) => {
+    const res = await api.put(`/orders/${id}`, data);
+    return res.data;
+};

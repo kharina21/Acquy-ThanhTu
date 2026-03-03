@@ -1,4 +1,4 @@
-import { Boxes, LayoutDashboard, Package, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { Boxes, LayoutDashboard, Package, ShoppingBag, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 
 /**
  * Cấu hình menu sidebar - gắn với permission RBAC.
@@ -22,6 +22,15 @@ export const SIDEBAR_MENU_ITEMS = [
         label: 'Sản phẩm',
         ariaLabel: 'Quản lý sản phẩm',
         permission: { resource: 'product', action: 'read' },
+    },
+    {
+        id: 'orders',
+        to: '/admin/orders',
+        icon: ShoppingBag,
+        label: 'Đơn hàng',
+        ariaLabel: 'Quản lý đơn hàng',
+        activePaths: ['/admin/orders'],
+        permission: { resource: 'order', action: 'read' },
     },
     {
         id: 'users',
