@@ -1,17 +1,27 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import axios from "axios";
-import { ShoppingCart } from "lucide-react";
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Navigation, Autoplay } from "swiper/modules";
+import { ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/stores/useCartStore";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useUserRole } from "@/hooks/useUserRole";
+
+import "swiper/css";
+import "swiper/css/navigation";
 
 export function ProductSection() {
   const [carProducts, setCarProducts] = useState([]);
   const [motorProducts, setMotorProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const addToCart = useCartStore((s) => s.addToCart);
+
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const { hasAnyRole } = useUserRole();
+  const addToCartServer = useCartStore((s) => s.addToCartServer);
 
   useEffect(() => {
     fetchProducts();
@@ -38,77 +48,133 @@ export function ProductSection() {
     }
   };
 
-  const renderSection = (title, products) => (
-    <div className="mb-12">
+  const handleAddToCart = async (product, goToCart = false) => {
+    // Bắt buộc đăng nhập
+    if (!accessToken) {
+      toast.info("Vui lòng đăng nhập để mua hàng.");
+      navigate("/login");
+      return;
+    }
+
+    // Chỉ cho role 'user' hoặc 'Người dùng thường' được mua hàng
+    if (!hasAnyRole('user', 'Người dùng thường')) {
+      toast.error("Tài khoản hiện tại không có quyền mua hàng.");
+      return;
+    }
+
+    try {
+      await addToCartServer(product._id, 1);
+      toast.success("Đã thêm vào giỏ hàng");
+      if (goToCart) {
+        navigate("/cart");
+      }
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Lỗi khi thêm vào giỏ hàng";
+      toast.error(msg);
+    }
+  };
+
+  const renderSection = (title, products, sectionKey) => (
+    <div className="mb-12 relative">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">{title}</h2>
-        <button className="text-red-500 border border-red-500 px-4 py-1 rounded hover:bg-red-500 hover:text-white transition">
+        <Link
+          to="/listproduct"
+          className="text-red-500 border border-red-500 px-4 py-1 rounded hover:bg-red-500 hover:text-white transition"
+        >
           Xem tất cả →
-        </button>
+        </Link>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+      {/* Navigation Buttons */}
+      <button
+        className={`prev-${sectionKey} absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white shadow p-2 rounded-full`}
+      >
+        <ChevronLeft size={20} />
+      </button>
+
+      <button
+        className={`next-${sectionKey} absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white shadow p-2 rounded-full`}
+      >
+        <ChevronRight size={20} />
+      </button>
+
+      {/* Swiper */}
+      <Swiper
+        modules={[Navigation, Autoplay]}
+        loop={true}
+        slidesPerView={4}
+        spaceBetween={20}
+        autoplay={{
+          delay: 3000,
+          disableOnInteraction: false,
+          pauseOnMouseEnter: true
+        }}
+        navigation={{
+          nextEl: `.next-${sectionKey}`,
+          prevEl: `.prev-${sectionKey}`,
+        }}
+        breakpoints={{
+          0: { slidesPerView: 1 },
+          640: { slidesPerView: 2 },
+          1024: { slidesPerView: 4 },
+        }}
+      >
         {products.map((product) => (
-          <div
-            key={product._id}
-            className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 flex flex-col"
-          >
-            {/* Image */}
-            <div className="aspect-square bg-gray-100 rounded mb-3 overflow-hidden flex items-center justify-center">
-              {(product.images?.[0] || product.image) ? (
-                <img
-                  src={product.images?.[0] || product.image}
-                  alt={product.name}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="text-gray-400 text-sm">
-                  Không có ảnh
+          <SwiperSlide key={product._id}>
+            <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 flex flex-col">
+              <Link to={`/product/${product._id}`} className="block">
+                <div className="aspect-square bg-gray-100 rounded mb-3 overflow-hidden flex items-center justify-center">
+                  {(product.images?.[0] || product.image) ? (
+                    <img
+                      src={product.images?.[0] || product.image}
+                      alt={product.name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-gray-400 text-sm">
+                      Không có ảnh
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Name */}
-            <h3 className="text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px]">
-              {product.name}
-            </h3>
+                <h3 className="text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px]">
+                  {product.name}
+                </h3>
 
-            {/* Price */}
-            <div className="mt-2">
-              <span className="text-red-600 font-bold text-lg">
-                {product.price?.toLocaleString()}đ
-              </span>
-            </div>
+                <div className="mt-2">
+                  <span className="text-red-600 font-bold text-lg">
+                    {product.price?.toLocaleString()}đ
+                  </span>
+                </div>
+              </Link>
 
-            {/* Nút Mua hàng + Thêm vào giỏ */}
-            <div className="mt-3 flex gap-2">
-              <Button
-                size="sm"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={() => {
-                  addToCart(product, 1);
-                  navigate("/cart");
-                }}
-              >
-                Mua hàng
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0"
-                onClick={() => {
-                  addToCart(product, 1);
-                  toast.success("Đã thêm vào giỏ");
-                }}
-              >
-                <ShoppingCart className="w-4 h-4" />
-              </Button>
+              {/* Nút Mua hàng + Thêm vào giỏ */}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => handleAddToCart(product, true)}
+                >
+                  Mua hàng
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => handleAddToCart(product, false)}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-          </div>
+          </SwiperSlide>
         ))}
-      </div>
+      </Swiper>
     </div>
   );
 
@@ -119,8 +185,8 @@ export function ProductSection() {
           <p>Đang tải sản phẩm...</p>
         ) : (
           <>
-            {renderSection("🚗 ẮC QUY Ô TÔ", carProducts)}
-            {renderSection("🏍 ẮC QUY XE MÁY", motorProducts)}
+            {renderSection("🚗 ẮC QUY Ô TÔ", carProducts, "car")}
+            {renderSection("🏍 ẮC QUY XE MÁY", motorProducts, "motor")}
           </>
         )}
       </div>
