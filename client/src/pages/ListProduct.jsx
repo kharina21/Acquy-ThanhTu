@@ -1,15 +1,21 @@
-import React, { useEffect, useState, } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useCartStore } from '@/stores/useCartStore';
 import { toast } from 'sonner';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
+import { Button } from '@/components/ui/button';
+import { ShoppingCart } from 'lucide-react';
 import { useNavigate, Link } from 'react-router';
 
 const ListProduct = () => {
     const { user, logout } = useAuthStore();
-    const { userRoles } = useUserRole();
+    const { hasAnyRole } = useUserRole();
+    const navigate = useNavigate();
+    const accessToken = useAuthStore((s) => s.accessToken);
+    const addToCartServer = useCartStore((s) => s.addToCartServer);
 
     const [products, setProducts] = useState([]);
     const [page, setPage] = useState(1);
@@ -86,6 +92,31 @@ const ListProduct = () => {
         }
     };
 
+    const handleAddToCart = async (product, goToCart = false) => {
+        if (!accessToken) {
+            toast.info('Vui lòng đăng nhập để mua hàng.');
+            navigate('/login');
+            return;
+        }
+        if (!hasAnyRole('user', 'Người dùng thường')) {
+            toast.error('Tài khoản hiện tại không có quyền mua hàng.');
+            return;
+        }
+        try {
+            await addToCartServer(product._id, 1);
+            toast.success('Đã thêm vào giỏ hàng');
+            if (goToCart) {
+                navigate('/cart');
+            }
+        } catch (err) {
+            const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                'Lỗi khi thêm vào giỏ hàng';
+            toast.error(msg);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-100">
             <Header
@@ -101,15 +132,15 @@ const ListProduct = () => {
                 <h2 className="text-2xl font-bold mb-6">Sản phẩm</h2>
 
                 {/* Grid */}
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products.map((p) => (
                         <div
                             key={p._id}
-                            className="bg-white shadow hover:shadow-lg transition p-4 text-center"
+                            className="bg-white shadow hover:shadow-lg transition p-4 text-center flex flex-col"
                         >
                             <Link
                                 to={`/product/${p._id}`}
-                                className="bg-white shadow hover:shadow-lg transition p-4 text-center block"
+                                className="block flex-1"
                             >
                                 <img
                                     src={p.images?.[0]}
@@ -125,6 +156,26 @@ const ListProduct = () => {
                                     {p.price?.toLocaleString()} đ
                                 </p>
                             </Link>
+
+                            {/* Nút Mua ngay + Thêm vào giỏ hàng */}
+                            <div className="mt-3 flex gap-2">
+                                <Button
+                                    size="sm"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                    onClick={() => handleAddToCart(p, true)}
+                                >
+                                    Mua ngay
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => handleAddToCart(p, false)}
+                                >
+                                    <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
+                                    Thêm vào giỏ hàng
+                                </Button>
+                            </div>
                         </div>
                     ))}
                 </div>
