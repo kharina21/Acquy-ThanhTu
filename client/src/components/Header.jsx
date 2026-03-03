@@ -1,4 +1,4 @@
-import { Search, User, LogOut, ShoppingCart } from 'lucide-react';
+import { Search, User, LogOut, ShoppingCart, Package } from 'lucide-react';
 import { useNavigate, Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -67,6 +67,12 @@ export function Header({ user, onLogout }) {
                     className="cursor-pointer"
                   >
                     <User className="w-4 h-4 mr-2" /> Hồ sơ cá nhân
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => navigate('/orders')}
+                    className="cursor-pointer"
+                  >
+                    <Package className="w-4 h-4 mr-2" /> Đơn hàng
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

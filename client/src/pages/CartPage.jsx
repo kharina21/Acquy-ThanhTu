@@ -178,15 +178,20 @@ export default function CartPage() {
                 <Link to="/home">
                   <Button variant="outline">Tiếp tục mua sắm</Button>
                 </Link>
+                {isLoggedIn ? (
+                  <Link to="/checkout">
+                    <Button className="bg-blue-600 hover:bg-blue-700">Đặt hàng</Button>
+                  </Link>
+                ) : (
+                  <Link to="/login?redirect=/checkout">
+                    <Button className="bg-blue-600 hover:bg-blue-700">Đặt hàng (cần đăng nhập)</Button>
+                  </Link>
+                )}
               </div>
               <div className="text-lg font-bold text-gray-800">
                 Tổng tiền: <span className="text-red-600">{total.toLocaleString()}đ</span>
               </div>
             </div>
-
-            <p className="mt-4 text-sm text-gray-500 italic">
-              (Giao diện giỏ hàng – chưa kết nối thanh toán)
-            </p>
           </>
         )}
       </main>
