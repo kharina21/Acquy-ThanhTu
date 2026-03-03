@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate, Link } from "react-router";
 import axios from "axios";
-import { useNavigate, Link } from 'react-router';
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Autoplay } from "swiper/modules";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useCartStore } from "@/stores/useCartStore";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useUserRole } from "@/hooks/useUserRole";
 
 import "swiper/css";
 import "swiper/css/navigation";
@@ -12,6 +17,11 @@ export function ProductSection() {
   const [carProducts, setCarProducts] = useState([]);
   const [motorProducts, setMotorProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const { hasAnyRole } = useUserRole();
+  const addToCartServer = useCartStore((s) => s.addToCartServer);
 
   useEffect(() => {
     fetchProducts();
@@ -38,9 +48,37 @@ export function ProductSection() {
     }
   };
 
+  const handleAddToCart = async (product, goToCart = false) => {
+    // Bắt buộc đăng nhập
+    if (!accessToken) {
+      toast.info("Vui lòng đăng nhập để mua hàng.");
+      navigate("/login");
+      return;
+    }
+
+    // Chỉ cho role 'user' hoặc 'Người dùng thường' được mua hàng
+    if (!hasAnyRole('user', 'Người dùng thường')) {
+      toast.error("Tài khoản hiện tại không có quyền mua hàng.");
+      return;
+    }
+
+    try {
+      await addToCartServer(product._id, 1);
+      toast.success("Đã thêm vào giỏ hàng");
+      if (goToCart) {
+        navigate("/cart");
+      }
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Lỗi khi thêm vào giỏ hàng";
+      toast.error(msg);
+    }
+  };
+
   const renderSection = (title, products, sectionKey) => (
     <div className="mb-12 relative">
-
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">{title}</h2>
@@ -88,9 +126,8 @@ export function ProductSection() {
       >
         {products.map((product) => (
           <SwiperSlide key={product._id}>
-            <Link to={`/product/${product._id}`}>
-              <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 cursor-pointer">
-
+            <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition p-4 flex flex-col">
+              <Link to={`/product/${product._id}`} className="block">
                 <div className="aspect-square bg-gray-100 rounded mb-3 overflow-hidden flex items-center justify-center">
                   {(product.images?.[0] || product.image) ? (
                     <img
@@ -114,9 +151,27 @@ export function ProductSection() {
                     {product.price?.toLocaleString()}đ
                   </span>
                 </div>
+              </Link>
 
+              {/* Nút Mua hàng + Thêm vào giỏ */}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => handleAddToCart(product, true)}
+                >
+                  Mua hàng
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => handleAddToCart(product, false)}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                </Button>
               </div>
-            </Link>
+            </div>
           </SwiperSlide>
         ))}
       </Swiper>

@@ -1,10 +1,13 @@
-import { Search, User, LogOut } from 'lucide-react';
+import { Search, User, LogOut, ShoppingCart } from 'lucide-react';
 import { useNavigate, Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { useCartStore } from '@/stores/useCartStore';
 
 export function Header({ user, onLogout }) {
   const navigate = useNavigate();
+  const items = useCartStore((s) => s.items);
+  const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
     <>
@@ -35,6 +38,18 @@ export function Header({ user, onLogout }) {
                 </Button>
               </div>
             </div>
+
+            {/* Nút giỏ hàng */}
+            <Link to="/cart" className="relative">
+              <Button variant="outline" size="icon" className="rounded-full">
+                <ShoppingCart className="w-5 h-5" />
+                {totalQuantity > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full">
+                    {totalQuantity > 99 ? '99+' : totalQuantity}
+                  </span>
+                )}
+              </Button>
+            </Link>
 
             {/* Xử lý nút Đăng nhập / User */}
             {user ? (

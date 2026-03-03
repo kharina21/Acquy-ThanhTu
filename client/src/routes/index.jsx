@@ -6,6 +6,7 @@ import RegisterPage from '../pages/RegisterPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
 import HomePage from '../pages/HomePage';
+import CartPage from '../pages/CartPage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
@@ -48,6 +49,8 @@ export const AppRoutes = () => {
             {/* PUBLIC HOME - Cho phép cả authenticated và unauthenticated users */}
             <Route path="/home" element={<HomePage />} />
             <Route path="/listproduct" element={<ListProduct />} />
+            {/* Giỏ hàng - giao diện only */}
+            <Route path="/cart" element={<CartPage />} />
 
             {/* PROTECTED ROUTES - Cần đăng nhập, chỉ truy cập được các trang dựa trên role */}
             <Route element={<ProtectedRoute />}>
