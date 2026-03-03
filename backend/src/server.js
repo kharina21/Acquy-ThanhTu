@@ -20,6 +20,7 @@ import employeeRoutes from './routes/employeeRoute.js';
 import workScheduleRoutes from './routes/workScheduleRoute.js';
 import shiftRoutes from './routes/shiftRoute.js';
 import cartRoutes from './routes/cartRoute.js';
+import orderRoutes from './routes/orderRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -51,6 +52,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/work-schedules', workScheduleRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {
