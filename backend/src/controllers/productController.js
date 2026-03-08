@@ -655,7 +655,7 @@ export const getCarBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -667,7 +667,7 @@ export const getCarBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
@@ -702,7 +702,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -713,7 +713,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
@@ -744,3 +744,122 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     }
 };
 
+ const buildFilter = (queryParams) => {
+    const {
+        category,
+        brand,
+        usageDevice,
+        minAh,
+        maxAh,
+        minPrice,
+        maxPrice,
+        search
+    } = queryParams;
+
+    const query = { 
+        isDeleted: false 
+    };
+
+    if(category) {
+        query.category = { $in: category.split(',') };
+    }
+
+    if(brand) {
+        query.brand = { $in: brand.split(',') };
+    }
+
+    if(usageDevice) {
+        query.usageDevice = { $in: usageDevice.split(',') };
+    }
+
+    if(minAh || maxAh) {
+        query.capacity = {};
+        if(minAh) {
+            query.capacity.$gte = parseFloat(minAh);
+        }
+        if(maxAh) {
+            query.capacity.$lte = parseFloat(maxAh);
+        }
+    }
+
+    if(minPrice || maxPrice) {
+        query.price = {};
+        if(minPrice) {
+            query.price.$gte = parseFloat(minPrice);
+        }
+        if(maxPrice) {
+            query.price.$lte = parseFloat(maxPrice);
+        }
+    }
+
+    function escapeRegex(text) {
+        return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    }
+
+    if(search) {
+        const safeSearch = escapeRegex(search);
+        query.name = {
+            $regex: safeSearch,
+            $options: 'i'
+        };
+    }
+
+    return query;
+        
+    };
+
+    const buildSort = (sort) => {
+        switch(sort) {
+            case 'priceAsc':
+                return { price: 1 };
+            case 'priceDesc':
+                return { price: -1 };
+            default:
+                return { createdAt: -1 };
+        }
+    };
+
+    export const filterProducts = async (req, res) => {
+        try{
+            const { page = 1, limit = 15, sort } = req.query;
+
+            const filterQuery = buildFilter(req.query);
+            const sortQuery = buildSort(sort);
+
+            const skip = (page - 1) * limit;
+
+            const products = await Product.find(filterQuery)
+                .limit(parseInt(limit))
+                .populate('category', 'name')
+                .populate('brand', 'name')
+                .populate('usageDevice', 'name')
+                .sort(sortQuery)
+                .skip(skip)
+                .limit(Number(limit))
+                .lean();
+
+            const totalProducts = await Product.countDocuments(filterQuery);
+
+            const processedProducts = products.map(product => {
+                normalizeProductImages(product);
+                return product;
+            });
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    products: processedProducts,
+                    totalProducts,
+                    totalPages: Math.ceil(totalProducts / limit),
+                    currentPage: Number(page)
+                }
+            });
+        } catch (error) {
+            console.error('filterProducts error:', error.message);
+            res.status(500).json({
+                message: "Lỗi khi lọc danh sách sản phẩm",
+                error: error.message
+            });
+        }
+    
+    };

@@ -9,11 +9,14 @@ import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart } from 'lucide-react';
 import { useNavigate, Link } from 'react-router';
+import { useSearchParams } from "react-router";
 
 const ListProduct = () => {
     const { user, logout } = useAuthStore();
     const { hasAnyRole } = useUserRole();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const search = searchParams.get("search")   || "";
     const accessToken = useAuthStore((s) => s.accessToken);
     const addToCartServer = useCartStore((s) => s.addToCartServer);
 
@@ -28,12 +31,12 @@ const ListProduct = () => {
             top: 0,
             behavior: "smooth"
         });
-    }, [page]);
+    }, [page, search]);
 
     const fetchProducts = async () => {
         try {
             const res = await axios.get(
-                `http://localhost:5000/api/products?page=${page}&limit=${limit}`
+                `http://localhost:5000/api/products?page=${page}&limit=${limit}&search=${search}`
             );
 
             setProducts(res.data.data.products);
