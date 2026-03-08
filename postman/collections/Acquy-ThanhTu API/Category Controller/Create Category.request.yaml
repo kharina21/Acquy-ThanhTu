@@ -1,0 +1,18 @@
+$kind: http-request
+name: Create Category
+url: http://localhost:5000/api/categories
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"name\": \"Ắc quy Varta\",\r
+
+    \    \"description\": \"Hàng nhập khẩu Đức\"\r
+
+    }"
+auth:
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI4NzUyNjgsImV4cCI6MTc3Mjg4NjA2OH0.CBlz8lK2hc0U1lucBZBBjWdNY3QuaphNgt6gf0BkNyE
+  type: bearer
+order: 4494052579733489

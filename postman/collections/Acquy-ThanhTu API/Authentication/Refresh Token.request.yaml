@@ -1,0 +1,7 @@
+$kind: http-request
+name: Refresh Token
+url: http://localhost:5000/api/auth/refresh
+method: GET
+auth:
+  type: noauth
+order: 4502984869275566

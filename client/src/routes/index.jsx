@@ -71,7 +71,7 @@ export const AppRoutes = () => {
                     </Route>
 
                     {/* Seller / Staff: dashboard nhân viên */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff']} />}>
+                       <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff', 'Nhân viên bán hàng']} />}>
                         <Route path="/staff/dashboard" element={<StaffDashboard />} />
                     </Route>
 
