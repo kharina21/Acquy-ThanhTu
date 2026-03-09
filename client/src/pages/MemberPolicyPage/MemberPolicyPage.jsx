@@ -126,7 +126,7 @@ const MemberPolicyPage = () => {
     return (
         <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
             <div className="container mx-auto space-y-4">
-                <Header title="Chính sách hạng thành viên" />
+                <Header title="Chính sách hạng thành viên" subtitle="Cấu hình hạng khách hàng, điều kiện và % giảm giá" showCreateButton={false} />
 
                 <div className="bg-base-100 rounded-lg shadow p-4 flex items-center justify-between gap-4">
                     <div>
