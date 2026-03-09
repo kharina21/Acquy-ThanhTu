@@ -1,5 +1,11 @@
 import api from '@/lib/axios';
 
+/** Danh sách chi nhánh active – cho user checkout (chỉ cần đăng nhập) */
+export const getActiveLocations = async () => {
+    const res = await api.get('/locations/active');
+    return res.data;
+};
+
 export const getLocations = async (params = {}) => {
     const res = await api.get('/locations', { params });
     return res.data;

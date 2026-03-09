@@ -650,3 +650,97 @@ export const bulkUpdatePrice = async (req, res) => {
         res.status(500).json({ message: 'Lỗi khi cập nhật giá hàng loạt', error: error.message });
     }
 };
+
+export const getCarBatteryProducts = async (req, res) => {
+    try {
+        const limit = 5;
+
+        // 1️⃣ Tìm usageDevice phù hợp
+        const usageDevices = await UsageDevice.find({
+            name: {
+                $in: [
+                    'Ô tô con, Xe du lịch',
+                    'Xe tải, Tàu thuyền'
+                ]
+            }
+        }).select('_id');
+
+        const usageDeviceIds = usageDevices.map(u => u._id);
+
+        // 2️⃣ Lấy sản phẩm theo usageDevice
+        const products = await Product.find({
+            isDeleted: false,
+            usageDevice: { $in: usageDeviceIds }
+        })
+            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .limit(limit)
+            .populate('category', 'name')
+            .populate('brand', 'name')
+            .populate('usageDevice', 'name')
+            .lean();
+
+        const processedProducts = products.map(product => {
+            normalizeProductImages(product);
+            return product;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: { products: processedProducts }
+        });
+
+    } catch (error) {
+        console.error('getCarBatteryProducts error:', error.message);
+        res.status(500).json({
+            message: 'Lỗi khi lấy danh sách ắc quy ô tô',
+            error: error.message
+        });
+    }
+};
+
+export const getMotorcycleBatteryProducts = async (req, res) => {
+    try {
+        const limit = 5;
+
+        // 1️⃣ Tìm usageDevice phù hợp
+        const usageDevices = await UsageDevice.find({
+            name: {
+                $in: [
+                    'Xe máy'
+                ]
+            }
+        }).select('_id');
+
+        const usageDeviceIds = usageDevices.map(u => u._id);
+
+        // 2️⃣ Lấy sản phẩm theo usageDevice
+        const products = await Product.find({
+            isDeleted: false,
+            usageDevice: { $in: usageDeviceIds }
+        })
+            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .limit(limit)
+            .populate('category', 'name')
+            .populate('brand', 'name')
+            .populate('usageDevice', 'name')
+            .lean();
+
+        const processedProducts = products.map(product => {
+            normalizeProductImages(product);
+            return product;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: { products: processedProducts }
+        });
+
+    } catch (error) {
+        console.error('getMotorcycleBatteryProducts error:', error.message);
+        res.status(500).json({
+            message: 'Lỗi khi lấy danh sách ắc quy xe máy',
+            error: error.message
+        });
+    }
+};
+

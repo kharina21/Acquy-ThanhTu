@@ -1,6 +1,23 @@
 import Location from '../models/Location.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 
+/**
+ * GET /api/locations/active – Danh sách chi nhánh đang hoạt động.
+ * Dành cho user checkout (chỉ cần authenticate, không cần admin/manager).
+ */
+export const getActiveLocations = async (req, res) => {
+    try {
+        const locations = await Location.find({ isActive: true }).sort({ code: 1 }).lean();
+        res.status(200).json({
+            success: true,
+            data: { locations },
+        });
+    } catch (error) {
+        console.error('getActiveLocations error:', error.message);
+        res.status(500).json({ message: 'Lỗi khi lấy danh sách chi nhánh', error: error.message });
+    }
+};
+
 export const getAllLocations = async (req, res) => {
     try {
         const { isActive } = req.query;
