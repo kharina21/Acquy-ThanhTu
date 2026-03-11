@@ -150,7 +150,7 @@ export function Header({ user, onLogout }) {
       <nav className="bg-blue-900 text-white text-xs font-bold uppercase">
         <div className="container mx-auto px-4 flex gap-6 py-3">
           <span onClick={() => navigate('/')} className="cursor-pointer hover:text-orange-400">Trang chủ</span>
-          <span onClick={() => navigate('/listproduct')} className="cursor-pointer hover:text-orange-400">Sản phẩm</span>
+          <span onClick={() => navigate('/listproduct?')} className="cursor-pointer hover:text-orange-400">Sản phẩm</span>
           <span className="cursor-pointer hover:text-orange-400">Thu mua ắc quy</span>
           <span className="cursor-pointer hover:text-orange-400">Liên hệ</span>
         </div>

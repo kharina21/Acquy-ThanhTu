@@ -744,7 +744,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     }
 };
 
- const buildFilter = (queryParams) => {
+const buildFilter = (queryParams) => {
     const {
         category,
         brand,
@@ -756,39 +756,105 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
         search
     } = queryParams;
 
-    const query = { 
-        isDeleted: false 
+    const query = {
+        isDeleted: false
     };
 
-    if(category) {
-        query.category = { $in: category.split(',') };
-    }
 
-    if(brand) {
-        query.brand = { $in: brand.split(',') };
-    }
 
-    if(usageDevice) {
-        query.usageDevice = { $in: usageDevice.split(',') };
-    }
+    if (category) {
+        const ids = category
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
 
-    if(minAh || maxAh) {
-        query.capacity = {};
-        if(minAh) {
-            query.capacity.$gte = parseFloat(minAh);
-        }
-        if(maxAh) {
-            query.capacity.$lte = parseFloat(maxAh);
+        if (ids.length) {
+            query.category = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
         }
     }
 
-    if(minPrice || maxPrice) {
+    if (brand) {
+        const ids = brand
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.brand = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (usageDevice) {
+        const ids = usageDevice
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.usageDevice = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (minAh || maxAh) {
+
+        const capacityNumber = {
+            $convert: {
+                input: {
+                    $replaceAll: {
+                        input: "$capacity",
+                        find: "Ah",
+                        replacement: ""
+                    }
+                },
+                to: "double",
+                onError: null,
+                onNull: null
+            }
+        };
+
+        const exprConditions = [];
+
+        if (minAh) {
+            exprConditions.push({
+                $gte: [capacityNumber, Number(minAh)]
+            });
+        }
+
+        if (maxAh) {
+            exprConditions.push({
+                $lte: [capacityNumber, Number(maxAh)]
+            });
+        }
+
+        query.$or = [
+            {
+                $expr: { $and: exprConditions }
+            },
+            {
+                capacity: { $exists: false }
+            },
+            {
+                capacity: ""
+            }
+        ];
+    }
+
+    if (minPrice || maxPrice) {
         query.price = {};
-        if(minPrice) {
+
+        if (minPrice && minPrice !== "0") {
             query.price.$gte = parseFloat(minPrice);
         }
-        if(maxPrice) {
+
+        if (maxPrice && maxPrice !== "0") {
             query.price.$lte = parseFloat(maxPrice);
+        }
+
+        if (Object.keys(query.price).length === 0) {
+            delete query.price;
         }
     }
 
@@ -796,7 +862,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
         return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
     }
 
-    if(search) {
+    if (search) {
         const safeSearch = escapeRegex(search);
         query.name = {
             $regex: safeSearch,
@@ -804,62 +870,89 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
         };
     }
 
+    console.log("MONGO FILTER:", query);
+
     return query;
-        
-    };
 
-    const buildSort = (sort) => {
-        switch(sort) {
-            case 'priceAsc':
-                return { price: 1 };
-            case 'priceDesc':
-                return { price: -1 };
-            default:
-                return { createdAt: -1 };
-        }
-    };
+};
 
-    export const filterProducts = async (req, res) => {
-        try{
-            const { page = 1, limit = 15, sort } = req.query;
+const buildSort = (sort) => {
+    switch (sort) {
+        case 'priceAsc':
+            return { price: 1 };
+        case 'priceDesc':
+            return { price: -1 };
+        default:
+            return { createdAt: -1 };
+    }
+};
 
-            const filterQuery = buildFilter(req.query);
-            const sortQuery = buildSort(sort);
+export const getFilterOptions = async (req, res) => {
+    try {
+        const categories = await Category.find({}).select('name');
+        const brands = await Brand.find({}).select('name');
+        const usageDevices = await UsageDevice.find({}).select('name');
 
-            const skip = (page - 1) * limit;
+        res.json({
+            success: true,
+            data: {
+                categories,
+                brands,
+                usageDevices
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Lỗi khi lấy tùy chọn lọc',
+            error: error.message
+        });
+    }
+}
 
-            const products = await Product.find(filterQuery)
-                .limit(parseInt(limit))
-                .populate('category', 'name')
-                .populate('brand', 'name')
-                .populate('usageDevice', 'name')
-                .sort(sortQuery)
-                .skip(skip)
-                .limit(Number(limit))
-                .lean();
+export const filterProducts = async (req, res) => {
+    try {
 
-            const totalProducts = await Product.countDocuments(filterQuery);
+        console.log("REQ QUERY:", req.query);
 
-            const processedProducts = products.map(product => {
-                normalizeProductImages(product);
-                return product;
-            });
+        const { page = 1, limit = 15, sort } = req.query;
 
-            res.status(200).json({
-                success: true,
-                data: {
-                    products: processedProducts,
-                    totalProducts,
-                    totalPages: Math.ceil(totalProducts / limit),
-                    currentPage: Number(page)
-                }
-            });
-        } catch (error) {
-            console.error('filterProducts error:', error.message);
-            res.status(500).json({
-                message: "Lỗi khi lọc danh sách sản phẩm",
-                error: error.message
-            });
-        }
-    
-    };
+        const filterQuery = buildFilter(req.query);
+        const sortQuery = buildSort(sort);
+
+        const skip = (page - 1) * limit;
+
+        const products = await Product.find(filterQuery)
+            .populate('category', 'name')
+            .populate('brand', 'name')
+            .populate('usageDevice', 'name')
+            .sort(sortQuery)
+            .skip(skip)
+            .limit(Number(limit))
+            .lean();
+
+        const totalProducts = await Product.countDocuments(filterQuery);
+
+        const processedProducts = products.map(product => {
+            normalizeProductImages(product);
+            return product;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                products: processedProducts,
+                totalProducts,
+                totalPages: Math.ceil(totalProducts / limit),
+                currentPage: Number(page)
+            }
+        });
+    } catch (error) {
+        console.error('filterProducts error:', error.message);
+        res.status(500).json({
+            message: "Lỗi khi lọc danh sách sản phẩm",
+            error: error.message
+        });
+    }
+
+
+};
