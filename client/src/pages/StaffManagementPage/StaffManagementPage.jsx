@@ -49,8 +49,6 @@ const StaffManagementPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState(null);
     const [formData, setFormData] = useState({
-        salaryType: 'monthly',
-        baseSalary: 0,
         hireDate: '',
         locations: [],
         note: '',
@@ -241,8 +239,6 @@ const StaffManagementPage = () => {
         setEditingEmployee(employee);
         setFormData({
             empCode: employee.empCode || '',
-            salaryType: employee.salaryType || 'monthly',
-            baseSalary: employee.baseSalary ?? 0,
             hireDate: employee.hireDate ? employee.hireDate.slice(0, 10) : '',
             locations: (employee.locations || []).map((l) => l._id),
             note: employee.note || '',
@@ -255,8 +251,6 @@ const StaffManagementPage = () => {
         setEditingEmployee(null);
         setFormData({
             empCode: '',
-            salaryType: 'monthly',
-            baseSalary: 0,
             hireDate: '',
             locations: [],
             note: '',
@@ -270,10 +264,13 @@ const StaffManagementPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            if (!formData.locations || formData.locations.length === 0) {
+                toast.error('Vui lòng chọn ít nhất một chi nhánh làm việc');
+                return;
+            }
+
             const payload = {
                 empCode: (formData.empCode || '').trim() || undefined,
-                salaryType: formData.salaryType,
-                baseSalary: Number(formData.baseSalary) || 0,
                 hireDate: formData.hireDate || null,
                 locations: formData.locations,
                 note: formData.note,
@@ -293,8 +290,6 @@ const StaffManagementPage = () => {
                 const createPayload = {
                     userId: selectedUserId,
                     empCode: payload.empCode || undefined,
-                    salaryType: payload.salaryType,
-                    baseSalary: payload.baseSalary,
                     hireDate: payload.hireDate,
                     locations: payload.locations,
                     note: payload.note,
@@ -553,15 +548,15 @@ const StaffManagementPage = () => {
 
                 {!isSchedulePage && (
                     <div className="space-y-4">
-                        {/* Bộ lọc nhân viên + nút tạo hồ sơ */}
-                        <div className="bg-base-100 rounded-lg shadow p-4 flex flex-wrap gap-4 items-end justify-between">
+                        {/* Bộ lọc + nút tạo hồ sơ */}
+                        <div className="bg-base-100 rounded-lg shadow-lg p-4 flex flex-wrap gap-4 items-end justify-between">
                             <div className="flex flex-wrap gap-4 items-end">
-                                <div>
+                                <div className='flex flex-col'>
                                     <label className="label">
                                         <span className="label-text font-semibold text-sm">Trạng thái</span>
                                     </label>
                                     <select
-                                        className="select select-sm w-40"
+                                        className="select select-sm w-40 focus:outline-none focus:ring-0"
                                         value={filters.status}
                                         onChange={(e) => {
                                             setFilters((prev) => ({ ...prev, status: e.target.value }));
@@ -573,12 +568,12 @@ const StaffManagementPage = () => {
                                         <option value="inactive">Ngừng làm</option>
                                     </select>
                                 </div>
-                                <div>
+                                <div className='flex flex-col'>
                                     <label className="label">
                                         <span className="label-text font-semibold text-sm">Chi nhánh</span>
                                     </label>
                                     <select
-                                        className="select select-sm w-64"
+                                        className="select select-sm w-64 focus:outline-none focus:ring-0"
                                         value={filters.locationId}
                                         onChange={(e) => {
                                             setFilters((prev) => ({ ...prev, locationId: e.target.value }));
@@ -602,138 +597,128 @@ const StaffManagementPage = () => {
                                     Tạo nhân viên
                                 </button>
                             </div>
+                        </div>
 
-                            {/* Bảng nhân viên */}
-                            <div className="bg-base-100 rounded-lg shadow overflow-x-auto w-full">
-                                {loading ? (
-                                    <div className="p-6 text-center text-base-content/60">
-                                        Đang tải danh sách nhân viên...
-                                    </div>
-                                ) : employees.length === 0 ? (
-                                    <div className="p-6 text-center text-base-content/60">
-                                        Chưa có hồ sơ nhân viên nào. Bạn cần tạo user nhân viên ở phần người dùng, sau đó gắn
-                                        thêm hồ sơ nhân viên tại đây.
-                                    </div>
-                                ) : (
-                                    <table className="table table-sm">
-                                        <thead className="bg-blue-100">
-                                            <tr>
-                                                <th>Mã NV</th>
-                                                <th>Nhân viên</th>
-                                                <th>Chi nhánh làm việc</th>
-                                                <th>Kiểu lương</th>
-                                                <th>Lương cơ bản</th>
-                                                <th>Ngày vào làm</th>
-                                                <th>Trạng thái</th>
-                                                <th className="text-center">Thao tác</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {employees.map((emp) => (
-                                                <tr key={emp._id}>
-                                                    <td>
-                                                        <span className="font-mono font-medium">{emp.empCode || '-'}</span>
-                                                    </td>
-                                                    <td>
-                                                        <div className="flex flex-col">
-                                                            <span className="font-semibold">
-                                                                {emp.user?.firstName} {emp.user?.lastName}
-                                                            </span>
-                                                            <span className="text-xs text-base-content/70">
-                                                                {emp.user?.username}
-                                                            </span>
-                                                            <span className="text-xs text-base-content/70">
-                                                                {emp.user?.email}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div className="flex flex-wrap gap-1 max-w-xs">
-                                                            {(emp.locations || []).map((loc) => (
-                                                                <span
-                                                                    key={loc._id}
-                                                                    className="badge badge-xs badge-outline"
-                                                                >
-                                                                    {loc.code} - {loc.name}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        {emp.salaryType === 'monthly'
-                                                            ? 'Lương tháng'
-                                                            : emp.salaryType === 'shift'
-                                                                ? 'Theo ca'
-                                                                : emp.salaryType === 'hourly'
-                                                                    ? 'Theo giờ'
-                                                                    : emp.salaryType === 'commission'
-                                                                        ? 'Hoa hồng'
-                                                                        : '-'}
-                                                    </td>
-                                                    <td>
-                                                        {emp.baseSalary
-                                                            ? emp.baseSalary.toLocaleString('vi-VN')
-                                                            : '-'}
-                                                    </td>
-                                                    <td>{formatDate(emp.hireDate)}</td>
-                                                    <td>
-                                                        <span
-                                                            className={`badge badge-sm ${emp.isActive ? 'badge-success' : 'badge-neutral'}`}
-                                                        >
-                                                            {emp.isActive ? 'Đang làm' : 'Ngừng làm'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="text-center">
-                                                        <div className="flex justify-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-ghost btn-sm"
-                                                                onClick={() => openEditModal(emp)}
-                                                            >
-                                                                <Edit className="w-4 h-4" />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-ghost btn-sm text-error"
-                                                                onClick={() => handleDelete(emp)}
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
+                        {/* Bảng nhân viên */}
+                        <div className="bg-base-100 rounded-lg shadow-lg">
+                            {loading ? (
+                                <div className="p-8 text-center text-base-content/60">
+                                    Đang tải danh sách nhân viên...
+                                </div>
+                            ) : employees.length === 0 ? (
+                                <div className="p-8 text-center text-base-content/60">
+                                    Chưa có hồ sơ nhân viên nào. Bạn cần tạo user nhân viên ở phần người dùng, sau đó gắn
+                                    thêm hồ sơ nhân viên tại đây.
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
+                                        <table className="table">
+                                            <thead className="bg-blue-100 sticky top-0 z-20">
+                                                <tr>
+                                                    <th className="font-medium text-neutral text-xs">Mã NV</th>
+                                                    <th className="font-medium text-neutral text-xs">Nhân viên</th>
+                                                    <th className="font-medium text-neutral text-xs">Chi nhánh làm việc</th>
+                                                    <th className="font-medium text-neutral text-xs">Ngày vào làm</th>
+                                                    <th className="font-medium text-neutral text-xs">Trạng thái</th>
+                                                    <th className="text-center font-medium text-neutral text-xs">Thao tác</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
+                                            </thead>
+                                            <tbody className="text-xs">
+                                                {employees.map((emp) => (
+                                                    <tr key={emp._id} className="hover:bg-base-200/60 transition-colors font-light">
+                                                        <td>
+                                                            <span className="font-mono font-medium">{emp.empCode || '-'}</span>
+                                                        </td>
+                                                        <td>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold">
+                                                                    {emp.user?.firstName} {emp.user?.lastName}
+                                                                </span>
+                                                                <span className="text-base-content/70">
+                                                                    {emp.user?.username}
+                                                                </span>
+                                                                <span className="text-base-content/70">
+                                                                    {emp.user?.email}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div className="flex flex-wrap gap-1 max-w-xs">
+                                                                {(emp.locations || []).map((loc) => (
+                                                                    <span
+                                                                        key={loc._id}
+                                                                        className="badge badge-xs badge-outline"
+                                                                    >
+                                                                        {loc.code} - {loc.name}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                        <td>{formatDate(emp.hireDate)}</td>
+                                                        <td>
+                                                            <span
+                                                                className={`badge badge-sm ${emp.isActive ? 'badge-success' : 'badge-neutral'}`}
+                                                            >
+                                                                {emp.isActive ? 'Đang làm' : 'Ngừng làm'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-center">
+                                                            <div className="flex justify-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                                                                    onClick={() => openEditModal(emp)}
+                                                                    aria-label="Chỉnh sửa"
+                                                                >
+                                                                    <Edit className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
+                                                                    onClick={() => handleDelete(emp)}
+                                                                    aria-label="Xóa"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
 
-                                {/* Phân trang đơn giản */}
-                                {employees.length > 0 && (
-                                    <div className="flex items-center justify-between px-4 py-2 border-t border-base-200 text-sm">
+                                    {/* Phân trang */}
+                                    <div className="flex justify-between items-center p-4 border-t border-base-200">
                                         <div>
-                                            Trang {pagination.page} / {pagination.totalPages} ({pagination.total} nhân viên)
+                                            <p className="text-sm text-base-content/60">
+                                                Hiển thị {employees.length} / {pagination.total} nhân viên
+                                            </p>
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="join">
                                             <button
                                                 type="button"
-                                                className="btn btn-ghost btn-xs"
-                                                onClick={() => handlePageChange(pagination.page - 1)}
+                                                className="join-item btn btn-sm"
                                                 disabled={pagination.page <= 1}
+                                                onClick={() => handlePageChange(pagination.page - 1)}
+                                                aria-label="Trang trước"
                                             >
-                                                <ChevronLeft />
+                                                <ChevronLeft className="w-4 h-4" />
                                             </button>
                                             <button
                                                 type="button"
-                                                className="btn btn-ghost btn-xs"
-                                                onClick={() => handlePageChange(pagination.page + 1)}
+                                                className="join-item btn btn-sm"
                                                 disabled={pagination.page >= pagination.totalPages}
+                                                onClick={() => handlePageChange(pagination.page + 1)}
+                                                aria-label="Trang sau"
                                             >
-                                                <ChevronRight />
+                                                <ChevronRight className="w-4 h-4" />
                                             </button>
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1095,11 +1080,11 @@ const StaffManagementPage = () => {
                                                 <span>
                                                     {selectedUserId
                                                         ? (() => {
-                                                              const u = availableStaffUsers.find((x) => x._id === selectedUserId);
-                                                              return u
-                                                                  ? [u.empCode, `${(u.firstName || '')} ${(u.lastName || '')}`.trim(), u.roles?.[0]?.name].filter(Boolean).join(' · ')
-                                                                  : '-- Chọn nhân viên --';
-                                                          })()
+                                                            const u = availableStaffUsers.find((x) => x._id === selectedUserId);
+                                                            return u
+                                                                ? [u.empCode, `${(u.firstName || '')} ${(u.lastName || '')}`.trim(), u.roles?.[0]?.name].filter(Boolean).join(' · ')
+                                                                : '-- Chọn nhân viên --';
+                                                        })()
                                                         : '-- Chọn nhân viên --'}
                                                 </span>
                                                 <span className="text-base-content/50">{staffSelectOpen ? '▼' : '▶'}</span>
@@ -1188,47 +1173,7 @@ const StaffManagementPage = () => {
                                         </span>
                                     </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label">
-                                            <span className="label-text font-semibold">Kiểu lương</span>
-                                        </label>
-                                        <select
-                                            className="select select-sm w-full"
-                                            value={formData.salaryType}
-                                            onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                    ...prev,
-                                                    salaryType: e.target.value,
-                                                }))
-                                            }
-                                        >
-                                            <option value="monthly">Lương cố định</option>
-                                            <option value="shift">Theo ca</option>
-                                            <option value="hourly">Theo giờ</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="label">
-                                            <span className="label-text font-semibold">Lương cơ bản</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            className="input input-bordered input-sm w-full"
-                                            value={formData.baseSalary}
-                                            onChange={(e) =>
-                                                setFormData((prev) => {
-                                                    const onlyDigits = e.target.value.replace(/\D/g, '');
-                                                    return {
-                                                        ...prev,
-                                                        baseSalary: onlyDigits,
-                                                    };
-                                                })
-                                            }
-                                            min={0}
-                                        />
-                                    </div>
-                                </div>
+                                {/* Bỏ input kiểu lương và lương cơ bản */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">
@@ -1398,7 +1343,7 @@ const StaffManagementPage = () => {
                                                 return (
                                                     <>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={startTime.hour}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(e.target.value, startTime.minute);
@@ -1413,7 +1358,7 @@ const StaffManagementPage = () => {
                                                         </select>
                                                         <span className="text-xs">:</span>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={startTime.minute}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(startTime.hour, e.target.value);
@@ -1435,7 +1380,7 @@ const StaffManagementPage = () => {
                                                 return (
                                                     <>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={endTime.hour}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(e.target.value, endTime.minute);
@@ -1450,7 +1395,7 @@ const StaffManagementPage = () => {
                                                         </select>
                                                         <span className="text-xs">:</span>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={endTime.minute}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(endTime.hour, e.target.value);
@@ -1480,7 +1425,7 @@ const StaffManagementPage = () => {
                                                 return (
                                                     <>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={checkInStartTime.hour}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(e.target.value, checkInStartTime.minute);
@@ -1495,7 +1440,7 @@ const StaffManagementPage = () => {
                                                         </select>
                                                         <span className="text-xs">:</span>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={checkInStartTime.minute}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(checkInStartTime.hour, e.target.value);
@@ -1517,7 +1462,7 @@ const StaffManagementPage = () => {
                                                 return (
                                                     <>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={checkInEndTime.hour}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(e.target.value, checkInEndTime.minute);
@@ -1532,7 +1477,7 @@ const StaffManagementPage = () => {
                                                         </select>
                                                         <span className="text-xs">:</span>
                                                         <select
-                                                            className="select select-bordered select-sm w-20"
+                                                            className="select select-bordered select-sm w-20 focus:outline-none focus:ring-0"
                                                             value={checkInEndTime.minute}
                                                             onChange={(e) => {
                                                                 const newTime = formatTime(checkInEndTime.hour, e.target.value);
@@ -1644,7 +1589,7 @@ const StaffManagementPage = () => {
                                                 </span>
                                             </label>
                                             <select
-                                                className="select select-sm w-full"
+                                                className="select select-sm w-full focus:outline-none focus:ring-0"
                                                 value={scheduleForm.employeeId}
                                                 onChange={(e) => {
                                                     const selectedEmployeeId = e.target.value;
@@ -1700,7 +1645,7 @@ const StaffManagementPage = () => {
                                         </span>
                                     </label>
                                     <select
-                                        className="select select-sm w-full"
+                                        className="select select-sm w-full focus:outline-none focus:ring-0"
                                         value={scheduleForm.shiftId}
                                         onChange={(e) =>
                                             setScheduleForm((prev) => ({

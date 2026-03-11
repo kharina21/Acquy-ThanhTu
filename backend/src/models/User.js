@@ -38,6 +38,12 @@ const userSchema = new mongoose.Schema(
                 ref: 'Role',
             },
         ],
+        // Hạng thành viên hiện tại (MemberPolicy) - dùng cho khách hàng
+        memberTier: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'MemberPolicy',
+            default: null,
+        },
         isVerified: {
             type: Boolean,
             default: false,

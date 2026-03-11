@@ -119,8 +119,6 @@ export const createEmployee = async (req, res) => {
             empCode: rawEmpCode,
             primaryLocation,
             locations = [],
-            salaryType = 'monthly',
-            baseSalary = 0,
             hireDate,
             note = '',
         } = req.body;
@@ -140,6 +138,14 @@ export const createEmployee = async (req, res) => {
             }
         } else {
             empCode = await getNextEmpCode();
+        }
+
+        // Chuẩn hóa danh sách chi nhánh & chi nhánh chính
+        const normalizedLocations = Array.isArray(locations) ? locations.filter(Boolean) : [];
+        const primaryLoc = primaryLocation || (normalizedLocations.length > 0 ? normalizedLocations[0] : null);
+
+        if (!primaryLoc) {
+            return res.status(400).json({ message: 'Vui lòng chọn ít nhất một chi nhánh làm việc cho nhân viên' });
         }
 
         // Kiểm tra user tồn tại & là nhân viên
@@ -162,10 +168,8 @@ export const createEmployee = async (req, res) => {
             // Đã từng có hồ sơ nhưng đã xóa mềm → cập nhật và khôi phục
             existingByUser.isDeleted = false;
             existingByUser.isActive = true;
-            existingByUser.primaryLocation = primaryLocation || null;
-            existingByUser.locations = Array.isArray(locations) ? locations : [];
-            existingByUser.salaryType = salaryType;
-            existingByUser.baseSalary = baseSalary;
+            existingByUser.primaryLocation = primaryLoc;
+            existingByUser.locations = normalizedLocations;
             existingByUser.hireDate = hireDate ? new Date(hireDate) : null;
             existingByUser.note = note || '';
             if (empCode) {
@@ -192,10 +196,8 @@ export const createEmployee = async (req, res) => {
         const emp = await Employee.create({
             empCode,
             user: userId,
-            primaryLocation: primaryLocation || null,
-            locations,
-            salaryType,
-            baseSalary,
+            primaryLocation: primaryLoc,
+            locations: normalizedLocations,
             hireDate: hireDate ? new Date(hireDate) : null,
             note,
         });
@@ -224,8 +226,6 @@ export const updateEmployee = async (req, res) => {
             empCode: rawEmpCode,
             primaryLocation,
             locations,
-            salaryType,
-            baseSalary,
             hireDate,
             note,
             isActive,
@@ -253,8 +253,6 @@ export const updateEmployee = async (req, res) => {
         }
         if (primaryLocation !== undefined) emp.primaryLocation = primaryLocation || null;
         if (Array.isArray(locations)) emp.locations = locations;
-        if (salaryType !== undefined) emp.salaryType = salaryType;
-        if (baseSalary !== undefined) emp.baseSalary = baseSalary;
         if (hireDate !== undefined) emp.hireDate = hireDate ? new Date(hireDate) : null;
         if (note !== undefined) emp.note = note;
         if (isActive !== undefined) emp.isActive = !!isActive;

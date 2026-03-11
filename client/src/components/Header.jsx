@@ -63,6 +63,7 @@ export function Header({ user, onLogout }) {
                 onChange={(e) => handleSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
+                    e.preventDefault();
                     handleSubmitSearch();
                   }
                 }}

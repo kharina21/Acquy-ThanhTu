@@ -1243,9 +1243,22 @@ const ProductListTab = () => {
                                         return (
                                             <>
                                                 <div className="flex flex-row gap-3 mb-2">
-                                                    <div className="shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
+                                                    <div className="relative shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
                                                         {mainUrl && isValidUrl(mainUrl) ? (
-                                                            <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                            <>
+                                                                <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                                <button
+                                                                    type="button"
+                                                                    className="absolute top-1 right-1 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300"
+                                                                    onClick={(ev) => {
+                                                                        ev.stopPropagation();
+                                                                        removeEditImage(editImageIndex);
+                                                                    }}
+                                                                    aria-label="Xóa ảnh chính"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </>
                                                         ) : (
                                                             <ImageIcon className="w-10 h-10 text-base-content/30" aria-hidden />
                                                         )}
@@ -1472,9 +1485,22 @@ const ProductListTab = () => {
                                         return (
                                             <>
                                                 <div className="flex flex-row gap-3 mb-2">
-                                                    <div className="shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
+                                                    <div className="relative shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300">
                                                         {mainUrl && isValidUrl(mainUrl) ? (
-                                                            <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                            <>
+                                                                <img src={mainUrl} alt="" className="w-full h-full object-contain" />
+                                                                <button
+                                                                    type="button"
+                                                                    className="absolute top-1 right-1 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300"
+                                                                    onClick={(ev) => {
+                                                                        ev.stopPropagation();
+                                                                        removeCreateImage(createImageIndex);
+                                                                    }}
+                                                                    aria-label="Xóa ảnh chính"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </>
                                                         ) : (
                                                             <ImageIcon className="w-10 h-10 text-base-content/30" aria-hidden />
                                                         )}
