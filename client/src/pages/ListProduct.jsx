@@ -16,7 +16,7 @@ const ListProduct = () => {
     const { hasAnyRole } = useUserRole();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const search = searchParams.get("search")   || "";
+    const search = searchParams.get("search") || "";
     const accessToken = useAuthStore((s) => s.accessToken);
     const addToCartServer = useCartStore((s) => s.addToCartServer);
 
@@ -135,53 +135,58 @@ const ListProduct = () => {
                 <h2 className="text-2xl font-bold mb-6">Sản phẩm</h2>
 
                 {/* Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {products.map((p) => (
-                        <div
-                            key={p._id}
-                            className="bg-white shadow hover:shadow-lg transition p-4 text-center flex flex-col"
-                        >
-                            <Link
-                                to={`/product/${p._id}`}
-                                className="block flex-1"
+                {products.length === 0 ? (
+                    <div className="text-center text-gray-500 py-20 text-lg">
+                        Không có sản phẩm nào
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {products.map((p) => (
+                            <div
+                                key={p._id}
+                                className="bg-white shadow hover:shadow-lg transition p-4 text-center flex flex-col"
                             >
-                                <img
-                                    src={p.images?.[0]}
-                                    alt={p.name}
-                                    className="h-40 mx-auto object-contain mb-4"
-                                />
-
-                                <h3 className="text-sm font-medium mb-2 hover:text-red-600">
-                                    {p.name}
-                                </h3>
-
-                                <p className="text-red-600 font-bold">
-                                    {p.price?.toLocaleString()} đ
-                                </p>
-                            </Link>
-
-                            {/* Nút Mua ngay + Thêm vào giỏ hàng */}
-                            <div className="mt-3 flex gap-2">
-                                <Button
-                                    size="sm"
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                    onClick={() => handleAddToCart(p, true)}
+                                <Link
+                                    to={`/product/${p._id}`}
+                                    className="block flex-1"
                                 >
-                                    Mua ngay
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => handleAddToCart(p, false)}
-                                >
-                                    <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
-                                    Thêm vào giỏ hàng
-                                </Button>
+                                    <img
+                                        src={p.images?.[0]}
+                                        alt={p.name}
+                                        className="h-40 mx-auto object-contain mb-4"
+                                    />
+
+                                    <h3 className="text-sm font-medium mb-2 hover:text-red-600">
+                                        {p.name}
+                                    </h3>
+
+                                    <p className="text-red-600 font-bold">
+                                        {p.price?.toLocaleString()} đ
+                                    </p>
+                                </Link>
+
+                                <div className="mt-3 flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                        onClick={() => handleAddToCart(p, true)}
+                                    >
+                                        Mua ngay
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="flex-1"
+                                        onClick={() => handleAddToCart(p, false)}
+                                    >
+                                        <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
+                                        Thêm vào giỏ hàng
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Pagination */}
                 <div className="flex justify-center items-center mt-10 gap-2 flex-wrap">
