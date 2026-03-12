@@ -153,22 +153,23 @@ export function ProductSection() {
                 </div>
               </Link>
 
-              {/* Nút Mua hàng + Thêm vào giỏ */}
+              {/* Nút Mua ngay + Thêm vào giỏ hàng */}
               <div className="mt-3 flex gap-2">
                 <Button
                   size="sm"
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                   onClick={() => handleAddToCart(product, true)}
                 >
-                  Mua hàng
+                  Mua ngay
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="shrink-0"
+                  className="flex-1"
                   onClick={() => handleAddToCart(product, false)}
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
+                  Thêm vào giỏ hàng
                 </Button>
               </div>
             </div>

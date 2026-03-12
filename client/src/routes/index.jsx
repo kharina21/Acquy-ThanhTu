@@ -7,12 +7,17 @@ import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
 import HomePage from '../pages/HomePage';
 import CartPage from '../pages/CartPage';
+import CheckoutPage from '../pages/CheckoutPage';
+import OrderHistoryPage from '../pages/OrderHistoryPage';
+import OrderDetailPage from '../pages/OrderDetailPage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
+import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
+import CustomersPage from '../pages/CustomersPage/CustomersPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
@@ -49,11 +54,16 @@ export const AppRoutes = () => {
             {/* PUBLIC HOME - Cho phép cả authenticated và unauthenticated users */}
             <Route path="/home" element={<HomePage />} />
             <Route path="/listproduct" element={<ListProduct />} />
-            {/* Giỏ hàng - giao diện only */}
+            {/* Giỏ hàng */}
             <Route path="/cart" element={<CartPage />} />
 
-            {/* PROTECTED ROUTES - Cần đăng nhập, chỉ truy cập được các trang dựa trên role */}
+            {/* PROTECTED ROUTES - Cần đăng nhập */}
             <Route element={<ProtectedRoute />}>
+                {/* Checkout & Orders - User đặt hàng, xem đơn */}
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/orders" element={<OrderHistoryPage />} />
+                <Route path="/orders/:id" element={<OrderDetailPage />} />
+
                 <Route element={<RoleBasedLayout />}>
                     {/* Common routes - Tất cả authenticated users đều có thể truy cập */}
                     <Route path="/profile" element={<ProfilePage />} />
@@ -66,7 +76,8 @@ export const AppRoutes = () => {
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
                         <Route path="/admin/staffs" element={<StaffManagementPage />} />
-                        <Route path="/admin/staffs/schedule" element={<StaffManagementPage />} />
+                        <Route path="/admin/customers" element={<CustomersPage />} />
+                        <Route path="/admin/member-policies" element={<MemberPolicyPage />} />
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 
