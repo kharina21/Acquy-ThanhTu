@@ -248,6 +248,10 @@ export const getProductById = async (req, res) => {
                     product.brand = populated.brand;
                     product.brandName = populated.brand.name;
                 }
+                if (populated?.usageDevice?.name) {
+                    product.usageDevice = populated.usageDevice;
+                    product.usageDeviceName = populated.usageDevice.name;
+                }
             } catch (error) {
                 product.category = null;
             }
@@ -993,4 +997,118 @@ export const filterProducts = async (req, res) => {
     }
 
 
+};
+
+
+/**
+ * Lấy danh sách sản phẩm liên quan
+ */
+export const getRelatedProducts = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const limit = parseInt(req.query.limit) || 4;
+
+        // 1. Lấy thông tin sản phẩm gốc
+        const targetProduct = await Product.findById(id).lean();
+        if (!targetProduct || targetProduct.isDeleted) {
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+        }
+
+        const targetId = targetProduct._id.toString();
+        const targetUsageDevice = targetProduct.usageDevice?.toString();
+        const targetCategory = targetProduct.category?.toString();
+
+        // 2. Thu thập ứng viên theo nhiều mức độ ưu tiên
+        let candidates = [];
+
+        // Mức 1: Cùng cả thiết bị sử dụng VÀ cùng danh mục
+        if (targetUsageDevice && targetCategory) {
+            const lv1 = await Product.find({
+                _id: { $ne: targetId },
+                isDeleted: false,
+                usageDevice: targetUsageDevice,
+                category: targetCategory,
+            })
+                .limit(limit * 2)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...lv1];
+        }
+
+        // Mức 2: Nếu chưa đủ limit, tìm cùng thiết bị sử dụng (khác danh mục cũng được)
+        if (candidates.length < limit && targetUsageDevice) {
+            const existingIds = candidates.map((c) => c._id.toString());
+            const lv2 = await Product.find({
+                _id: { $ne: targetId, $nin: existingIds },
+                isDeleted: false,
+                usageDevice: targetUsageDevice,
+            })
+                .limit(limit)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...candidates, ...lv2];
+        }
+
+        // Mức 3: Nếu vẫn chưa đủ limit, tìm cùng danh mục
+        if (candidates.length < limit && targetCategory) {
+            const existingIds = [targetId, ...candidates.map((c) => c._id.toString())];
+            const lv3 = await Product.find({
+                _id: { $nin: existingIds },
+                isDeleted: false,
+                category: targetCategory,
+            })
+                .limit(limit)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...candidates, ...lv3];
+        }
+
+        // 3. Xử lý logic dung lượng (Capacity) để sắp xếp trong cùng một mức ưu tiên nếu cần
+        const parseCapacity = (capStr) => {
+            if (!capStr) return 0;
+            const match = String(capStr).match(/\d+(\.\d+)?/);
+            return match ? parseFloat(match[0]) : 0;
+        };
+        const targetCap = parseCapacity(targetProduct.capacity);
+
+        // Hàm tính điểm ưu tiên (Score)
+        // Cùng device: +1000 điểm
+        // Cùng category: +500 điểm
+        // Độ lệch dung lượng: trừ điểm
+        const getScore = (p) => {
+            let score = 0;
+            const pDevice = p.usageDevice?._id?.toString() || p.usageDevice?.toString();
+            const pCategory = p.category?._id?.toString() || p.category?.toString();
+            
+            if (targetUsageDevice && pDevice === targetUsageDevice) score += 1000;
+            if (targetCategory && pCategory === targetCategory) score += 500;
+            
+            const capDiff = Math.abs(parseCapacity(p.capacity) - targetCap);
+            score -= capDiff; // Dung lượng càng gần càng tốt
+            
+            return score;
+        };
+
+        // Sắp xếp lại dựa trên score
+        candidates.sort((a, b) => getScore(b) - getScore(a));
+
+        // 4. Lấy top X
+        const topProducts = candidates.slice(0, limit);
+
+        // Normalize dữ liệu trước khi trả về
+        topProducts.forEach((p) => {
+            normalizeProductImages(p);
+            if (p.category) p.categoryName = p.category.name;
+            if (p.brand) p.brandName = p.brand.name;
+            if (p.usageDevice) p.usageDeviceName = p.usageDevice.name;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: { products: topProducts },
+        });
+    } catch (error) {
+        console.error("getRelatedProducts error:", error.message);
+        res.status(500).json({ message: "Lỗi khi lấy sản phẩm liên quan", error: error.message });
+    }
 };

@@ -197,7 +197,11 @@ const ListProduct = () => {
                 onLogout={handleLogout}
             />
 
+
+
             <div className="container mx-auto px-4 py-8 flex gap-8 items-start">
+
+
 
                 {/* FILTER */}
                 <ProductFilter
