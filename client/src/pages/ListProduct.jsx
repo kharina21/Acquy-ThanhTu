@@ -100,6 +100,21 @@ const ListProduct = () => {
         navigate(`/listproduct?${params.toString()}`);
     };
 
+    const handleSort = (sortValue) => {
+
+        const params = new URLSearchParams(searchParams);
+
+        if (sortValue) {
+            params.set("sort", sortValue);
+        } else {
+            params.delete("sort");
+        }
+
+        params.set("page", 1);
+
+        navigate(`/listproduct?${params.toString()}`);
+    };
+
     const getPageNumbers = () => {
 
         const pages = [];
@@ -203,9 +218,25 @@ const ListProduct = () => {
                             Sản phẩm
                         </h2>
 
-                        <span className="text-sm text-gray-500">
-                            Hiển thị {products.length} / {totalProducts} sản phẩm
-                        </span>
+                        <div className="flex items-center gap-4">
+
+                            <span className="text-sm text-gray-500">
+                                Hiển thị {products.length} / {totalProducts} sản phẩm
+                            </span>
+
+                            <select
+                                value={searchParams.get("sort") || ""}
+                                onChange={(e) => handleSort(e.target.value)}
+                                className="border rounded px-2 py-1 text-sm"
+                            >
+                                <option value="">Mặc định</option>
+                                <option value="price_asc">Giá thấp → cao</option>
+                                <option value="price_desc">Giá cao → thấp</option>
+                                <option value="ah_asc">Ah nhỏ → lớn</option>
+                                <option value="ah_desc">Ah lớn → nhỏ</option>
+                            </select>
+
+                        </div>
 
                     </div>
 

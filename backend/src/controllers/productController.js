@@ -870,21 +870,31 @@ const buildFilter = (queryParams) => {
         };
     }
 
-    console.log("MONGO FILTER:", query);
-
     return query;
 
 };
 
 const buildSort = (sort) => {
+
     switch (sort) {
-        case 'priceAsc':
+
+        case "price_asc":
             return { price: 1 };
-        case 'priceDesc':
+
+        case "price_desc":
             return { price: -1 };
+
+        case "ah_asc":
+            return { capacityNumber: 1 };
+
+        case "ah_desc":
+            return { capacityNumber: -1 };
+
         default:
             return { createdAt: -1 };
+
     }
+
 };
 
 export const getFilterOptions = async (req, res) => {
@@ -921,14 +931,42 @@ export const filterProducts = async (req, res) => {
 
         const skip = (page - 1) * limit;
 
-        const products = await Product.find(filterQuery)
-            .populate('category', 'name')
-            .populate('brand', 'name')
-            .populate('usageDevice', 'name')
-            .sort(sortQuery)
-            .skip(skip)
-            .limit(Number(limit))
-            .lean();
+        const products = await Product.aggregate([
+
+            { $match: filterQuery },
+
+            {
+                $addFields: {
+                    capacityNumber: {
+                        $convert: {
+                            input: {
+                                $replaceAll: {
+                                    input: "$capacity",
+                                    find: "Ah",
+                                    replacement: ""
+                                }
+                            },
+                            to: "double",
+                            onError: null,
+                            onNull: null
+                        }
+                    }
+                }
+            },
+
+            { $sort: sortQuery },
+
+            { $skip: skip },
+
+            { $limit: Number(limit) }
+
+        ]);
+
+        await Product.populate(products, [
+            { path: "category", select: "name" },
+            { path: "brand", select: "name" },
+            { path: "usageDevice", select: "name" }
+        ]);
 
         const totalProducts = await Product.countDocuments(filterQuery);
 
