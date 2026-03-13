@@ -1,14 +1,46 @@
 import { Search, User, LogOut, ShoppingCart, Package } from 'lucide-react';
 import { useNavigate, Link } from 'react-router';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useCartStore } from '@/stores/useCartStore';
+import axios from 'axios';
 
 export function Header({ user, onLogout }) {
   const navigate = useNavigate();
   const items = useCartStore((s) => s.items);
   const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
+  const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
 
+
+  const handleSearch = async (value) => {
+    setSearch(value);
+    if (!value) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const res = await axios.get(`http://localhost:5000/api/products?search=${value}&limit=5`);
+      setSuggestions(res.data.data.products);
+    } catch (error) {
+      console.error("Lỗi tìm kiếm sản phẩm:", error);
+
+    }
+  };
+
+  const handleSubmitSearch = () => {
+    const keyword = search.trim();
+
+    if (!keyword) {
+      navigate("/listproduct"); // hiển thị toàn bộ sản phẩm
+    } else {
+      navigate(`/listproduct?search=${keyword}`);
+    }
+
+    setSuggestions([]); // ẩn dropdown gợi ý
+  };
   return (
     <>
       <div className="bg-white border-b">
@@ -27,13 +59,35 @@ export function Header({ user, onLogout }) {
             <div className="relative hidden lg:block flex-1 max-w-xl mx-10">
               <input
                 type="text"
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSubmitSearch();
+                  }
+                }}
                 placeholder="Bạn cần tìm loại ắc quy nào? (VD: GS, Pinaco, Atlas...)"
                 className="w-full px-5 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-full text-sm 
-               focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 
-               transition-all outline-none pr-12"
+                focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 
+                transition-all outline-none pr-12"
               />
+              {suggestions.length > 0 && (
+                <div className="absolute w-full bg-white border rounded-lg shadow mt-2 z-50">
+                  {suggestions.map((product) => (
+                    <Link
+                      key={product._id}
+                      to={`/products/${product._id}`}
+                      className="block px-4 py-2 hover:bg-gray-100"
+                    >
+                      {product.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+
               <div className="absolute right-1 top-1 bottom-1 flex items-center">
-                <Button size="icon" variant="ghost" className="rounded-full hover:bg-blue-50 text-blue-600">
+                <Button size="icon" variant="ghost" onClick={handleSubmitSearch} className="rounded-full hover:bg-blue-50 text-blue-600">
                   <Search className="w-5 h-5" />
                 </Button>
               </div>
