@@ -18,6 +18,8 @@ import productStockRoutes from './routes/productStockRoute.js';
 import roleRoutes from './routes/roleRoute.js';
 import employeeRoutes from './routes/employeeRoute.js';
 import memberPolicyRoutes from './routes/memberPolicyRoute.js';
+import cartRoutes from './routes/cartRoute.js';
+import orderRoutes from './routes/orderRoute.js';
 
 
 dotenv.config();
@@ -48,6 +50,8 @@ app.use('/api/usage-devices', usageDeviceRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/member-policies', memberPolicyRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {

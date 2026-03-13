@@ -40,7 +40,7 @@ const AdminDashboard = () => {
             <div className="max-w-7xl mx-auto space-y-6">
                 <h1 className="text-2xl font-bold text-base-content">Tổng quan</h1>
 
-                {/* Doanh thu */}
+                {/* Doanh thu - từ đơn hàng đã thanh toán */}
                 <div className="stats shadow w-full bg-base-100">
                     <div className="stat">
                         <div className="stat-figure text-primary">
@@ -48,7 +48,7 @@ const AdminDashboard = () => {
                         </div>
                         <div className="stat-title">Doanh thu ({revenue.period})</div>
                         <div className="stat-value text-primary">{formatVND(revenue.total)}</div>
-                        {revenue.changePercent != null && (
+                        {revenue.changePercent != null && (revenue.total > 0 || revenue.changePercent !== 0) && (
                             <div className="stat-desc flex items-center gap-1">
                                 <TrendingUp className="w-4 h-4 text-success" />
                                 <span className={revenue.changePercent >= 0 ? 'text-success' : 'text-error'}>
@@ -56,6 +56,7 @@ const AdminDashboard = () => {
                                 </span>
                             </div>
                         )}
+                        <div className="stat-desc text-base-content/50">Dữ liệu từ đơn hàng đã thanh toán</div>
                     </div>
                 </div>
 

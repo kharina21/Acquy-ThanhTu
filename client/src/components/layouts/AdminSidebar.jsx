@@ -25,6 +25,8 @@ export default function AdminSidebar() {
                             label={item.label}
                             ariaLabel={item.ariaLabel}
                             activePaths={item.activePaths}
+                            type={item.type}
+                            subItems={item.subItems}
                         />
                     ))}
                 </ul>
