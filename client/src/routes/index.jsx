@@ -18,6 +18,8 @@ import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPag
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
+import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
+import CustomersPage from '../pages/CustomersPage/CustomersPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
@@ -77,8 +79,10 @@ export const AppRoutes = () => {
                         <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
-                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
                         <Route path="/admin/staffs/schedule" element={<StaffManagementPage />} />
+                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
+                        <Route path="/admin/customers" element={<CustomersPage />} />
+                        <Route path="/admin/member-policies" element={<MemberPolicyPage />} />
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 

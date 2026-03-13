@@ -28,15 +28,6 @@ const employeeSchema = new mongoose.Schema(
                 ref: 'Location',
             },
         ],
-        salaryType: {
-            type: String,
-            enum: ['monthly', 'shift', 'hourly'],
-            default: 'monthly',
-        },
-        baseSalary: {
-            type: Number,
-            default: 0,
-        },
         hireDate: {
             type: Date,
             default: null,
