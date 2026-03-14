@@ -17,11 +17,10 @@ import usageDeviceRoutes from './routes/usageDeviceRoute.js';
 import productStockRoutes from './routes/productStockRoute.js';
 import roleRoutes from './routes/roleRoute.js';
 import employeeRoutes from './routes/employeeRoute.js';
-import workScheduleRoutes from './routes/workScheduleRoute.js';
-import shiftRoutes from './routes/shiftRoute.js';
+import memberPolicyRoutes from './routes/memberPolicyRoute.js';
 import cartRoutes from './routes/cartRoute.js';
 import orderRoutes from './routes/orderRoute.js';
-import dashboardRoutes from './routes/dashboardRoute.js';
+
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -50,11 +49,9 @@ app.use('/api/product-stocks', productStockRoutes);
 app.use('/api/usage-devices', usageDeviceRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/employees', employeeRoutes);
-app.use('/api/work-schedules', workScheduleRoutes);
-app.use('/api/shifts', shiftRoutes);
+app.use('/api/member-policies', memberPolicyRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/dashboard', dashboardRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {

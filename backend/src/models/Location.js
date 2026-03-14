@@ -24,6 +24,12 @@ const locationSchema = new mongoose.Schema(
             default: '',
             trim: true,
         },
+        email: {
+            type: String,
+            default: '',
+            trim: true,
+            lowercase: true,
+        },
         isActive: {
             type: Boolean,
             default: true,

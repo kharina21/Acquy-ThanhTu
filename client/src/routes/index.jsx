@@ -10,12 +10,16 @@ import CartPage from '../pages/CartPage';
 import CheckoutPage from '../pages/CheckoutPage';
 import OrderHistoryPage from '../pages/OrderHistoryPage';
 import OrderDetailPage from '../pages/OrderDetailPage';
+import AdminOrdersPage from '../pages/AdminOrdersPage';
+import AdminOrderDetailPage from '../pages/AdminOrderDetailPage';
 import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
+import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
+import CustomersPage from '../pages/CustomersPage/CustomersPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
@@ -67,14 +71,18 @@ export const AppRoutes = () => {
                     <Route path="/profile" element={<ProfilePage />} />
 
                     {/* Admin + Manager: trang quản lý chung */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager']} />}>
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
                         <Route path="/admin" element={<AdminDashboard />} />
                         <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
                         <Route path="/admin/products" element={<ProductManagementPage />} />
+                        <Route path="/admin/orders" element={<AdminOrdersPage />} />
+                        <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
-                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
                         <Route path="/admin/staffs/schedule" element={<StaffManagementPage />} />
+                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
+                        <Route path="/admin/customers" element={<CustomersPage />} />
+                        <Route path="/admin/member-policies" element={<MemberPolicyPage />} />
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 

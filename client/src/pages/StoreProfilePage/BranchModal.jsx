@@ -7,6 +7,7 @@ const BranchModal = ({ branch, onClose, onSubmit, submitting }) => {
         name: '',
         address: '',
         phone: '',
+        email: '',
         isActive: true,
         note: '',
     });
@@ -19,6 +20,7 @@ const BranchModal = ({ branch, onClose, onSubmit, submitting }) => {
                 name: branch.name || '',
                 address: branch.address || '',
                 phone: branch.phone || '',
+                email: branch.email || '',
                 isActive: branch.isActive !== false,
                 note: branch.note || '',
             });
@@ -28,6 +30,7 @@ const BranchModal = ({ branch, onClose, onSubmit, submitting }) => {
                 name: '',
                 address: '',
                 phone: '',
+                email: '',
                 isActive: true,
                 note: '',
             });
@@ -112,18 +115,33 @@ const BranchModal = ({ branch, onClose, onSubmit, submitting }) => {
                             placeholder="Địa chỉ chi nhánh"
                         />
                     </div>
-                    <div>
-                        <label className="label">
-                            <span className="label-text">Số điện thoại</span>
-                        </label>
-                        <input
-                            type="text"
-                            name="phone"
-                            className="input input-bordered w-full"
-                            value={formData.phone}
-                            onChange={handleChange}
-                            placeholder="Số điện thoại"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">
+                                <span className="label-text">Số điện thoại</span>
+                            </label>
+                            <input
+                                type="text"
+                                name="phone"
+                                className="input input-bordered w-full"
+                                value={formData.phone}
+                                onChange={handleChange}
+                                placeholder="Số điện thoại"
+                            />
+                        </div>
+                        <div>
+                            <label className="label">
+                                <span className="label-text">Email</span>
+                            </label>
+                            <input
+                                type="email"
+                                name="email"
+                                className="input input-bordered w-full"
+                                value={formData.email}
+                                onChange={handleChange}
+                                placeholder="email@chinhanh.com"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="label">

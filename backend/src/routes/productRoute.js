@@ -11,7 +11,9 @@ import {
     bulkUpdatePrice,
     uploadProductImage,
     getCarBatteryProducts,
-    getMotorcycleBatteryProducts
+    getMotorcycleBatteryProducts,
+    getFilterOptions,
+    filterProducts
 } from '../controllers/productController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -56,7 +58,10 @@ router.get('/options', getProductOptions);
 router.get('/car-batteries', getCarBatteryProducts);
 router.get('/motorcycle-batteries', getMotorcycleBatteryProducts);
 router.post('/upload-image', uploadImage.array('image', 20), uploadProductImage);
+router.get("/filter", filterProducts);
+router.get('/filter-options', getFilterOptions);
 router.get('/:id', getProductById);
+
 
 // Tất cả routes đều cần đăng nhập và role admin hoặc manager
 router.use(authenticate);
