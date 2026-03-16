@@ -18,7 +18,7 @@ import productStockRoutes from './routes/productStockRoute.js';
 import roleRoutes from './routes/roleRoute.js';
 import employeeRoutes from './routes/employeeRoute.js';
 import memberPolicyRoutes from './routes/memberPolicyRoute.js';
-
+import cartRoutes from './routes/cartRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -29,7 +29,7 @@ app.use(
     cors({
         origin: true,
         credentials: true,
-    })
+    }),
 );
 
 app.use(express.json());
@@ -48,9 +48,10 @@ app.use('/api/usage-devices', usageDeviceRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/member-policies', memberPolicyRoutes);
+app.use('/api/cart', cartRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}🎉`);
-    })
+    }),
 );
