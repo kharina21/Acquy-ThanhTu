@@ -19,7 +19,8 @@ import BrandModal from '@/components/common/BrandModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
-import { getUsageDevices } from '@/services/usageDeviceService';
+import { getUsageDevices, createUsageDevice, updateUsageDevice, deleteUsageDevice } from '@/services/usageDeviceService';
+import UsageDeviceModal from '@/components/common/UsageDeviceModal';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '—';
@@ -68,6 +69,9 @@ const ProductListTab = () => {
     const [usageDevices, setUsageDevices] = useState([]);
     const [categoryRefreshKey, setCategoryRefreshKey] = useState(0);
     const [brandRefreshKey, setBrandRefreshKey] = useState(0);
+    const [usageDeviceRefreshKey, setUsageDeviceRefreshKey] = useState(0);
+    const [showUsageDeviceModal, setShowUsageDeviceModal] = useState(false);
+    const [editingUsageDevice, setEditingUsageDevice] = useState(null);
     const [showBarcodeModal, setShowBarcodeModal] = useState(false);
     const [barcodePrintQty, setBarcodePrintQty] = useState(1);
     const [barcodeShowPrice, setBarcodeShowPrice] = useState(true);
@@ -522,6 +526,68 @@ const ProductListTab = () => {
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Lỗi khi xóa thương hiệu');
+        }
+    };
+
+    const handleCreateUsageDevice = () => {
+        setEditingUsageDevice(null);
+        setShowUsageDeviceModal(true);
+    };
+
+    const handleEditUsageDevice = (device) => {
+        setEditingUsageDevice(device);
+        setShowUsageDeviceModal(true);
+    };
+
+    const handleSaveUsageDevice = async (formData) => {
+        try {
+            if (editingUsageDevice) {
+                await updateUsageDevice(editingUsageDevice._id, formData);
+                toast.success('Cập nhật thiết bị sử dụng thành công');
+                if (showCreateModal) {
+                    setCreateFormData((prev) => ({ ...prev, usageDevice: editingUsageDevice._id }));
+                } else if (showEditModal) {
+                    setEditFormData((prev) => ({ ...prev, usageDevice: editingUsageDevice._id }));
+                }
+            } else {
+                const res = await createUsageDevice(formData);
+                if (res.success) {
+                    toast.success('Tạo thiết bị sử dụng thành công');
+                    if (showCreateModal) {
+                        setCreateFormData((prev) => ({ ...prev, usageDevice: res.data.usageDevice._id }));
+                    } else if (showEditModal) {
+                        setEditFormData((prev) => ({ ...prev, usageDevice: res.data.usageDevice._id }));
+                    }
+                }
+            }
+            setShowUsageDeviceModal(false);
+            setEditingUsageDevice(null);
+            fetchUsageDevices();
+            setUsageDeviceRefreshKey((k) => k + 1);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi lưu thiết bị sử dụng');
+        }
+    };
+
+    const handleDeleteUsageDevice = async () => {
+        if (!editingUsageDevice?._id) return;
+        if (!window.confirm('Bạn có chắc chắn muốn xóa thiết bị sử dụng này?')) return;
+        try {
+            await deleteUsageDevice(editingUsageDevice._id);
+            toast.success('Xóa thiết bị sử dụng thành công');
+            const deletedId = String(editingUsageDevice._id);
+            setCreateFormData((prev) =>
+                prev.usageDevice && String(prev.usageDevice) === deletedId ? { ...prev, usageDevice: null } : prev
+            );
+            setEditFormData((prev) =>
+                prev.usageDevice && String(prev.usageDevice) === deletedId ? { ...prev, usageDevice: null } : prev
+            );
+            setShowUsageDeviceModal(false);
+            setEditingUsageDevice(null);
+            fetchUsageDevices();
+            setUsageDeviceRefreshKey((k) => k + 1);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi xóa thiết bị sử dụng');
         }
     };
 
@@ -1364,8 +1430,10 @@ const ProductListTab = () => {
                                                     type="usageDevice"
                                                     label="Thiết bị sử dụng"
                                                     value={editFormData.usageDevice}
-                                                    refreshKey={0}
+                                                    refreshKey={usageDeviceRefreshKey}
                                                     onChange={(id) => setEditFormData({ ...editFormData, usageDevice: id })}
+                                                    onCreateNew={handleCreateUsageDevice}
+                                                    onEdit={handleEditUsageDevice}
                                                     placeholder="Chọn thiết bị sử dụng"
                                                 />
                                                 <CategoryBrandSelect
@@ -1607,8 +1675,10 @@ const ProductListTab = () => {
                                                     type="usageDevice"
                                                     label="Thiết bị sử dụng"
                                                     value={createFormData.usageDevice}
-                                                    refreshKey={0}
+                                                    refreshKey={usageDeviceRefreshKey}
                                                     onChange={(id) => setCreateFormData({ ...createFormData, usageDevice: id })}
+                                                    onCreateNew={handleCreateUsageDevice}
+                                                    onEdit={handleEditUsageDevice}
                                                     placeholder="Chọn thiết bị sử dụng"
                                                 />
                                                 <CategoryBrandSelect
@@ -1720,6 +1790,20 @@ const ProductListTab = () => {
                     }}
                     onSubmit={handleSaveBrand}
                     onDelete={editingBrand ? handleDeleteBrand : undefined}
+                    submitting={false}
+                />
+            )}
+
+            {/* Modal thiết bị sử dụng */}
+            {showUsageDeviceModal && (
+                <UsageDeviceModal
+                    device={editingUsageDevice}
+                    onClose={() => {
+                        setShowUsageDeviceModal(false);
+                        setEditingUsageDevice(null);
+                    }}
+                    onSubmit={handleSaveUsageDevice}
+                    onDelete={editingUsageDevice ? handleDeleteUsageDevice : undefined}
                     submitting={false}
                 />
             )}

@@ -11,7 +11,6 @@ const emptyForm = {
     minTotalSpent: 0,
     discountPercent: 0,
     isActive: true,
-    sortOrder: 0,
 };
 
 const MemberPolicyPage = () => {
@@ -54,7 +53,6 @@ const MemberPolicyPage = () => {
             minTotalSpent: policy.minTotalSpent ?? 0,
             discountPercent: policy.discountPercent ?? 0,
             isActive: policy.isActive ?? true,
-            sortOrder: policy.sortOrder ?? 0,
         });
         setShowModal(true);
     };
@@ -69,7 +67,6 @@ const MemberPolicyPage = () => {
                 minTotalSpent: Number(formData.minTotalSpent) || 0,
                 discountPercent: Number(formData.discountPercent) || 0,
                 isActive: !!formData.isActive,
-                sortOrder: Number(formData.sortOrder) || 0,
             };
 
             if (!payload.name) {
@@ -156,7 +153,6 @@ const MemberPolicyPage = () => {
                                     <th>Mã</th>
                                     <th>Điều kiện (tổng chi tiêu &ge;)</th>
                                     <th>% giảm giá</th>
-                                    <th>Thứ tự</th>
                                     <th>Trạng thái</th>
                                     <th className="text-center">Thao tác</th>
                                 </tr>
@@ -170,7 +166,6 @@ const MemberPolicyPage = () => {
                                         </td>
                                         <td>{(p.minTotalSpent ?? 0).toLocaleString('vi-VN')} đ</td>
                                         <td>{p.discountPercent ?? 0}%</td>
-                                        <td>{p.sortOrder ?? 0}</td>
                                         <td>
                                             <span
                                                 className={`badge badge-sm ${p.isActive ? 'badge-success' : 'badge-neutral'
@@ -260,7 +255,7 @@ const MemberPolicyPage = () => {
                                         placeholder="Ghi chú thêm về quyền lợi, điều kiện..."
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">
                                             <span className="label-text font-semibold">Tổng chi tiêu &ge; (VNĐ)</span>
@@ -292,22 +287,6 @@ const MemberPolicyPage = () => {
                                                 setFormData((prev) => ({
                                                     ...prev,
                                                     discountPercent: e.target.value,
-                                                }))
-                                            }
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label">
-                                            <span className="label-text font-semibold">Thứ tự</span>
-                                        </label>
-                                        <input
-                                            type="number"
-                                            className="input input-bordered input-sm w-full"
-                                            value={formData.sortOrder}
-                                            onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                    ...prev,
-                                                    sortOrder: e.target.value,
                                                 }))
                                             }
                                         />
