@@ -63,11 +63,16 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'warehouses',
-        to: '/admin/warehouses',
         icon: Boxes,
         label: 'Kho hàng',
         ariaLabel: 'Quản lý kho hàng',
         permission: { resource: 'stock_check', action: 'read' },
+        subItems: [
+            { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
+            { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
+            { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
+            { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
+        ],
     },
     {
         id: 'profile',

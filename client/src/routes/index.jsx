@@ -14,6 +14,10 @@ import ProfilePage from '../pages/ProfilePage/ProfilePage';
 import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
+import StockCheckPage from '../pages/WarehousePage/StockCheckPage';
+import ImportGoodsPage from '../pages/WarehousePage/ImportGoodsPage';
+import StockReturnsPage from '../pages/WarehousePage/StockReturnsPage';
+import SuppliersPage from '../pages/WarehousePage/SuppliersPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
 import BrandManagementPage from '../pages/BrandManagementPage/BrandManagementPage';
 import UsageDeviceManagementPage from '../pages/UsageDeviceManagementPage/UsageDeviceManagementPage';
@@ -85,9 +89,13 @@ export const AppRoutes = () => {
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
                     </Route>
 
-                    {/* Warehouse manager: kho hàng (kiểm kho) + có thể xem admin */}
+                    {/* Warehouse manager: kho hàng (kiểm kho, nhập hàng, nhà cung cấp) */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'warehouse_manager']} />}>
-                        <Route path="/admin/warehouses" element={<ProductManagementPage initialTab="stock-check" />} />
+                        <Route path="/admin/warehouses" element={<Navigate to="/admin/warehouses/stock-check" replace />} />
+                        <Route path="/admin/warehouses/stock-check" element={<StockCheckPage />} />
+                        <Route path="/admin/warehouses/import" element={<ImportGoodsPage />} />
+                        <Route path="/admin/warehouses/stock-returns" element={<StockReturnsPage />} />
+                        <Route path="/admin/warehouses/suppliers" element={<SuppliersPage />} />
                     </Route>
 
                     {/* Seller / Staff: dashboard nhân viên */}
