@@ -15,6 +15,8 @@ import UserManagementPage from '../pages/UserManagementPage/UserManagementPage';
 import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPage';
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
+import BrandManagementPage from '../pages/BrandManagementPage/BrandManagementPage';
+import UsageDeviceManagementPage from '../pages/UsageDeviceManagementPage/UsageDeviceManagementPage';
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
 import CustomersPage from '../pages/CustomersPage/CustomersPage';
@@ -74,6 +76,8 @@ export const AppRoutes = () => {
                         <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
                         <Route path="/admin/products" element={<ProductManagementPage />} />
                         <Route path="/admin/categories" element={<CategoryManagementPage />} />
+                        <Route path="/admin/brands" element={<BrandManagementPage />} />
+                        <Route path="/admin/usage-devices" element={<UsageDeviceManagementPage />} />
                         <Route path="/users" element={<UserManagementPage />} />
                         <Route path="/admin/staffs" element={<StaffManagementPage />} />
                         <Route path="/admin/customers" element={<CustomersPage />} />

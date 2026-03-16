@@ -148,7 +148,7 @@ const CategoryBrandSelect = ({
                             <>
                                 {!search && (
                                     <div className="p-2 text-sm text-base-content/60 border-b border-base-300">
-                                        Chọn {type === 'category' ? 'loại hàng' : 'thương hiệu'}
+                                        Chọn {type === 'category' ? 'loại hàng' : type === 'usageDevice' ? 'thiết bị sử dụng' : 'thương hiệu'}
                                     </div>
                                 )}
                                 {filteredItems.map((item) => (
