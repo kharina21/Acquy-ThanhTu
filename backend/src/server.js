@@ -21,6 +21,7 @@ import memberPolicyRoutes from './routes/memberPolicyRoute.js';
 import supplierRoutes from './routes/supplierRoute.js';
 import stockInRoutes from './routes/stockInRoute.js';
 import stockReturnRoutes from './routes/stockReturnRoute.js';
+import cartRoutes from './routes/cartRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
