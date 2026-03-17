@@ -157,7 +157,7 @@ export function ProductSection() {
               <div className="mt-3 flex gap-2">
                 <Button
                   size="sm"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="flex-1 btn btn-primary btn-md"
                   onClick={() => handleAddToCart(product, true)}
                 >
                   Mua ngay
@@ -165,7 +165,7 @@ export function ProductSection() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 btn btn-primary btn-md"
                   onClick={() => handleAddToCart(product, false)}
                 >
                   <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />

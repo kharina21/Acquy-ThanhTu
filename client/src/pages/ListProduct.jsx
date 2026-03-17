@@ -320,44 +320,46 @@ const ListProduct = () => {
                     )}
 
                     {/* PAGINATION */}
-                    <div className="flex justify-center items-center mt-10 gap-2 flex-wrap">
-
-                        <button
-                            disabled={page === 1}
-                            onClick={() => setPage(page - 1)}
-                            className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-50"
-                        >
-                            ← Trước
-                        </button>
-
-                        {getPageNumbers().map((p, index) => (
+                    {totalPages > 1 && (
+                        <div className="flex justify-center items-center mt-10 gap-2 flex-wrap">
 
                             <button
-                                key={index}
-                                disabled={p === "..."}
-                                onClick={() => typeof p === "number" && setPage(p)}
-                                className={`
-                                px-4 py-2 rounded-lg border
-                                ${page === p
-                                        ? "bg-red-600 text-white border-red-600"
-                                        : "bg-white hover:bg-gray-100"}
-                                ${p === "..." ? "border-none bg-transparent" : ""}
-                            `}
+                                disabled={page === 1}
+                                onClick={() => setPage(page - 1)}
+                                className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-50"
                             >
-                                {p}
+                                ← Trước
                             </button>
 
-                        ))}
+                            {getPageNumbers().map((p, index) => (
 
-                        <button
-                            disabled={page === totalPages}
-                            onClick={() => setPage(page + 1)}
-                            className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-50"
-                        >
-                            Sau →
-                        </button>
+                                <button
+                                    key={index}
+                                    disabled={p === "..."}
+                                    onClick={() => typeof p === "number" && setPage(p)}
+                                    className={`
+                                    px-4 py-2 rounded-lg border
+                                    ${page === p
+                                            ? "bg-red-600 text-white border-red-600"
+                                            : "bg-white hover:bg-gray-100"}
+                                    ${p === "..." ? "border-none bg-transparent" : ""}
+                                `}
+                                >
+                                    {p}
+                                </button>
 
-                    </div>
+                            ))}
+
+                            <button
+                                disabled={page === totalPages}
+                                onClick={() => setPage(page + 1)}
+                                className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-50"
+                            >
+                                Sau →
+                            </button>
+
+                        </div>
+                    )}
 
                 </div>
 
