@@ -18,6 +18,19 @@ export default function ProductFilter({
     const [minPrice, setMinPrice] = useState("");
     const [maxPrice, setMaxPrice] = useState("");
 
+    const [errorAh, setErrorAh] = useState("");
+    const [errorPrice, setErrorPrice] = useState("");
+
+    const showError = (type) => {
+        if (type === 'ah') {
+            setErrorAh("Không thể điền số âm");
+            setTimeout(() => setErrorAh(""), 5000);
+        } else if (type === 'price') {
+            setErrorPrice("Không thể điền số âm");
+            setTimeout(() => setErrorPrice(""), 5000);
+        }
+    };
+
     const handleCheckboxChange = (value, list, setList) => {
         if (list.includes(value)) {
             setList(list.filter(item => item !== value));
@@ -26,9 +39,13 @@ export default function ProductFilter({
         }
     };
 
-    const handleNumberChange = (e, setter) => {
+    const handleNumberChange = (e, setter, type) => {
         const val = e.target.value;
-        if (val === "" || Number(val) >= 0) {
+        if (val === "") {
+            setter(val);
+        } else if (Number(val) < 0) {
+            showError(type);
+        } else {
             setter(val);
         }
     };
@@ -41,8 +58,14 @@ export default function ProductFilter({
         return numberValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     };
 
-    const handlePriceChange = (e, setter) => {
-        const val = e.target.value.replace(/\D/g, ''); // Extract only numbers
+    const handlePriceChange = (e, setter, type) => {
+        const rawVal = e.target.value;
+        if (rawVal.includes('-')) {
+            showError(type);
+            return;
+        }
+
+        const val = rawVal.replace(/\D/g, ''); // Extract only numbers
         if (val === "" || Number(val) >= 0) {
             setter(val); // Keep raw string of numbers in state
         }
@@ -168,7 +191,7 @@ export default function ProductFilter({
                         min="0"
                         placeholder="Từ"
                         value={minAh}
-                        onChange={(e) => handleNumberChange(e, setMinAh)}
+                        onChange={(e) => handleNumberChange(e, setMinAh, 'ah')}
                         onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
@@ -178,11 +201,12 @@ export default function ProductFilter({
                         min="0"
                         placeholder="Đến"
                         value={maxAh}
-                        onChange={(e) => handleNumberChange(e, setMaxAh)}
+                        onChange={(e) => handleNumberChange(e, setMaxAh, 'ah')}
                         onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
+                {errorAh && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorAh}</p>}
             </div>
 
             {/* PRICE */}
@@ -194,7 +218,7 @@ export default function ProductFilter({
                         type="text"
                         placeholder="Từ"
                         value={formatCurrency(minPrice)}
-                        onChange={(e) => handlePriceChange(e, setMinPrice)}
+                        onChange={(e) => handlePriceChange(e, setMinPrice, 'price')}
                         onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
@@ -203,11 +227,12 @@ export default function ProductFilter({
                         type="text"
                         placeholder="Đến"
                         value={formatCurrency(maxPrice)}
-                        onChange={(e) => handlePriceChange(e, setMaxPrice)}
+                        onChange={(e) => handlePriceChange(e, setMaxPrice, 'price')}
                         onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
+                {errorPrice && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorPrice}</p>}
             </div>
 
             {/* BUTTON */}
