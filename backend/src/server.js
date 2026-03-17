@@ -32,11 +32,12 @@ app.use(
     cors({
         origin: true,
         credentials: true,
-    })
+    }),
 );
 
 app.use(express.json());
 app.use(cookieParser());
+
 
 app.use('/api/auth', authRoutes);                    // Xác thực (đăng nhập, đăng ký, ...)
 app.use('/api/activity-logs', activityLogRoutes);   // Nhật ký hoạt động
@@ -54,9 +55,11 @@ app.use('/api/member-policies', memberPolicyRoutes); // Chính sách khách hàn
 app.use('/api/suppliers', supplierRoutes);         // Nhà cung cấp
 app.use('/api/stock-ins', stockInRoutes);           // Nhập hàng
 app.use('/api/stock-returns', stockReturnRoutes);  // Trả hàng
+app.use('/api/cart', cartRoutes);
+
 
 connectDB().then(() =>
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}🎉`);
-    })
+    }),
 );
