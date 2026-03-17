@@ -658,7 +658,7 @@ export const getCarBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -670,7 +670,7 @@ export const getCarBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
@@ -705,7 +705,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -716,7 +716,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
@@ -747,3 +747,253 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     }
 };
 
+const buildFilter = (queryParams) => {
+    const {
+        category,
+        brand,
+        usageDevice,
+        minAh,
+        maxAh,
+        minPrice,
+        maxPrice,
+        search
+    } = queryParams;
+
+    const query = {
+        isDeleted: false
+    };
+
+
+
+    if (category) {
+        const ids = category
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.category = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (brand) {
+        const ids = brand
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.brand = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (usageDevice) {
+        const ids = usageDevice
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.usageDevice = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (minAh || maxAh) {
+
+        const capacityNumber = {
+            $convert: {
+                input: {
+                    $replaceAll: {
+                        input: "$capacity",
+                        find: "Ah",
+                        replacement: ""
+                    }
+                },
+                to: "double",
+                onError: null,
+                onNull: null
+            }
+        };
+
+        const exprConditions = [];
+
+        if (minAh) {
+            exprConditions.push({
+                $gte: [capacityNumber, Number(minAh)]
+            });
+        }
+
+        if (maxAh) {
+            exprConditions.push({
+                $lte: [capacityNumber, Number(maxAh)]
+            });
+        }
+
+        query.$or = [
+            {
+                $expr: { $and: exprConditions }
+            },
+            {
+                capacity: { $exists: false }
+            },
+            {
+                capacity: ""
+            }
+        ];
+    }
+
+    if (minPrice || maxPrice) {
+        query.price = {};
+
+        if (minPrice && minPrice !== "0") {
+            query.price.$gte = parseFloat(minPrice);
+        }
+
+        if (maxPrice && maxPrice !== "0") {
+            query.price.$lte = parseFloat(maxPrice);
+        }
+
+        if (Object.keys(query.price).length === 0) {
+            delete query.price;
+        }
+    }
+
+    function escapeRegex(text) {
+        return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    }
+
+    if (search) {
+        const safeSearch = escapeRegex(search);
+        query.name = {
+            $regex: safeSearch,
+            $options: 'i'
+        };
+    }
+
+    return query;
+
+};
+
+const buildSort = (sort) => {
+
+    switch (sort) {
+
+        case "price_asc":
+            return { price: 1 };
+
+        case "price_desc":
+            return { price: -1 };
+
+        case "ah_asc":
+            return { capacityNumber: 1 };
+
+        case "ah_desc":
+            return { capacityNumber: -1 };
+
+        default:
+            return { createdAt: -1 };
+
+    }
+
+};
+
+export const getFilterOptions = async (req, res) => {
+    try {
+        const categories = await Category.find({}).select('name');
+        const brands = await Brand.find({}).select('name');
+        const usageDevices = await UsageDevice.find({}).select('name');
+
+        res.json({
+            success: true,
+            data: {
+                categories,
+                brands,
+                usageDevices
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Lỗi khi lấy tùy chọn lọc',
+            error: error.message
+        });
+    }
+}
+
+export const filterProducts = async (req, res) => {
+    try {
+
+        console.log("REQ QUERY:", req.query);
+
+        const { page = 1, limit = 15, sort } = req.query;
+
+        const filterQuery = buildFilter(req.query);
+        const sortQuery = buildSort(sort);
+
+        const skip = (page - 1) * limit;
+
+        const products = await Product.aggregate([
+
+            { $match: filterQuery },
+
+            {
+                $addFields: {
+                    capacityNumber: {
+                        $convert: {
+                            input: {
+                                $replaceAll: {
+                                    input: "$capacity",
+                                    find: "Ah",
+                                    replacement: ""
+                                }
+                            },
+                            to: "double",
+                            onError: null,
+                            onNull: null
+                        }
+                    }
+                }
+            },
+
+            { $sort: sortQuery },
+
+            { $skip: skip },
+
+            { $limit: Number(limit) }
+
+        ]);
+
+        await Product.populate(products, [
+            { path: "category", select: "name" },
+            { path: "brand", select: "name" },
+            { path: "usageDevice", select: "name" }
+        ]);
+
+        const totalProducts = await Product.countDocuments(filterQuery);
+
+        const processedProducts = products.map(product => {
+            normalizeProductImages(product);
+            return product;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                products: processedProducts,
+                totalProducts,
+                totalPages: Math.ceil(totalProducts / limit),
+                currentPage: Number(page)
+            }
+        });
+    } catch (error) {
+        console.error('filterProducts error:', error.message);
+        res.status(500).json({
+            message: "Lỗi khi lọc danh sách sản phẩm",
+            error: error.message
+        });
+    }
+
+
+};
