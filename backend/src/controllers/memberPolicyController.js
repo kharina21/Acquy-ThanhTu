@@ -8,7 +8,7 @@ export const getAllMemberPolicies = async (req, res) => {
         if (isActive !== undefined && isActive !== '') {
             filter.isActive = isActive === 'true';
         }
-        const policies = await MemberPolicy.find(filter).sort({ sortOrder: 1, minTotalSpent: 1, createdAt: 1 });
+        const policies = await MemberPolicy.find(filter).sort({ minTotalSpent: 1, createdAt: 1 });
         res.status(200).json({
             success: true,
             data: { policies },
@@ -22,7 +22,7 @@ export const getAllMemberPolicies = async (req, res) => {
 // POST /api/member-policies
 export const createMemberPolicy = async (req, res) => {
     try {
-        const { name, code, description, minTotalSpent, discountPercent, isActive, sortOrder } = req.body;
+        const { name, code, description, minTotalSpent, discountPercent, isActive } = req.body;
 
         if (!name || !name.trim()) {
             return res.status(400).json({ message: 'Tên hạng là bắt buộc' });
@@ -53,7 +53,6 @@ export const createMemberPolicy = async (req, res) => {
             minTotalSpent: minSpent,
             discountPercent: discount,
             isActive: isActive !== false,
-            sortOrder: sortOrder != null ? Number(sortOrder) : 0,
         });
 
         res.status(201).json({
@@ -71,7 +70,7 @@ export const createMemberPolicy = async (req, res) => {
 export const updateMemberPolicy = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, code, description, minTotalSpent, discountPercent, isActive, sortOrder } = req.body;
+        const { name, code, description, minTotalSpent, discountPercent, isActive } = req.body;
 
         const policy = await MemberPolicy.findById(id);
         if (!policy) {
@@ -119,10 +118,6 @@ export const updateMemberPolicy = async (req, res) => {
 
         if (isActive !== undefined) {
             policy.isActive = !!isActive;
-        }
-
-        if (sortOrder !== undefined) {
-            policy.sortOrder = Number(sortOrder) || 0;
         }
 
         await policy.save();

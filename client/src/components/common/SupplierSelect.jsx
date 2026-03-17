@@ -1,18 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, ChevronUp, Pencil } from 'lucide-react';
-import { getCategories, createCategory, updateCategory } from '@/services/categoryService';
-import { getBrands, createBrand, updateBrand } from '@/services/brandService';
-import { getUsageDevices, createUsageDevice, updateUsageDevice } from '@/services/usageDeviceService';
+import { getSuppliers } from '@/services/supplierService';
 
-const CategoryBrandSelect = ({
-    type, // 'category', 'brand' hoặc 'usageDevice'
-    value, // ID hiện tại
-    onChange, // (id, name) => void
-    onCreateNew, // () => void - callback khi click "Tạo mới"
-    onEdit, // (item) => void - callback khi click edit
-    label,
-    placeholder = 'Chọn...',
-    refreshKey = 0, // thay đổi để force reload danh sách
+const SupplierSelect = ({
+    value,
+    onChange,
+    onCreateNew,
+    onEdit,
+    label = 'Nhà cung cấp',
+    placeholder = 'Chọn nhà cung cấp',
+    refreshKey = 0,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -21,31 +18,22 @@ const CategoryBrandSelect = ({
     const [selectedItem, setSelectedItem] = useState(null);
     const dropdownRef = useRef(null);
 
-    const service =
-        type === 'category'
-            ? { get: getCategories, create: createCategory, update: updateCategory, key: 'categories' }
-            : type === 'brand'
-                ? { get: getBrands, create: createBrand, update: updateBrand, key: 'brands' }
-                : { get: getUsageDevices, create: createUsageDevice, update: updateUsageDevice, key: 'usageDevices' };
-
     const fetchItems = async () => {
         setLoading(true);
         try {
-            const res = await service.get();
+            const res = await getSuppliers();
             if (res.success) {
-                const itemsList = res.data[service.key] || [];
+                const itemsList = (res.data.suppliers || []).filter((s) => s.isActive !== false);
                 setItems(itemsList);
-
-                // Tìm selected item
                 if (value) {
-                    const found = itemsList.find(item => item._id === value);
+                    const found = itemsList.find((item) => item._id === value);
                     setSelectedItem(found || null);
                 } else {
                     setSelectedItem(null);
                 }
             }
         } catch (error) {
-            console.error(`Error fetching ${type}s:`, error);
+            console.error('Error fetching suppliers:', error);
         } finally {
             setLoading(false);
         }
@@ -66,13 +54,22 @@ const CategoryBrandSelect = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const filteredItems = items.filter(item =>
-        item.name.toLowerCase().includes(search.toLowerCase())
+    const filteredItems = items.filter(
+        (item) =>
+            item.name?.toLowerCase().includes(search.toLowerCase()) ||
+            item.code?.toLowerCase().includes(search.toLowerCase())
     );
 
     const handleSelect = (item) => {
         setSelectedItem(item);
-        onChange(item._id, item.name);
+        onChange(item._id);
+        setIsOpen(false);
+        setSearch('');
+    };
+
+    const handleClear = () => {
+        setSelectedItem(null);
+        onChange('');
         setIsOpen(false);
         setSearch('');
     };
@@ -80,29 +77,23 @@ const CategoryBrandSelect = ({
     const handleCreateNew = () => {
         setIsOpen(false);
         setSearch('');
-        if (onCreateNew) {
-            onCreateNew();
-        }
+        if (onCreateNew) onCreateNew();
     };
 
     const handleEdit = (e, item) => {
         e.stopPropagation();
         setIsOpen(false);
         setSearch('');
-        if (onEdit) {
-            onEdit(item);
-        }
+        if (onEdit) onEdit(item);
     };
+
+    const displayValue = selectedItem ? `${selectedItem.code} - ${selectedItem.name}` : '';
 
     return (
         <div className="relative" ref={dropdownRef}>
             <label className="label">
                 <span className="label-text">{label}</span>
-                <button
-                    type="button"
-                    className="link link-primary text-xs"
-                    onClick={handleCreateNew}
-                >
+                <button type="button" className="link link-primary text-xs" onClick={handleCreateNew}>
                     Tạo mới
                 </button>
             </label>
@@ -110,7 +101,7 @@ const CategoryBrandSelect = ({
                 <input
                     type="text"
                     className="input input-bordered w-full pr-10 cursor-pointer"
-                    value={selectedItem?.name || ''}
+                    value={displayValue}
                     placeholder={placeholder}
                     readOnly
                     onClick={() => setIsOpen(!isOpen)}
@@ -136,40 +127,38 @@ const CategoryBrandSelect = ({
                         </div>
                     </div>
                     <div className="max-h-60 overflow-y-auto">
+                        <div className="p-2 text-sm text-base-content/60 border-b border-base-300 flex justify-between">
+                            <span>Chọn nhà cung cấp</span>
+                            <button type="button" className="link link-primary text-xs" onClick={handleClear}>
+                                Không chọn
+                            </button>
+                        </div>
                         {loading ? (
                             <div className="p-4 text-center text-sm text-base-content/60">
                                 Đang tải...
                             </div>
                         ) : filteredItems.length === 0 ? (
                             <div className="p-4 text-center text-sm text-base-content/60">
-                                {search ? 'Không tìm thấy' : 'Chưa có dữ liệu'}
+                                {search ? 'Không tìm thấy' : 'Chưa có nhà cung cấp'}
                             </div>
                         ) : (
-                            <>
-                                {!search && (
-                                    <div className="p-2 text-sm text-base-content/60 border-b border-base-300">
-                                        Chọn {type === 'category' ? 'loại hàng' : type === 'usageDevice' ? 'thiết bị sử dụng' : 'thương hiệu'}
-                                    </div>
-                                )}
-                                {filteredItems.map((item) => (
-                                    <div
-                                        key={item._id}
-                                        className={`flex items-center justify-between p-2 cursor-pointer hover:bg-base-200 transition-colors ${selectedItem?._id === item._id ? 'bg-base-200' : ''
-                                            }`}
-                                        onClick={() => handleSelect(item)}
+                            filteredItems.map((item) => (
+                                <div
+                                    key={item._id}
+                                    className={`flex items-center justify-between p-2 cursor-pointer hover:bg-base-200 transition-colors ${selectedItem?._id === item._id ? 'bg-base-200' : ''}`}
+                                    onClick={() => handleSelect(item)}
+                                >
+                                    <span className="flex-1">{item.code} - {item.name}</span>
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost btn-xs p-1 h-6 w-6 min-h-0"
+                                        onClick={(e) => handleEdit(e, item)}
+                                        title="Chỉnh sửa"
                                     >
-                                        <span className="flex-1">{item.name}</span>
-                                        <button
-                                            type="button"
-                                            className="btn btn-ghost btn-xs p-1 h-6 w-6 min-h-0"
-                                            onClick={(e) => handleEdit(e, item)}
-                                            title="Chỉnh sửa"
-                                        >
-                                            <Pencil className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </>
+                                        <Pencil className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))
                         )}
                     </div>
                 </div>
@@ -178,5 +167,4 @@ const CategoryBrandSelect = ({
     );
 };
 
-export default CategoryBrandSelect;
-
+export default SupplierSelect;

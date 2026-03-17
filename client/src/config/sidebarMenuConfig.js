@@ -4,6 +4,7 @@ import { BadgePercent, Boxes, LayoutDashboard, Package, UserRound, UserRoundPen,
  * Cấu hình menu sidebar - gắn với permission RBAC.
  * permission: { resource, action } - null = luôn hiển thị (vd: Tài khoản).
  * Admin bypass tất cả, các role khác cần có permission tương ứng.
+ * subItems: dropdown con (dùng khi có children)
  */
 export const SIDEBAR_MENU_ITEMS = [
     {
@@ -17,11 +18,16 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'products',
-        to: '/admin/products',
         icon: Package,
         label: 'Sản phẩm',
         ariaLabel: 'Quản lý sản phẩm',
         permission: { resource: 'product', action: 'read' },
+        subItems: [
+            { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
+            { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
+            { id: 'usage-devices', to: '/admin/usage-devices', label: 'Thiết bị sử dụng' },
+            { id: 'brands', to: '/admin/brands', label: 'Thương hiệu' },
+        ],
     },
     {
         id: 'users',
@@ -57,11 +63,16 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'warehouses',
-        to: '/admin/warehouses',
         icon: Boxes,
         label: 'Kho hàng',
         ariaLabel: 'Quản lý kho hàng',
         permission: { resource: 'stock_check', action: 'read' },
+        subItems: [
+            { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
+            { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
+            { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
+            { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
+        ],
     },
     {
         id: 'profile',

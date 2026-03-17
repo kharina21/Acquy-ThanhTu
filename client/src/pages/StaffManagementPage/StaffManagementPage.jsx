@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
 import Header from '../UserManagementPage/Header';
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
-import { getUsers } from '@/services/userService';
+import { getUsers, updateUser, resetUserPassword } from '@/services/userService';
 import { getWorkSchedules, createWorkSchedule, updateWorkSchedule, deleteWorkSchedule } from '@/services/workScheduleService';
 import { getShifts, createShift, updateShift, deleteShift } from '@/services/shiftService';
 import { toast } from 'sonner';
-import { Edit, Trash2, Plus, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Plus, X, ChevronRight, ChevronLeft, ChevronDown, User, UserCircle, Pencil, Trash2, Eye, EyeOff } from 'lucide-react';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
 
 // Helper function để parse time string (HH:mm) thành {hour, minute}
 const parseTime = (timeStr) => {
@@ -48,6 +49,19 @@ const StaffManagementPage = () => {
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState(null);
+    const [expandedId, setExpandedId] = useState(null);
+    const [expandedEmpForm, setExpandedEmpForm] = useState({ empCode: '', hireDate: '', locations: [], note: '', isActive: true });
+    const [expandedUserForm, setExpandedUserForm] = useState({ firstName: '', lastName: '', username: '', email: '' });
+    const [savingEmp, setSavingEmp] = useState(false);
+    const [savingUser, setSavingUser] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+    const [expandedTab, setExpandedTab] = useState('info');
+    const [editingInfo, setEditingInfo] = useState(false);
+    const [editingAccount, setEditingAccount] = useState(false);
+    const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '', variant: 'warning', confirmText: 'Xác nhận' });
     const [formData, setFormData] = useState({
         hireDate: '',
         locations: [],
@@ -235,18 +249,6 @@ const StaffManagementPage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSchedulePage, weekStart, schedulePagination.page, schedulePagination.limit, scheduleFilters.locationId, scheduleFilters.employeeId]);
 
-    const openEditModal = (employee) => {
-        setEditingEmployee(employee);
-        setFormData({
-            empCode: employee.empCode || '',
-            hireDate: employee.hireDate ? employee.hireDate.slice(0, 10) : '',
-            locations: (employee.locations || []).map((l) => l._id),
-            note: employee.note || '',
-            isActive: employee.isActive ?? true,
-        });
-        setShowModal(true);
-    };
-
     const openCreateModal = () => {
         setEditingEmployee(null);
         setFormData({
@@ -310,21 +312,6 @@ const StaffManagementPage = () => {
         }
     };
 
-    const handleDelete = async (employee) => {
-        if (!window.confirm(`Xóa hồ sơ nhân viên "${employee.user?.firstName || ''} ${employee.user?.lastName || ''}"?`)) {
-            return;
-        }
-        try {
-            const res = await deleteEmployee(employee._id);
-            if (res.success) {
-                toast.success('Xóa hồ sơ nhân viên thành công');
-                fetchEmployees();
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Xóa hồ sơ nhân viên thất bại');
-        }
-    };
-
     const formatDate = (value) => {
         if (!value) return '-';
         try {
@@ -359,6 +346,150 @@ const StaffManagementPage = () => {
                     ? prev.locations.filter((id) => id !== locationId)
                     : [...prev.locations, locationId],
             };
+        });
+    };
+
+    const toggleExpandedLocation = (locationId) => {
+        setExpandedEmpForm((prev) => {
+            const exists = prev.locations.includes(locationId);
+            return {
+                ...prev,
+                locations: exists
+                    ? prev.locations.filter((id) => id !== locationId)
+                    : [...prev.locations, locationId],
+            };
+        });
+    };
+
+    const toggleExpand = (emp) => {
+        if (expandedId === emp._id) {
+            setExpandedId(null);
+            return;
+        }
+        setExpandedId(emp._id);
+        setExpandedEmpForm({
+            empCode: emp.empCode || '',
+            hireDate: emp.hireDate ? String(emp.hireDate).split('T')[0] : '',
+            locations: (emp.locations || []).map((l) => (l._id || l)),
+            note: emp.note || '',
+            isActive: emp.isActive !== false,
+        });
+        setExpandedUserForm({
+            firstName: emp.user?.firstName || '',
+            lastName: emp.user?.lastName || '',
+            username: emp.user?.username || '',
+            email: emp.user?.email || '',
+        });
+        setExpandedTab('info');
+        setEditingInfo(false);
+        setEditingAccount(false);
+        setPasswordForm({ newPassword: '', confirmPassword: '' });
+        setShowNewPassword(false);
+        setShowConfirmPassword(false);
+    };
+
+    const handleSaveEmpInfo = async (e) => {
+        e.preventDefault();
+        if (!expandedId) return;
+        if (!expandedEmpForm.locations?.length) {
+            toast.error('Vui lòng chọn ít nhất một chi nhánh làm việc');
+            return;
+        }
+        setSavingEmp(true);
+        try {
+            const res = await updateEmployee(expandedId, {
+                empCode: (expandedEmpForm.empCode || '').trim() || undefined,
+                hireDate: expandedEmpForm.hireDate || null,
+                locations: expandedEmpForm.locations,
+                note: expandedEmpForm.note,
+                isActive: expandedEmpForm.isActive,
+            });
+            if (res.success) {
+                toast.success('Cập nhật thông tin nhân viên thành công');
+                setEditingInfo(false);
+                fetchEmployees();
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Cập nhật thất bại');
+        } finally {
+            setSavingEmp(false);
+        }
+    };
+
+    const handleSaveUserInfo = async (e) => {
+        e.preventDefault();
+        const emp = employees.find((e) => e._id === expandedId);
+        if (!emp?.user?._id) return;
+        setSavingUser(true);
+        try {
+            const res = await updateUser(emp.user._id, {
+                firstName: expandedUserForm.firstName?.trim(),
+                lastName: expandedUserForm.lastName?.trim(),
+                email: expandedUserForm.email?.trim(),
+            });
+            if (res.success) {
+                toast.success('Cập nhật tài khoản thành công');
+                setEditingAccount(false);
+                fetchEmployees();
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Cập nhật thất bại');
+        } finally {
+            setSavingUser(false);
+        }
+    };
+
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        const emp = employees.find((x) => x._id === expandedId);
+        if (!emp?.user?._id) return;
+        if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
+            toast.error('Mật khẩu mới phải có ít nhất 6 ký tự');
+            return;
+        }
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            toast.error('Xác nhận mật khẩu không khớp');
+            return;
+        }
+        setSavingPassword(true);
+        try {
+            const res = await resetUserPassword(emp.user._id, passwordForm.newPassword);
+            if (res.success) {
+                toast.success('Đổi mật khẩu thành công');
+                setPasswordForm({ newPassword: '', confirmPassword: '' });
+                setShowNewPassword(false);
+                setShowConfirmPassword(false);
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Đổi mật khẩu thất bại');
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
+    const handleDeleteEmployee = (emp) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Xóa hồ sơ nhân viên',
+            message: `Xóa hồ sơ nhân viên "${emp.user?.firstName || ''} ${emp.user?.lastName || ''}"? Hành động này không thể hoàn tác.`,
+            variant: 'danger',
+            confirmText: 'Xóa',
+            onConfirm: async () => {
+                try {
+                    const res = await deleteEmployee(emp._id);
+                    if (res.success) {
+                        toast.success('Xóa hồ sơ nhân viên thành công');
+                        setExpandedId(null);
+                        setExpandedEmpForm({ empCode: '', hireDate: '', locations: [], note: '', isActive: true });
+                        setExpandedUserForm({ firstName: '', lastName: '', username: '', email: '' });
+                        setEditingInfo(false);
+                        setEditingAccount(false);
+                        fetchEmployees();
+                    }
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || 'Xóa thất bại');
+                }
+            },
         });
     };
 
@@ -613,78 +744,407 @@ const StaffManagementPage = () => {
                             ) : (
                                 <>
                                     <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
-                                        <table className="table">
+                                        <table className="table w-full">
                                             <thead className="bg-blue-100 sticky top-0 z-20">
                                                 <tr>
+                                                    <th className="w-8"></th>
                                                     <th className="font-medium text-neutral text-xs">Mã NV</th>
                                                     <th className="font-medium text-neutral text-xs">Nhân viên</th>
                                                     <th className="font-medium text-neutral text-xs">Chi nhánh làm việc</th>
                                                     <th className="font-medium text-neutral text-xs">Ngày vào làm</th>
                                                     <th className="font-medium text-neutral text-xs">Trạng thái</th>
-                                                    <th className="text-center font-medium text-neutral text-xs">Thao tác</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="text-xs">
-                                                {employees.map((emp) => (
-                                                    <tr key={emp._id} className="hover:bg-base-200/60 transition-colors font-light">
-                                                        <td>
-                                                            <span className="font-mono font-medium">{emp.empCode || '-'}</span>
-                                                        </td>
-                                                        <td>
-                                                            <div className="flex flex-col">
-                                                                <span className="font-semibold">
-                                                                    {emp.user?.firstName} {emp.user?.lastName}
-                                                                </span>
-                                                                <span className="text-base-content/70">
-                                                                    {emp.user?.username}
-                                                                </span>
-                                                                <span className="text-base-content/70">
-                                                                    {emp.user?.email}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td>
-                                                            <div className="flex flex-wrap gap-1 max-w-xs">
-                                                                {(emp.locations || []).map((loc) => (
-                                                                    <span
-                                                                        key={loc._id}
-                                                                        className="badge badge-xs badge-outline"
-                                                                    >
-                                                                        {loc.code} - {loc.name}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </td>
-                                                        <td>{formatDate(emp.hireDate)}</td>
-                                                        <td>
-                                                            <span
-                                                                className={`badge badge-sm ${emp.isActive ? 'badge-success' : 'badge-neutral'}`}
+                                                {employees.map((emp) => {
+                                                    const isExpanded = expandedId === emp._id;
+                                                    return (
+                                                        <React.Fragment key={emp._id}>
+                                                            <tr
+                                                                className={`hover:bg-base-200/60 transition-colors font-light cursor-pointer ${isExpanded ? 'bg-primary/10' : ''}`}
+                                                                onClick={() => toggleExpand(emp)}
                                                             >
-                                                                {emp.isActive ? 'Đang làm' : 'Ngừng làm'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="text-center">
-                                                            <div className="flex justify-center gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-ghost btn-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
-                                                                    onClick={() => openEditModal(emp)}
-                                                                    aria-label="Chỉnh sửa"
-                                                                >
-                                                                    <Edit className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-ghost btn-sm text-error focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-1"
-                                                                    onClick={() => handleDelete(emp)}
-                                                                    aria-label="Xóa"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                                <td className={`w-8 ${isExpanded ? 'border-l-4 border-l-primary' : ''}`}>
+                                                                    {isExpanded ? (
+                                                                        <ChevronDown className="w-4 h-4" />
+                                                                    ) : (
+                                                                        <ChevronRight className="w-4 h-4" />
+                                                                    )}
+                                                                </td>
+                                                                <td>
+                                                                    <span className="font-mono font-medium">{emp.empCode || '-'}</span>
+                                                                </td>
+                                                                <td>
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-semibold">
+                                                                            {emp.user?.firstName} {emp.user?.lastName}
+                                                                        </span>
+                                                                        <span className="text-base-content/70">
+                                                                            {emp.user?.username}
+                                                                        </span>
+                                                                        <span className="text-base-content/70">
+                                                                            {emp.user?.email}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td>
+                                                                    <div className="flex flex-wrap gap-1 max-w-xs">
+                                                                        {(emp.locations || []).map((loc) => (
+                                                                            <span
+                                                                                key={loc._id}
+                                                                                className="badge badge-xs badge-outline"
+                                                                            >
+                                                                                {loc.code} - {loc.name}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                </td>
+                                                                <td>{formatDate(emp.hireDate)}</td>
+                                                                <td>
+                                                                    <span
+                                                                        className={`badge badge-sm ${emp.isActive ? 'badge-success' : 'badge-neutral'}`}
+                                                                    >
+                                                                        {emp.isActive ? 'Đang làm' : 'Ngừng làm'}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr className="bg-primary/5">
+                                                                    <td colSpan={6} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
+                                                                        {(() => {
+                                                                            const expEmp = employees.find((e) => e._id === expandedId);
+                                                                            return (
+                                                                        <>
+                                                                        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                                                                            <div className="flex gap-2">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className={`btn btn-sm gap-2 ${expandedTab === 'info' ? 'btn-primary' : 'btn-ghost'}`}
+                                                                                    onClick={() => { setExpandedTab('info'); setEditingInfo(false); }}
+                                                                                >
+                                                                                    <UserCircle className="w-4 h-4" />
+                                                                                    Thông tin nhân viên
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className={`btn btn-sm gap-2 ${expandedTab === 'account' ? 'btn-primary' : 'btn-ghost'}`}
+                                                                                    onClick={() => { setExpandedTab('account'); setEditingAccount(false); }}
+                                                                                >
+                                                                                    <User className="w-4 h-4" />
+                                                                                    Tài khoản
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        {expandedTab === 'info' && (
+                                                                            <div className="space-y-4">
+                                                                                {!editingInfo ? (
+                                                                                    <div className="space-y-3 max-w-xl">
+                                                                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Mã nhân viên:</span>
+                                                                                                <p className="font-medium">{expandedEmpForm.empCode || '—'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Ngày vào làm:</span>
+                                                                                                <p className="font-medium">{expandedEmpForm.hireDate ? formatDate(expandedEmpForm.hireDate) : '—'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Trạng thái:</span>
+                                                                                                <p className="font-medium">{expandedEmpForm.isActive ? 'Đang làm' : 'Ngừng làm'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Chi nhánh:</span>
+                                                                                                <p className="font-medium">
+                                                                                                    {locations.filter((l) => expandedEmpForm.locations.includes(l._id)).length > 0
+                                                                                                        ? locations.filter((l) => expandedEmpForm.locations.includes(l._id)).map((loc) => `${loc.code} - ${loc.name}`).join(', ')
+                                                                                                        : '—'}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        {expandedEmpForm.note && (
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60 text-sm">Ghi chú:</span>
+                                                                                                <p className="text-sm mt-0.5">{expandedEmpForm.note}</p>
+                                                                                            </div>
+                                                                                        )}
+                                                                                        <div className="flex gap-2">
+                                                                                            <button type="button" className="btn btn-outline btn-sm gap-2" onClick={() => setEditingInfo(true)}>
+                                                                                                <Pencil className="w-4 h-4" />
+                                                                                                Chỉnh sửa
+                                                                                            </button>
+                                                                                            {expEmp && (
+                                                                                                <button type="button" className="btn btn-outline btn-error btn-sm gap-2" onClick={() => handleDeleteEmployee(expEmp)}>
+                                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                                    Xóa
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                <form onSubmit={handleSaveEmpInfo} className="space-y-4">
+                                                                                    <div>
+                                                                                        <label className="label">
+                                                                                            <span className="label-text font-semibold">Mã nhân viên</span>
+                                                                                        </label>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            className="input input-bordered input-sm w-full"
+                                                                                            value={expandedEmpForm.empCode}
+                                                                                            onChange={(e) => setExpandedEmpForm((p) => ({ ...p, empCode: e.target.value }))}
+                                                                                            maxLength={10}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                                        <div>
+                                                                                            <label className="label">
+                                                                                                <span className="label-text font-semibold">Ngày vào làm</span>
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="date"
+                                                                                                className="input input-bordered input-sm w-full"
+                                                                                                value={expandedEmpForm.hireDate}
+                                                                                                onChange={(e) => setExpandedEmpForm((p) => ({ ...p, hireDate: e.target.value }))}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="label">
+                                                                                                <span className="label-text font-semibold">Trạng thái</span>
+                                                                                            </label>
+                                                                                            <select
+                                                                                                className="select select-bordered select-sm w-full"
+                                                                                                value={expandedEmpForm.isActive ? 'true' : 'false'}
+                                                                                                onChange={(e) => setExpandedEmpForm((p) => ({ ...p, isActive: e.target.value === 'true' }))}
+                                                                                            >
+                                                                                                <option value="true">Đang làm</option>
+                                                                                                <option value="false">Ngừng làm</option>
+                                                                                            </select>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="label">
+                                                                                            <span className="label-text font-semibold">Chi nhánh làm việc</span>
+                                                                                        </label>
+                                                                                        <div className="dropdown dropdown-bottom">
+                                                                                            <div tabIndex={0} role="button" className="btn btn-sm btn-ghost w-full justify-between border border-base-300">
+                                                                                                <span>Thêm / bớt chi nhánh</span>
+                                                                                            </div>
+                                                                                            <ul tabIndex={-1} className="dropdown-content menu bg-base-100 rounded-box w-full max-h-60 overflow-y-auto border border-base-300 shadow z-10">
+                                                                                                {locations.map((loc) => {
+                                                                                                    const checked = expandedEmpForm.locations.includes(loc._id);
+                                                                                                    return (
+                                                                                                        <li key={loc._id}>
+                                                                            <label className="flex items-center gap-2 px-2 py-1 cursor-pointer">
+                                                                                                <input
+                                                                                                    type="checkbox"
+                                                                                                    className="checkbox checkbox-xs"
+                                                                                                    checked={checked}
+                                                                                                    onChange={() => toggleExpandedLocation(loc._id)}
+                                                                                                />
+                                                                                                <span className="text-sm">{loc.code} - {loc.name}</span>
+                                                                                            </label>
+                                                                                                        </li>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </ul>
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap gap-1 mt-2">
+                                                                                            {locations.filter((l) => expandedEmpForm.locations.includes(l._id)).map((loc) => (
+                                                                                                <span key={loc._id} className="badge badge-sm badge-primary">
+                                                                                                    {loc.code} - {loc.name}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="label">
+                                                                                            <span className="label-text font-semibold">Ghi chú</span>
+                                                                                        </label>
+                                                                                        <textarea
+                                                                                            className="textarea textarea-bordered w-full textarea-sm"
+                                                                                            rows={2}
+                                                                                            value={expandedEmpForm.note}
+                                                                                            onChange={(e) => setExpandedEmpForm((p) => ({ ...p, note: e.target.value }))}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="flex gap-2">
+                                                                                        <button type="submit" className="btn btn-primary btn-sm" disabled={savingEmp}>
+                                                                                            {savingEmp ? 'Đang lưu...' : 'Lưu'}
+                                                                                        </button>
+                                                                                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingInfo(false)}>
+                                                                                            Hủy
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </form>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                        {expandedTab === 'account' && (
+                                                                            <div className="space-y-6 max-w-xl">
+                                                                                {!editingAccount ? (
+                                                                                    <div className="space-y-3">
+                                                                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Họ:</span>
+                                                                                                <p className="font-medium">{expandedUserForm.firstName || '—'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Tên:</span>
+                                                                                                <p className="font-medium">{expandedUserForm.lastName || '—'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Tên đăng nhập:</span>
+                                                                                                <p className="font-medium">{expandedUserForm.username || '—'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Email:</span>
+                                                                                                <p className="font-medium">{expandedUserForm.email || '—'}</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="flex gap-2">
+                                                                                            <button type="button" className="btn btn-outline btn-sm gap-2" onClick={() => setEditingAccount(true)}>
+                                                                                                <Pencil className="w-4 h-4" />
+                                                                                                Chỉnh sửa
+                                                                                            </button>
+                                                                                            {expEmp && (
+                                                                                                <button type="button" className="btn btn-outline btn-error btn-sm gap-2" onClick={() => handleDeleteEmployee(expEmp)}>
+                                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                                    Xóa
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                <div className="space-y-6">
+                                                                                <form onSubmit={handleSaveUserInfo} className="space-y-4">
+                                                                                    <div className="text-sm font-semibold text-base-content/80 mb-2">Thông tin cơ bản</div>
+                                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Họ</span>
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                className="input input-bordered input-sm w-full"
+                                                                                                value={expandedUserForm.firstName}
+                                                                                                onChange={(e) => setExpandedUserForm((p) => ({ ...p, firstName: e.target.value }))}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Tên</span>
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                className="input input-bordered input-sm w-full"
+                                                                                                value={expandedUserForm.lastName}
+                                                                                                onChange={(e) => setExpandedUserForm((p) => ({ ...p, lastName: e.target.value }))}
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Tên đăng nhập</span>
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                className="input input-bordered input-sm w-full bg-base-200"
+                                                                                                value={expandedUserForm.username}
+                                                                                                readOnly
+                                                                                                title="Tên đăng nhập không thể thay đổi"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Email</span>
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="email"
+                                                                                                className="input input-bordered input-sm w-full"
+                                                                                                value={expandedUserForm.email}
+                                                                                                onChange={(e) => setExpandedUserForm((p) => ({ ...p, email: e.target.value }))}
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex gap-2">
+                                                                                        <button type="submit" className="btn btn-primary btn-sm" disabled={savingUser}>
+                                                                                            {savingUser ? 'Đang lưu...' : 'Lưu'}
+                                                                                        </button>
+                                                                                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingAccount(false)}>
+                                                                                            Hủy
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </form>
+                                                                                <div className="divider my-2"></div>
+                                                                                <form onSubmit={handleChangePassword} className="space-y-4">
+                                                                                    <div className="text-sm font-semibold text-base-content/80 mb-2">Đổi mật khẩu</div>
+                                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Mật khẩu mới</span>
+                                                                                            </label>
+                                                                                            <div className="relative">
+                                                                                                <input
+                                                                                                    type={showNewPassword ? 'text' : 'password'}
+                                                                                                    className="input input-bordered input-sm w-full pr-10"
+                                                                                                    value={passwordForm.newPassword}
+                                                                                                    onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                                                                                                    placeholder="Ít nhất 6 ký tự"
+                                                                                                    autoComplete="new-password"
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-square"
+                                                                                                    onClick={() => setShowNewPassword((p) => !p)}
+                                                                                                    tabIndex={-1}
+                                                                                                    aria-label={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                                                                                                >
+                                                                                                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="label py-0">
+                                                                                                <span className="label-text text-xs">Xác nhận mật khẩu</span>
+                                                                                            </label>
+                                                                                            <div className="relative">
+                                                                                                <input
+                                                                                                    type={showConfirmPassword ? 'text' : 'password'}
+                                                                                                    className="input input-bordered input-sm w-full pr-10"
+                                                                                                    value={passwordForm.confirmPassword}
+                                                                                                    onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                                                                                                    placeholder="Nhập lại mật khẩu"
+                                                                                                    autoComplete="new-password"
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-square"
+                                                                                                    onClick={() => setShowConfirmPassword((p) => !p)}
+                                                                                                    tabIndex={-1}
+                                                                                                    aria-label={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                                                                                                >
+                                                                                                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <button type="submit" className="btn btn-outline btn-sm" disabled={savingPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}>
+                                                                                        {savingPassword ? 'Đang lưu...' : 'Đổi mật khẩu'}
+                                                                                    </button>
+                                                                                </form>
+                                                                                </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                        </>
+                                                                    );
+                                                                })()}
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1192,20 +1652,22 @@ const StaffManagementPage = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="label cursor-pointer">
-                                            <span className="label-text font-semibold">Đang làm việc</span>
-                                            <input
-                                                type="checkbox"
-                                                className="checkbox checkbox-xs checkbox-primary ml-2"
-                                                checked={formData.isActive}
-                                                onChange={(e) =>
-                                                    setFormData((prev) => ({
-                                                        ...prev,
-                                                        isActive: e.target.checked,
-                                                    }))
-                                                }
-                                            />
+                                        <label className="label">
+                                            <span className="label-text font-semibold">Trạng thái</span>
                                         </label>
+                                        <select
+                                            className="select select-bordered select-sm w-full"
+                                            value={formData.isActive ? 'true' : 'false'}
+                                            onChange={(e) =>
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    isActive: e.target.value === 'true',
+                                                }))
+                                            }
+                                        >
+                                            <option value="true">Đang làm</option>
+                                            <option value="false">Ngừng làm</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -1870,6 +2332,16 @@ const StaffManagementPage = () => {
                         </form>
                     </dialog>
                 )}
+
+                <ConfirmationModal
+                    isOpen={confirmModal.isOpen}
+                    title={confirmModal.title}
+                    message={confirmModal.message}
+                    variant={confirmModal.variant}
+                    confirmText={confirmModal.confirmText}
+                    onConfirm={confirmModal.onConfirm}
+                    onClose={() => setConfirmModal((p) => ({ ...p, isOpen: false }))}
+                />
             </div>
         </div >
     );

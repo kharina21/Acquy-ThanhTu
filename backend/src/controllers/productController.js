@@ -90,9 +90,12 @@ export const getAllProducts = async (req, res) => {
 
         const query = { isDeleted: false };
         if (search) {
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = esc(search);
             query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { sku: { $regex: search, $options: 'i' } },
+                { name: { $regex: re, $options: 'i' } },
+                { sku: { $regex: re, $options: 'i' } },
+                { barcode: { $regex: re, $options: 'i' } },
             ];
         }
         if (brand && mongoose.Types.ObjectId.isValid(brand)) {
