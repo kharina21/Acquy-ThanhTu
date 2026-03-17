@@ -583,7 +583,7 @@ const StockCheckTab = () => {
                                 </div>
                                 <div className="overflow-x-auto border border-base-300 rounded-lg">
                                     <table className="table table-sm">
-                                        <thead>
+                                        <thead className='bg-blue-100 sticky top-0 z-20'>
                                             <tr>
                                                 <th>Mã hàng</th>
                                                 <th>Tên sản phẩm</th>
@@ -707,7 +707,7 @@ const StockCheckTab = () => {
                         {detailStockCheck.note ? <p className="text-sm mb-4">Ghi chú: {detailStockCheck.note}</p> : null}
                         <div className="overflow-x-auto border border-base-300 rounded-lg">
                             <table className="table table-sm">
-                                <thead>
+                                <thead className='bg-blue-100 sticky top-0 z-20'>
                                     <tr>
                                         <th>Mã hàng</th>
                                         <th>Tên sản phẩm</th>

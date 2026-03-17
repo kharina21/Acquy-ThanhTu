@@ -46,7 +46,6 @@ const orderSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-orderSchema.index({ code: 1 }, { unique: true });
 orderSchema.index({ customer: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ status: 1 });
