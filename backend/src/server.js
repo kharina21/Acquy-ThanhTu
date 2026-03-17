@@ -18,7 +18,7 @@ import productStockRoutes from './routes/productStockRoute.js';
 import roleRoutes from './routes/roleRoute.js';
 import employeeRoutes from './routes/employeeRoute.js';
 import memberPolicyRoutes from './routes/memberPolicyRoute.js';
-
+import cartRoutes from './routes/cartRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;

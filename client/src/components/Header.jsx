@@ -95,10 +95,10 @@ export function Header({ user, onLogout }) {
 
             {/* Nút giỏ hàng */}
             <Link to="/cart" className="relative">
-              <Button variant="outline" size="icon" className="rounded-full">
+              <Button variant="outline" size="icon" className="rounded-full hover:border-primary hover:text-primary transition-colors">
                 <ShoppingCart className="w-5 h-5" />
                 {totalQuantity > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-white text-xs font-bold rounded-full">
                     {totalQuantity > 99 ? '99+' : totalQuantity}
                   </span>
                 )}
@@ -109,8 +109,13 @@ export function Header({ user, onLogout }) {
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <User className="w-4 h-4" /> {user.name}
+                  <Button variant="outline" size="sm" className="gap-2 rounded-full px-4 hover:border-primary hover:text-primary transition-colors cursor-pointer">
+                    <User className="w-4 h-4" /> 
+                    <span className="font-medium">
+                      {(user.firstName && user.lastName) 
+                        ? `${user.lastName} ${user.firstName}` 
+                        : (user.username || 'Người dùng')}
+                    </span>
                   </Button>
 
                 </DropdownMenuTrigger>

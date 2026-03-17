@@ -26,6 +26,39 @@ export default function ProductFilter({
         }
     };
 
+    const handleNumberChange = (e, setter) => {
+        const val = e.target.value;
+        if (val === "" || Number(val) >= 0) {
+            setter(val);
+        }
+    };
+
+    const formatCurrency = (value) => {
+        if (!value) return "";
+        // Remove all non-digit characters
+        const numberValue = value.toString().replace(/\D/g, '');
+        // Format with commas
+        return numberValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    };
+
+    const handlePriceChange = (e, setter) => {
+        const val = e.target.value.replace(/\D/g, ''); // Extract only numbers
+        if (val === "" || Number(val) >= 0) {
+            setter(val); // Keep raw string of numbers in state
+        }
+    };
+
+    const handleRangeBlur = (minVal, maxVal, setMax) => {
+        const minNum = Number(minVal.toString().replace(/\D/g, ''));
+        const maxNum = Number(maxVal.toString().replace(/\D/g, ''));
+
+        if (minVal !== "" && maxVal !== "") {
+            if (maxNum < minNum) {
+                setMax(minVal);
+            }
+        }
+    };
+
     const handleSubmit = () => {
 
         const filters = {};
@@ -132,17 +165,21 @@ export default function ProductFilter({
                 <div className="flex gap-2">
                     <input
                         type="number"
+                        min="0"
                         placeholder="Từ"
                         value={minAh}
-                        onChange={(e) => setMinAh(e.target.value)}
+                        onChange={(e) => handleNumberChange(e, setMinAh)}
+                        onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
 
                     <input
                         type="number"
+                        min="0"
                         placeholder="Đến"
                         value={maxAh}
-                        onChange={(e) => setMaxAh(e.target.value)}
+                        onChange={(e) => handleNumberChange(e, setMaxAh)}
+                        onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
@@ -154,18 +191,20 @@ export default function ProductFilter({
 
                 <div className="flex gap-2">
                     <input
-                        type="number"
+                        type="text"
                         placeholder="Từ"
-                        value={minPrice}
-                        onChange={(e) => setMinPrice(e.target.value)}
+                        value={formatCurrency(minPrice)}
+                        onChange={(e) => handlePriceChange(e, setMinPrice)}
+                        onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
 
                     <input
-                        type="number"
+                        type="text"
                         placeholder="Đến"
-                        value={maxPrice}
-                        onChange={(e) => setMaxPrice(e.target.value)}
+                        value={formatCurrency(maxPrice)}
+                        onChange={(e) => handlePriceChange(e, setMaxPrice)}
+                        onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
@@ -174,7 +213,7 @@ export default function ProductFilter({
             {/* BUTTON */}
             <button
                 onClick={handleSubmit}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded"
+                className="btn btn-primary w-full"
             >
                 Tìm
             </button>

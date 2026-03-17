@@ -40,27 +40,23 @@ export function ServiceFeatures() {
               <div
                 key={index}
                 className="group relative flex flex-col items-center text-center p-6 
-                           bg-white border-2 border-gray-200 rounded-xl 
-                           shadow-[0_4px_0_0_rgba(0,0,0,0.05)] 
-                           hover:border-blue-500 hover:shadow-xl 
-                           transition-all duration-300 transform hover:-translate-y-1"
+                           bg-white border-2 border-gray-100 rounded-xl 
+                           shadow-sm hover:border-primary hover:shadow-lg hover:-translate-y-1
+                           transition-all duration-300"
               >
-                {/* Vòng tròn Icon đậm đà */}
-                <div className="bg-blue-600 p-3 rounded-lg mb-4 group-hover:scale-110 transition-transform shadow-lg shadow-blue-200">
-                  <Icon className="w-6 h-6 text-white" strokeWidth={2.5} />
-                </div>
+                  {/* Vòng tròn Icon đậm đà */}
+                  <div className="bg-primary/10 p-4 rounded-full mb-4 group-hover:bg-primary group-hover:scale-110 transition-all duration-300">
+                    <Icon className="w-6 h-6 text-primary group-hover:text-white transition-colors" strokeWidth={2} />
+                  </div>
 
-                {/* Nội dung chữ */}
-                <h3 className="font-bold text-[14px] text-blue-900 mb-1">
-                  {feature.title}
-                </h3>
-                <p className="text-xs font-medium text-gray-500 italic">
-                  {feature.subtitle}
-                </p>
-                
-                {/* Một vệt màu nhỏ dưới chân để tạo điểm nhấn */}
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 bg-blue-500 group-hover:w-full transition-all duration-300 rounded-b-xl"></div>
-              </div>
+                  {/* Nội dung chữ */}
+                  <h3 className="font-bold text-sm text-gray-800 mb-1 tracking-wide">
+                    {feature.title}
+                  </h3>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {feature.subtitle}
+                  </p>
+                </div>
             );
           })}
         </div>
