@@ -21,6 +21,8 @@ import memberPolicyRoutes from './routes/memberPolicyRoute.js';
 import supplierRoutes from './routes/supplierRoute.js';
 import stockInRoutes from './routes/stockInRoute.js';
 import stockReturnRoutes from './routes/stockReturnRoute.js';
+import cartRoutes from './routes/cartRoute.js';
+import orderRoutes from './routes/orderRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -53,6 +55,8 @@ app.use('/api/member-policies', memberPolicyRoutes); // Chính sách khách hàn
 app.use('/api/suppliers', supplierRoutes);         // Nhà cung cấp
 app.use('/api/stock-ins', stockInRoutes);           // Nhập hàng
 app.use('/api/stock-returns', stockReturnRoutes);  // Trả hàng
+app.use('/api/cart', cartRoutes);                 // Giỏ hàng
+app.use('/api/orders', orderRoutes);              // Đơn hàng
 
 connectDB().then(() =>
     app.listen(PORT, () => {
