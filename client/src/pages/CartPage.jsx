@@ -133,6 +133,11 @@ export default function CartPage() {
                     <p className="text-red-600 font-bold mt-1">
                       {item.price?.toLocaleString()}đ
                     </p>
+                    {typeof item.stock === 'number' && (
+                      <p className="text-gray-500 text-sm mt-0.5">
+                        Tồn kho: {item.stock}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <div className="flex items-center border border-gray-300 rounded">
@@ -150,7 +155,7 @@ export default function CartPage() {
                       <button
                         type="button"
                         className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                        disabled={actionLoading}
+                        disabled={actionLoading || (typeof item.stock === 'number' && item.quantity >= item.stock)}
                         onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
                       >
                         +

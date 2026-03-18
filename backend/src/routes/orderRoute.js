@@ -6,6 +6,7 @@ import {
     getOrders,
     getOrderById,
     updateOrder,
+    getOrderReport,
 } from '../controllers/orderController.js';
 
 const router = express.Router();
@@ -13,8 +14,9 @@ const router = express.Router();
 router.use(authenticate);
 
 router.post('/', createOrder);
+router.get('/report', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getOrderReport);
 router.get('/', getOrders);
 router.get('/:id', getOrderById);
-router.put('/:id', hasRole('admin', 'Quản lý chi nhánh'), updateOrder);
+router.put('/:id', hasRole('admin', 'manager', 'Quản lý chi nhánh'), updateOrder);
 
 export default router;
