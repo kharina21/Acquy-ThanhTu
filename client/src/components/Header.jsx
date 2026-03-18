@@ -1,4 +1,5 @@
 import { Search, User, LogOut, ShoppingCart, Package } from 'lucide-react';
+import { getDisplayName } from '@/lib/utils';
 import { useNavigate, Link } from 'react-router';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -110,7 +111,7 @@ export function Header({ user, onLogout }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <User className="w-4 h-4" /> {user.name}
+                    <User className="w-4 h-4" /> {getDisplayName(user)}
                   </Button>
 
                 </DropdownMenuTrigger>

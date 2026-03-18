@@ -122,6 +122,19 @@ export const addItemToCart = async (req, res) => {
             (item) => item.product.toString() === productId.toString()
         );
 
+        const newQuantity = existingIndex !== -1 ? cart.items[existingIndex].quantity + qty : qty;
+
+        // Kiểm tra tồn kho trước khi thêm
+        const defaultLocation = await getDefaultLocation();
+        if (defaultLocation) {
+            const stock = await getStockAtLocation(productId, defaultLocation._id);
+            if (newQuantity > stock) {
+                return res.status(400).json({
+                    message: `Số lượng vượt quá tồn kho. Tồn kho hiện tại: ${stock}`,
+                });
+            }
+        }
+
         if (existingIndex !== -1) {
             cart.items[existingIndex].quantity += qty;
         } else {
@@ -141,7 +154,6 @@ export const addItemToCart = async (req, res) => {
             .lean();
 
         let items = mapCartToResponse(populated);
-        const defaultLocation = await getDefaultLocation();
         if (defaultLocation) {
             items = await addStockToItems(items, defaultLocation._id);
         }

@@ -343,6 +343,8 @@ export const updateOrder = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
 
+        const previousStatus = order.status;
+
         if (status) {
             const validStatuses = ['pending', 'confirmed', 'paid', 'cancelled'];
             if (validStatuses.includes(status)) order.status = status;
@@ -351,6 +353,21 @@ export const updateOrder = async (req, res) => {
             const validPaymentStatuses = ['pending', 'paid', 'failed', 'refunded'];
             if (validPaymentStatuses.includes(paymentStatus)) order.paymentStatus = paymentStatus;
             if (paymentStatus === 'paid') order.paidAt = new Date();
+        }
+
+        // Khi hủy đơn: hoàn lại tồn kho (chỉ khi đơn chưa từng bị hủy trước đó)
+        if (order.status === 'cancelled' && previousStatus !== 'cancelled') {
+            const locationId = order.location;
+            for (const item of order.items) {
+                const stockRow = await ProductStock.findOne({
+                    product: item.product,
+                    location: locationId,
+                });
+                if (stockRow) {
+                    stockRow.quantity += item.quantity;
+                    await stockRow.save();
+                }
+            }
         }
 
         await order.save();
