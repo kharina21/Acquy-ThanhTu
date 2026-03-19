@@ -1,13 +1,11 @@
 import mongoose from 'mongoose';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
-import Location from '../models/Location.js';
 import { getStockAtLocation } from './productStockController.js';
+import { getOnlineLocation } from './locationController.js';
 
-/** Lấy chi nhánh mặc định cho đơn online (chi nhánh đầu tiên đang hoạt động). */
-const getDefaultLocation = async () => {
-    return Location.findOne({ isActive: true }).sort({ createdAt: 1 }).lean();
-};
+/** Chi nhánh bán online – dùng cho giỏ hàng và đơn online. */
+const getOnlineLoc = () => getOnlineLocation();
 
 const mapCartToResponse = (cart) => {
     if (!cart) {
@@ -75,7 +73,7 @@ export const getCart = async (req, res) => {
             .lean();
 
         let items = mapCartToResponse(cart);
-        const defaultLocation = await getDefaultLocation();
+        const defaultLocation = await getOnlineLoc();
         if (defaultLocation) {
             items = await addStockToItems(items, defaultLocation._id);
         }
@@ -125,7 +123,7 @@ export const addItemToCart = async (req, res) => {
         const newQuantity = existingIndex !== -1 ? cart.items[existingIndex].quantity + qty : qty;
 
         // Kiểm tra tồn kho trước khi thêm
-        const defaultLocation = await getDefaultLocation();
+        const defaultLocation = await getOnlineLoc();
         if (defaultLocation) {
             const stock = await getStockAtLocation(productId, defaultLocation._id);
             if (newQuantity > stock) {
@@ -203,7 +201,7 @@ export const updateCartItem = async (req, res) => {
         if (qty <= 0) {
             cart.items.splice(index, 1);
         } else {
-            const defaultLoc = await getDefaultLocation();
+            const defaultLoc = await getOnlineLoc();
             if (defaultLoc) {
                 const stock = await getStockAtLocation(productId, defaultLoc._id);
                 if (qty > stock) {
@@ -222,7 +220,7 @@ export const updateCartItem = async (req, res) => {
             .lean();
 
         let items = mapCartToResponse(populated);
-        const defaultLocation = await getDefaultLocation();
+        const defaultLocation = await getOnlineLoc();
         if (defaultLocation) {
             items = await addStockToItems(items, defaultLocation._id);
         }
@@ -271,7 +269,7 @@ export const removeCartItem = async (req, res) => {
             .lean();
 
         let items = mapCartToResponse(populated);
-        const defaultLocation = await getDefaultLocation();
+        const defaultLocation = await getOnlineLoc();
         if (defaultLocation) {
             items = await addStockToItems(items, defaultLocation._id);
         }

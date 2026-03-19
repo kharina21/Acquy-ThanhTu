@@ -178,11 +178,16 @@ const ProductDetailPage = () => {
                                 {/* LEFT: IMAGES */}
                                 <div className="flex flex-col gap-4">
                                     {/* Main Image */}
-                                    <div className="aspect-square bg-white border rounded-xl flex items-center justify-center p-4 overflow-hidden">
+                                    <div className="relative aspect-square bg-white border rounded-xl flex items-center justify-center p-4 overflow-hidden">
                                         {mainImage ? (
-                                            <img src={mainImage} alt={product.name} className="w-full h-full object-contain" />
+                                            <img src={mainImage} alt={product.name} className={`w-full h-full object-contain ${(product.totalStock ?? 0) <= 0 ? 'opacity-60' : ''}`} />
                                         ) : (
                                             <div className="text-gray-400">Không có ảnh</div>
+                                        )}
+                                        {(product.totalStock ?? 0) <= 0 && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl">
+                                                <img src="/assets/sold_out.png" alt="Hết hàng" className="max-w-[70%] max-h-[60%] object-contain drop-shadow-lg" />
+                                            </div>
                                         )}
                                     </div>
 
@@ -251,54 +256,58 @@ const ProductDetailPage = () => {
                                     </div>
 
                                     {/* QUANTITY & ACTIONS */}
-                                    <div className="mb-8">
-                                        <div className="flex items-center gap-4 mb-6">
-                                            <span className="text-gray-700 font-medium">Số lượng:</span>
-                                            <div className="flex items-center border rounded-lg bg-white overflow-hidden">
-                                                <button
-                                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 transition disabled:opacity-50"
-                                                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                                    disabled={quantity <= 1}
-                                                >
-                                                    -
-                                                </button>
-                                                <input
-                                                    type="number"
-                                                    className="w-16 text-center outline-none border-x py-2 font-medium"
-                                                    value={quantity}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value);
-                                                        if (!isNaN(val) && val >= 1) setQuantity(val);
-                                                    }}
-                                                    min="1"
-                                                />
-                                                <button
-                                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 transition"
-                                                    onClick={() => setQuantity(quantity + 1)}
-                                                >
-                                                    +
-                                                </button>
+                                    {(() => {
+                                        const isSoldOut = (product.totalStock ?? 0) <= 0;
+                                        return (
+                                            <div className={`mb-8 ${isSoldOut ? 'opacity-75 pointer-events-none' : ''}`}>
+                                                <div className="flex items-center gap-4 mb-6">
+                                                    <span className="text-gray-700 font-medium">Số lượng:</span>
+                                                    <div className="flex items-stretch rounded-lg border border-base-300 overflow-hidden bg-base-100">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            className="h-10 w-10 min-w-10 p-0 rounded-none border-0 border-r border-base-300 hover:bg-base-200"
+                                                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                                                            disabled={quantity <= 1 || isSoldOut}
+                                                        >
+                                                            −
+                                                        </Button>
+                                                        <input
+                                                            type="number"
+                                                            className="w-14 h-10 text-center text-base font-medium border-0 border-x border-base-300 bg-base-200 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            value={quantity}
+                                                            onChange={(e) => {
+                                                                const val = parseInt(e.target.value);
+                                                                if (!isNaN(val) && val >= 1) setQuantity(val);
+                                                            }}
+                                                            min="1"
+                                                            readOnly={isSoldOut}
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            className="h-10 w-10 min-w-10 p-0 rounded-none border-0 border-l border-base-300 hover:bg-base-200"
+                                                            onClick={() => setQuantity(quantity + 1)}
+                                                            disabled={isSoldOut}
+                                                        >
+                                                            +
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col sm:flex-row gap-4">
+                                                    <Button size="lg" className="flex-1" onClick={() => handleAddToCart(true)} disabled={isSoldOut}>
+                                                        MUA NGAY
+                                                    </Button>
+
+                                                    <Button variant="outline" size="lg" className="flex-1" onClick={() => handleAddToCart(false)} disabled={isSoldOut}>
+                                                        <ShoppingCart className="w-5 h-5 mr-2" />
+                                                        THÊM VÀO GIỎ
+                                                    </Button>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        <div className="flex flex-col sm:flex-row gap-4">
-                                            <Button
-                                                className="flex-1 py-6 text-lg bg-primary hover:bg-primary-focus text-white font-semibold cursor-pointer transition-colors"
-                                                onClick={() => handleAddToCart(true)}
-                                            >
-                                                MUA NGAY
-                                            </Button>
-
-                                            <Button
-                                                variant="outline"
-                                                className="flex-1 py-6 text-lg border-primary text-primary hover:bg-primary hover:text-white font-semibold cursor-pointer transition-colors"
-                                                onClick={() => handleAddToCart(false)}
-                                            >
-                                                <ShoppingCart className="w-5 h-5 mr-2" />
-                                                THÊM VÀO GIỎ
-                                            </Button>
-                                        </div>
-                                    </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -382,46 +391,62 @@ const ProductDetailPage = () => {
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                            {relatedProducts.map((p) => (
-                                <div key={p._id} className="bg-white rounded-xl border border-gray-100 hover:shadow-lg transition-all p-4 flex flex-col cursor-pointer group" onClick={() => navigate(`/product/${p._id}`)}>
-                                    <div className="aspect-square bg-gray-50 rounded-lg mb-4 overflow-hidden flex items-center justify-center p-2 relative">
-                                        {(p.images?.[0] || p.image) ? (
-                                            <img
-                                                src={p.images?.[0] || p.image}
-                                                alt={p.name}
-                                                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                                            />
-                                        ) : (
-                                            <div className="text-gray-400 text-sm">Không có ảnh</div>
-                                        )}
-
-                                        {p.price > 0 && p.oldPrice > p.price && (
-                                            <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-                                                -{Math.round((1 - p.price / p.oldPrice) * 100)}%
+                            {relatedProducts.map((p) => {
+                                const isSoldOut = (p.totalStock ?? 0) <= 0;
+                                return (
+                                    <div
+                                        key={p._id}
+                                        className={`relative bg-white rounded-xl border border-gray-100 hover:shadow-lg transition-all p-4 flex flex-col group ${isSoldOut ? 'opacity-75 cursor-not-allowed' : 'cursor-pointer'}`}
+                                        onClick={() => !isSoldOut && navigate(`/product/${p._id}`)}
+                                    >
+                                        {isSoldOut && (
+                                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl pointer-events-auto">
+                                                <img
+                                                    src="/assets/sold_out.png"
+                                                    alt="Hết hàng"
+                                                    className="max-w-[80%] max-h-[60%] object-contain drop-shadow-lg"
+                                                />
                                             </div>
                                         )}
-                                    </div>
+                                        <div className="aspect-square bg-gray-50 rounded-lg mb-4 overflow-hidden flex items-center justify-center p-2 relative">
+                                            {(p.images?.[0] || p.image) ? (
+                                                <img
+                                                    src={p.images?.[0] || p.image}
+                                                    alt={p.name}
+                                                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                                />
+                                            ) : (
+                                                <div className="text-gray-400 text-sm">Không có ảnh</div>
+                                            )}
 
-                                    <div className="flex-1 flex flex-col">
-                                        <h3 className="text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px] group-hover:text-red-600 transition-colors">
-                                            {p.name}
-                                        </h3>
+                                            {p.price > 0 && p.oldPrice > p.price && (
+                                                <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
+                                                    -{Math.round((1 - p.price / p.oldPrice) * 100)}%
+                                                </div>
+                                            )}
+                                        </div>
 
-                                        <div className="mt-auto pt-3">
-                                            <div className="flex items-end gap-2">
-                                                <span className="text-red-600 font-bold text-lg">
-                                                    {formatPrice(p.price)}
-                                                </span>
-                                                {p.oldPrice && (
-                                                    <span className="text-xs text-gray-400 line-through mb-1">
-                                                        {formatPrice(p.oldPrice)}
+                                        <div className="flex-1 flex flex-col">
+                                            <h3 className="text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px] group-hover:text-red-600 transition-colors">
+                                                {p.name}
+                                            </h3>
+
+                                            <div className="mt-auto pt-3">
+                                                <div className="flex items-end gap-2">
+                                                    <span className="text-red-600 font-bold text-lg">
+                                                        {formatPrice(p.price)}
                                                     </span>
-                                                )}
+                                                    {p.oldPrice && (
+                                                        <span className="text-xs text-gray-400 line-through mb-1">
+                                                            {formatPrice(p.oldPrice)}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

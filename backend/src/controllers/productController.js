@@ -679,15 +679,22 @@ export const getCarBatteryProducts = async (req, res) => {
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
         })
-            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .sort({ createdAt: -1 })
             .limit(limit)
             .populate('category', 'name')
             .populate('brand', 'name')
             .populate('usageDevice', 'name')
             .lean();
 
+        const productIds = products.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: productIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
+
         const processedProducts = products.map(product => {
             normalizeProductImages(product);
+            product.totalStock = totalsAgg[product._id.toString()] ?? 0;
             return product;
         });
 
@@ -725,15 +732,22 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
         })
-            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .sort({ createdAt: -1 })
             .limit(limit)
             .populate('category', 'name')
             .populate('brand', 'name')
             .populate('usageDevice', 'name')
             .lean();
 
+        const productIds = products.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: productIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
+
         const processedProducts = products.map(product => {
             normalizeProductImages(product);
+            product.totalStock = totalsAgg[product._id.toString()] ?? 0;
             return product;
         });
 
@@ -961,6 +975,21 @@ export const filterProducts = async (req, res) => {
                 }
             },
 
+            {
+                $lookup: {
+                    from: 'productstocks',
+                    localField: '_id',
+                    foreignField: 'product',
+                    as: 'stocks'
+                }
+            },
+            {
+                $addFields: {
+                    totalStock: { $sum: '$stocks.quantity' }
+                }
+            },
+            { $project: { stocks: 0 } },
+
             { $sort: sortQuery },
 
             { $skip: skip },
@@ -1097,10 +1126,16 @@ export const getRelatedProducts = async (req, res) => {
 
         // 4. Lấy top X
         const topProducts = candidates.slice(0, limit);
+        const topIds = topProducts.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: topIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
 
         // Normalize dữ liệu trước khi trả về
         topProducts.forEach((p) => {
             normalizeProductImages(p);
+            p.totalStock = totalsAgg[p._id.toString()] ?? 0;
             if (p.category) p.categoryName = p.category.name;
             if (p.brand) p.brandName = p.brand.name;
             if (p.usageDevice) p.usageDeviceName = p.usageDevice.name;

@@ -110,7 +110,7 @@ export default function CartPage() {
           <div className="bg-gray-50 rounded-lg p-12 text-center">
             <p className="text-gray-600 mb-4">Giỏ hàng trống</p>
             <Link to="/home">
-              <Button className="bg-blue-600 hover:bg-blue-700">Tiếp tục mua sắm</Button>
+              <Button>Tiếp tục mua sắm</Button>
             </Link>
           </div>
         ) : (
@@ -140,31 +140,35 @@ export default function CartPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <div className="flex items-center border border-gray-300 rounded">
-                      <button
+                    <div className="join">
+                      <Button
                         type="button"
-                        className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                        variant="outline"
+                        size="sm"
+                        className="join-item btn-sm"
                         disabled={actionLoading}
                         onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
                       >
                         −
-                      </button>
-                      <span className="px-3 py-1 min-w-[2rem] text-center text-sm">
+                      </Button>
+                      <span className="join-item px-4 bg-base-200 flex items-center min-w-10 justify-center text-sm">
                         {item.quantity}
                       </span>
-                      <button
+                      <Button
                         type="button"
-                        className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                        variant="outline"
+                        size="sm"
+                        className="join-item btn-sm"
                         disabled={actionLoading || (typeof item.stock === 'number' && item.quantity >= item.stock)}
                         onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
                       >
                         +
-                      </button>
+                      </Button>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="btn-ghost btn-sm btn-square text-error"
                       disabled={actionLoading}
                       onClick={() => handleRemoveItem(item.productId)}
                     >
@@ -177,19 +181,19 @@ export default function CartPage() {
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-t pt-6">
               <div className="flex gap-2">
-                <Button variant="outline" disabled={actionLoading} onClick={handleClearCart}>
+                <Button variant="outline" size="sm" disabled={actionLoading} onClick={handleClearCart}>
                   Xóa giỏ hàng
                 </Button>
                 <Link to="/home">
-                  <Button variant="outline">Tiếp tục mua sắm</Button>
+                  <Button variant="outline" size="sm">Tiếp tục mua sắm</Button>
                 </Link>
                 {isLoggedIn ? (
                   <Link to="/checkout">
-                    <Button className="bg-blue-600 hover:bg-blue-700">Đặt hàng</Button>
+                    <Button size="sm">Đặt hàng</Button>
                   </Link>
                 ) : (
                   <Link to="/login?redirect=/checkout">
-                    <Button className="bg-blue-600 hover:bg-blue-700">Đặt hàng (cần đăng nhập)</Button>
+                    <Button size="sm">Đặt hàng (cần đăng nhập)</Button>
                   </Link>
                 )}
               </div>

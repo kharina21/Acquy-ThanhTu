@@ -2,21 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { getMyOrders, updateOrder } from '@/services/orderService';
 import { toast } from 'sonner';
-import { ShoppingCart, Search, CheckCircle, Banknote, ChevronRight } from 'lucide-react';
-
-const STATUS_LABELS = {
-    pending: 'Chờ xử lý',
-    confirmed: 'Đã xác nhận',
-    paid: 'Đã thanh toán',
-    cancelled: 'Đã hủy',
-};
-
-const PAYMENT_STATUS_LABELS = {
-    pending: 'Chờ thanh toán',
-    paid: 'Đã thanh toán',
-    failed: 'Thất bại',
-    refunded: 'Đã hoàn tiền',
-};
+import { ShoppingCart, CheckCircle, Banknote, ChevronRight } from 'lucide-react';
+import { OrderStatusBadge, PaymentStatusBadge, STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '0 ₫';
@@ -118,7 +105,7 @@ const OrderManagementPage = () => {
                     <h1 className="text-2xl font-bold text-base-content">Quản lý đơn hàng</h1>
                 </div>
 
-                <div className="bg-base-100 rounded-lg shadow p-6">
+                <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
                     <div className="flex flex-wrap gap-4 mb-6">
                         <select
                             className="select select-bordered w-48"
@@ -126,8 +113,8 @@ const OrderManagementPage = () => {
                             onChange={(e) => setFilterStatus(e.target.value)}
                         >
                             <option value="">Tất cả trạng thái</option>
-                            {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                                <option key={k} value={k}>{v}</option>
+                            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                                <option key={k} value={k}>{v.label}</option>
                             ))}
                         </select>
                         <select
@@ -136,8 +123,8 @@ const OrderManagementPage = () => {
                             onChange={(e) => setFilterPayment(e.target.value)}
                         >
                             <option value="">Tất cả thanh toán</option>
-                            {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => (
-                                <option key={k} value={k}>{v}</option>
+                            {Object.entries(PAYMENT_STATUS_CONFIG).map(([k, v]) => (
+                                <option key={k} value={k}>{v.label}</option>
                             ))}
                         </select>
                     </div>
@@ -181,32 +168,10 @@ const OrderManagementPage = () => {
                                                 <td>{formatDate(order.createdAt)}</td>
                                                 <td className="font-medium text-primary">{formatVND(order.totalAmount)}</td>
                                                 <td>
-                                                    <span
-                                                        className={`badge badge-sm ${
-                                                            order.status === 'paid'
-                                                                ? 'badge-success'
-                                                                : order.status === 'cancelled'
-                                                                    ? 'badge-error'
-                                                                    : order.status === 'confirmed'
-                                                                        ? 'badge-info'
-                                                                        : 'badge-warning'
-                                                        }`}
-                                                    >
-                                                        {STATUS_LABELS[order.status] || order.status}
-                                                    </span>
+                                                    <OrderStatusBadge status={order.status} />
                                                 </td>
                                                 <td>
-                                                    <span
-                                                        className={`badge badge-sm ${
-                                                            order.paymentStatus === 'paid'
-                                                                ? 'badge-success'
-                                                                : order.paymentStatus === 'failed'
-                                                                    ? 'badge-error'
-                                                                    : 'badge-ghost'
-                                                        }`}
-                                                    >
-                                                        {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
-                                                    </span>
+                                                    <PaymentStatusBadge status={order.paymentStatus} />
                                                 </td>
                                                 <td className="text-right">
                                                     <div className="flex flex-wrap gap-1 justify-end">

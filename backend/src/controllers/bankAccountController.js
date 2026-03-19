@@ -2,6 +2,27 @@ import mongoose from 'mongoose';
 import BankAccount from '../models/BankAccount.js';
 import Location from '../models/Location.js';
 
+/** Lấy tài khoản từ các cơ sở khác (để chọn lại cho cơ sở hiện tại) */
+export const getBankAccountsFromOtherLocations = async (req, res) => {
+    try {
+        const { excludeLocationId } = req.query || {};
+        if (!excludeLocationId || !mongoose.Types.ObjectId.isValid(excludeLocationId)) {
+            return res.status(200).json({ success: true, data: { accounts: [] } });
+        }
+        const accounts = await BankAccount.find({ location: { $ne: excludeLocationId } })
+            .populate('location', 'name')
+            .sort({ createdAt: -1 })
+            .lean();
+        return res.status(200).json({
+            success: true,
+            data: { accounts },
+        });
+    } catch (error) {
+        console.error('getBankAccountsFromOtherLocations error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi lấy tài khoản' });
+    }
+};
+
 export const getBankAccountsByLocation = async (req, res) => {
     try {
         const { locationId } = req.params;

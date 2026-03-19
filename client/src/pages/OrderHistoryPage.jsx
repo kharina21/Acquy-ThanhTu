@@ -4,15 +4,9 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
+import { OrderStatusBadge, PaymentStatusBadge } from '@/components/order/StatusBadge';
 import { getMyOrders } from '@/services/orderService';
 import { toast } from 'sonner';
-
-const STATUS_LABELS = {
-  pending: 'Chờ xử lý',
-  confirmed: 'Đã xác nhận',
-  paid: 'Đã thanh toán',
-  cancelled: 'Đã hủy',
-};
 
 export default function OrderHistoryPage() {
   const { user, accessToken, logout } = useAuthStore();
@@ -59,48 +53,49 @@ export default function OrderHistoryPage() {
             <span className="loading loading-spinner loading-lg text-primary" />
           </div>
         ) : orders.length === 0 ? (
-          <div className="bg-gray-50 rounded-lg p-12 text-center">
+          <div className="bg-gray-50 rounded-2xl p-12 text-center border border-gray-100">
             <p className="text-gray-600 mb-4">Chưa có đơn hàng nào</p>
             <Link to="/home">
-              <Button className="bg-blue-600 hover:bg-blue-700">Mua sắm ngay</Button>
+              <Button>Mua sắm ngay</Button>
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => (
-              <Link
-                key={order._id}
-                to={`/orders/${order._id}`}
-                className="block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 transition"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-gray-800">{order.code}</p>
-                    <p className="text-sm text-gray-600">
-                      {order.createdAt
-                        ? new Date(order.createdAt).toLocaleDateString('vi-VN')
-                        : '—'}
-                    </p>
+            {orders.map((order) => {
+              const firstImg = order.items?.[0]?.product?.images?.[0] || order.items?.[0]?.product?.image;
+              return (
+                <Link
+                  key={order._id}
+                  to={`/orders/${order._id}`}
+                  className="block p-5 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all duration-200"
+                >
+                  <div className="flex gap-4 sm:items-center">
+                    {firstImg && (
+                      <div className="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                        <img src={firstImg} alt="" className="w-full h-full object-contain" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-gray-800">{order.code}</p>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                          Ngày đặt: {order.createdAt
+                            ? new Date(order.createdAt).toLocaleString('vi-VN')
+                            : '—'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <OrderStatusBadge status={order.status} />
+                        <PaymentStatusBadge status={order.paymentStatus} />
+                        <span className="font-bold text-blue-600">
+                          {order.totalAmount?.toLocaleString()}đ
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={`px-2 py-1 rounded text-sm font-medium ${
-                        order.status === 'paid'
-                          ? 'bg-green-100 text-green-800'
-                          : order.status === 'cancelled'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                      }`}
-                    >
-                      {STATUS_LABELS[order.status] || order.status}
-                    </span>
-                    <span className="font-bold text-red-600">
-                      {order.totalAmount?.toLocaleString()}đ
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </main>

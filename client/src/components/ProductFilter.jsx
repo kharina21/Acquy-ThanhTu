@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 
 export default function ProductFilter({
     categories = [],
@@ -122,69 +123,76 @@ export default function ProductFilter({
     }, [searchParams]);
 
     return (
-        <div className="p-4 border rounded-lg bg-white w-64">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
+
+            <h3 className="font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">Bộ lọc</h3>
 
             {/* CATEGORY */}
             <div className="mb-4">
-                <h3 className="font-semibold mb-2">Loại hàng</h3>
-
-                {categories.map(cat => (
-                    <label key={cat._id} className="block">
-                        <input
-                            type="checkbox"
-                            value={cat._id}
-                            checked={selectedCategories.includes(cat._id)}
-                            onChange={() =>
-                                handleCheckboxChange(cat._id, selectedCategories, setSelectedCategories)
-                            }
-                        />
-                        <span className="ml-2">{cat.name}</span>
-                    </label>
-                ))}
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Loại hàng</h4>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {categories.map(cat => (
+                        <label key={cat._id} className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors">
+                            <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm checkbox-primary"
+                                value={cat._id}
+                                checked={selectedCategories.includes(cat._id)}
+                                onChange={() =>
+                                    handleCheckboxChange(cat._id, selectedCategories, setSelectedCategories)
+                                }
+                            />
+                            <span className="text-sm">{cat.name}</span>
+                        </label>
+                    ))}
+                </div>
             </div>
 
             {/* USAGE DEVICE */}
             <div className="mb-4">
-                <h3 className="font-semibold mb-2">Thiết bị sử dụng</h3>
-
-                {usageDevices.map(device => (
-                    <label key={device._id} className="block">
-                        <input
-                            type="checkbox"
-                            value={device._id}
-                            checked={selectedUsageDevices.includes(device._id)}
-                            onChange={() =>
-                                handleCheckboxChange(device._id, selectedUsageDevices, setSelectedUsageDevices)
-                            }
-                        />
-                        <span className="ml-2">{device.name}</span>
-                    </label>
-                ))}
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Thiết bị sử dụng</h4>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {usageDevices.map(device => (
+                        <label key={device._id} className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors">
+                            <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm checkbox-primary"
+                                value={device._id}
+                                checked={selectedUsageDevices.includes(device._id)}
+                                onChange={() =>
+                                    handleCheckboxChange(device._id, selectedUsageDevices, setSelectedUsageDevices)
+                                }
+                            />
+                            <span className="text-sm">{device.name}</span>
+                        </label>
+                    ))}
+                </div>
             </div>
 
             {/* BRAND */}
             <div className="mb-4">
-                <h3 className="font-semibold mb-2">Thương hiệu</h3>
-
-                {brands.map(brand => (
-                    <label key={brand._id} className="block">
-                        <input
-                            type="checkbox"
-                            value={brand._id}
-                            checked={selectedBrands.includes(brand._id)}
-                            onChange={() =>
-                                handleCheckboxChange(brand._id, selectedBrands, setSelectedBrands)
-                            }
-                        />
-                        <span className="ml-2">{brand.name}</span>
-                    </label>
-                ))}
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Thương hiệu</h4>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {brands.map(brand => (
+                        <label key={brand._id} className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors">
+                            <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm checkbox-primary"
+                                value={brand._id}
+                                checked={selectedBrands.includes(brand._id)}
+                                onChange={() =>
+                                    handleCheckboxChange(brand._id, selectedBrands, setSelectedBrands)
+                                }
+                            />
+                            <span className="text-sm">{brand.name}</span>
+                        </label>
+                    ))}
+                </div>
             </div>
 
             {/* CAPACITY */}
             <div className="mb-4">
-                <h3 className="font-semibold mb-2">Dung lượng (Ah)</h3>
-
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Dung lượng (Ah)</h4>
                 <div className="flex gap-2">
                     <input
                         type="number"
@@ -193,9 +201,8 @@ export default function ProductFilter({
                         value={minAh}
                         onChange={(e) => handleNumberChange(e, setMinAh, 'ah')}
                         onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
-                        className="w-full border rounded px-2 py-1"
+                        className="input input-bordered input-sm w-full"
                     />
-
                     <input
                         type="number"
                         min="0"
@@ -203,16 +210,15 @@ export default function ProductFilter({
                         value={maxAh}
                         onChange={(e) => handleNumberChange(e, setMaxAh, 'ah')}
                         onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
-                        className="w-full border rounded px-2 py-1"
+                        className="input input-bordered input-sm w-full"
                     />
                 </div>
-                {errorAh && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorAh}</p>}
+                {errorAh && <p className="text-error text-xs mt-1">{errorAh}</p>}
             </div>
 
             {/* PRICE */}
-            <div className="mb-4">
-                <h3 className="font-semibold mb-2">Giá (VNĐ)</h3>
-
+            <div className="mb-5">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Giá (VNĐ)</h4>
                 <div className="flex gap-2">
                     <input
                         type="text"
@@ -220,28 +226,23 @@ export default function ProductFilter({
                         value={formatCurrency(minPrice)}
                         onChange={(e) => handlePriceChange(e, setMinPrice, 'price')}
                         onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
-                        className="w-full border rounded px-2 py-1"
+                        className="input input-bordered input-sm w-full"
                     />
-
                     <input
                         type="text"
                         placeholder="Đến"
                         value={formatCurrency(maxPrice)}
                         onChange={(e) => handlePriceChange(e, setMaxPrice, 'price')}
                         onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
-                        className="w-full border rounded px-2 py-1"
+                        className="input input-bordered input-sm w-full"
                     />
                 </div>
-                {errorPrice && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorPrice}</p>}
+                {errorPrice && <p className="text-error text-xs mt-1">{errorPrice}</p>}
             </div>
 
-            {/* BUTTON */}
-            <button
-                onClick={handleSubmit}
-                className="btn btn-primary w-full"
-            >
-                Tìm
-            </button>
+            <Button onClick={handleSubmit} className="w-full">
+                Áp dụng bộ lọc
+            </Button>
 
         </div>
     );

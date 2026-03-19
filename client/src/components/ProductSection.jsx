@@ -119,58 +119,72 @@ export function ProductSection() {
           1024: { slidesPerView: 4 },
         }}
       >
-        {products.map((product) => (
-          <SwiperSlide key={product._id} className="pb-4">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group">
-              <Link to={`/product/${product._id}`} className="block flex-1 relative overflow-hidden rounded-lg">
-                <div className="aspect-square bg-gray-50 flex items-center justify-center">
-                  {(product.images?.[0] || product.image) ? (
+        {products.map((product) => {
+          const isSoldOut = (product.totalStock ?? 0) <= 0;
+          return (
+            <SwiperSlide key={product._id} className="pb-4">
+              <div className={`relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group ${isSoldOut ? 'opacity-75' : ''}`}>
+                {isSoldOut && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl pointer-events-auto">
                     <img
-                      src={product.images?.[0] || product.image}
-                      alt={product.name}
-                      className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500"
+                      src="/assets/sold_out.png"
+                      alt="Hết hàng"
+                      className="max-w-[80%] max-h-[60%] object-contain drop-shadow-lg"
                     />
-                  ) : (
-                    <div className="text-gray-400 text-sm">
-                      Không có ảnh
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4">
-                  <h3 className="text-sm md:text-base font-semibold text-gray-700 group-hover:text-primary transition-colors line-clamp-2 min-h-[44px]">
-                    {product.name}
-                  </h3>
-
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-red-500 font-bold text-lg md:text-xl">
-                      {product.price?.toLocaleString()}đ
-                    </span>
                   </div>
+                )}
+                <Link to={`/product/${product._id}`} className={`block flex-1 relative overflow-hidden rounded-lg ${isSoldOut ? 'pointer-events-none' : ''}`}>
+                  <div className="aspect-square bg-gray-50 flex items-center justify-center">
+                    {(product.images?.[0] || product.image) ? (
+                      <img
+                        src={product.images?.[0] || product.image}
+                        alt={product.name}
+                        className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="text-gray-400 text-sm">
+                        Không có ảnh
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <h3 className="text-sm md:text-base font-semibold text-gray-700 group-hover:text-primary transition-colors line-clamp-2 min-h-[44px]">
+                      {product.name}
+                    </h3>
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-red-500 font-bold text-lg md:text-xl">
+                        {product.price?.toLocaleString()}đ
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+
+                <div className={`mt-4 flex gap-2 ${isSoldOut ? 'pointer-events-none' : ''}`}>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleAddToCart(product, true)}
+                    disabled={isSoldOut}
+                  >
+                    Mua ngay
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => handleAddToCart(product, false)}
+                    disabled={isSoldOut}
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                  </Button>
                 </div>
-              </Link>
-
-              <div className="mt-4 flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1 bg-primary hover:bg-primary-focus text-white cursor-pointer"
-                  onClick={() => handleAddToCart(product, true)}
-                >
-                  Mua ngay
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 border-primary text-primary hover:bg-primary hover:text-white cursor-pointer"
-                  onClick={() => handleAddToCart(product, false)}
-                >
-                  <ShoppingCart className="w-5 h-5" />
-                </Button>
               </div>
-            </div>
-          </SwiperSlide>
-        ))}
+            </SwiperSlide>
+          );
+        })}
       </Swiper>
     </div>
   );

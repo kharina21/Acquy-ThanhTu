@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Building2, MapPin, Plus, Pencil, Phone, Trash2 } from 'lucide-react';
+import { Building2, MapPin, Plus, Pencil, Phone, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     getLocations,
     createLocation,
     updateLocation,
     deleteLocation,
+    getOnlineLocation,
+    setOnlineLocation,
 } from '@/services/locationService';
 import { useBranchStore } from '@/stores/useBranchStore';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import BranchModal from './BranchModal';
+import BankAccountSection from './BankAccountSection';
 
 const StoreProfilePage = () => {
     const [locations, setLocations] = useState([]);
@@ -24,6 +27,8 @@ const StoreProfilePage = () => {
         onConfirm: null,
         variant: 'warning',
     });
+    const [onlineLocationId, setOnlineLocationId] = useState('');
+    const [settingOnline, setSettingOnline] = useState(false);
 
     const fetchLocations = async () => {
         setLoading(true);
@@ -43,6 +48,19 @@ const StoreProfilePage = () => {
     useEffect(() => {
         fetchLocations();
     }, []);
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const res = await getOnlineLocation();
+                const loc = res?.data?.location;
+                setOnlineLocationId(loc?._id || '');
+            } catch {
+                setOnlineLocationId('');
+            }
+        };
+        if (locations.length > 0) load();
+    }, [locations]);
 
     const handleCreate = () => {
         setEditingBranch(null);
@@ -201,6 +219,52 @@ const StoreProfilePage = () => {
                         </div>
                     )}
                 </section>
+
+                {/* Bán online - chọn chi nhánh nhận đơn online */}
+                {locations.length > 0 && (
+                    <section className="bg-base-100 rounded-lg shadow p-6 mt-6">
+                        <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                            <Globe className="w-5 h-5 text-primary" />
+                            Bán online
+                        </h2>
+                        <p className="text-sm text-base-content/60 mb-4">
+                            Chọn một chi nhánh nhận đơn đặt hàng online và tính tồn kho cho website.
+                        </p>
+                        <div className="max-w-md">
+                            <label className="label py-0 text-xs">Chi nhánh nhận đơn online</label>
+                            <select
+                                className="select select-bordered select-sm w-full"
+                                value={onlineLocationId}
+                                onChange={async (e) => {
+                                    const id = e.target.value;
+                                    if (!id) return;
+                                    setSettingOnline(true);
+                                    try {
+                                        const res = await setOnlineLocation(id);
+                                        if (res.success) {
+                                            setOnlineLocationId(id);
+                                            toast.success(res.message || 'Đã cập nhật chi nhánh bán online');
+                                            useBranchStore.getState().fetchLocations();
+                                        }
+                                    } catch (err) {
+                                        toast.error(err.response?.data?.message || 'Lỗi khi cập nhật');
+                                    } finally {
+                                        setSettingOnline(false);
+                                    }
+                                }}
+                                disabled={settingOnline}
+                            >
+                                <option value="">— Chọn chi nhánh —</option>
+                                {locations.filter((l) => l.isActive !== false).map((loc) => (
+                                    <option key={loc._id} value={loc._id}>
+                                        {loc.code} - {loc.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {settingOnline && <span className="loading loading-spinner loading-xs ml-2" />}
+                        </div>
+                    </section>
+                )}
 
                 {/* Tài khoản ngân hàng (VietQR) */}
                 <BankAccountSection locations={locations} loading={loading} />

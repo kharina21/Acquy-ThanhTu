@@ -5,6 +5,14 @@ export const createOrder = async (data) => {
     return res.data;
 };
 
+/**
+ * Lấy thông tin preview checkout: hạng khách hàng, chiết khấu, tổng tiền.
+ */
+export const getCheckoutPreview = async () => {
+    const res = await api.get('/orders/checkout-preview');
+    return res.data;
+};
+
 export const createOrderFromItems = async (data) => {
     const res = await api.post('/orders/from-items', data);
     return res.data;
@@ -33,5 +41,13 @@ export const updateOrder = async (id, data) => {
  */
 export const getOrderReport = async (params = {}) => {
     const res = await api.get('/orders/report', { params });
+    return res.data;
+};
+
+/**
+ * Tạo mã QR VietQR cho đơn hàng (thanh toán chuyển khoản)
+ */
+export const generateVietQR = async (orderId) => {
+    const res = await api.get(`/orders/${orderId}/generate-vietqr`);
     return res.data;
 };

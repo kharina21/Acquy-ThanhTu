@@ -3,6 +3,7 @@ import { CreditCard, Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     getBankAccountsByLocation,
+    getBankAccountsFromOtherLocations,
     createBankAccount,
     updateBankAccount,
     deleteBankAccount,
@@ -44,6 +45,7 @@ export default function BankAccountSection({ locations, loading }) {
         onConfirm: null,
         variant: 'warning',
     });
+    const [existingAccounts, setExistingAccounts] = useState([]); // Tài khoản từ cơ sở khác
 
     useEffect(() => {
         if (locations.length > 0 && !selectedLocationId) {
@@ -73,7 +75,7 @@ export default function BankAccountSection({ locations, loading }) {
         }
     };
 
-    const handleOpenCreate = () => {
+    const handleOpenCreate = async () => {
         setEditingAccount(null);
         setForm({
             bankCode: 'MB',
@@ -84,6 +86,34 @@ export default function BankAccountSection({ locations, loading }) {
             note: '',
         });
         setShowModal(true);
+        if (selectedLocationId) {
+            try {
+                const res = await getBankAccountsFromOtherLocations(selectedLocationId);
+                const all = res?.data?.accounts || [];
+                // Bỏ tài khoản đã có ở cơ sở hiện tại
+                const notInCurrent = all.filter(
+                    (acc) =>
+                        !accounts.some(
+                            (a) =>
+                                (a.bankCode || '').toUpperCase() === (acc.bankCode || '').toUpperCase() &&
+                                String(a.bankAccount).trim() === String(acc.bankAccount).trim()
+                        )
+                );
+                // Trùng ngân hàng + số TK thì chỉ giữ một (không lặp)
+                const seen = new Set();
+                const filtered = notInCurrent.filter((acc) => {
+                    const key = `${(acc.bankCode || '').toUpperCase()}|${String(acc.bankAccount).trim()}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                setExistingAccounts(filtered);
+            } catch {
+                setExistingAccounts([]);
+            }
+        } else {
+            setExistingAccounts([]);
+        }
     };
 
     const handleOpenEdit = (acc) => {
@@ -257,6 +287,38 @@ export default function BankAccountSection({ locations, loading }) {
                             {editingAccount ? 'Chỉnh sửa tài khoản' : 'Thêm tài khoản ngân hàng'}
                         </h3>
                         <form onSubmit={handleSubmit} className="space-y-3 mt-4">
+                            {!editingAccount && existingAccounts.length > 0 && (
+                                <div>
+                                    <label className="label py-0">Chọn từ tài khoản có sẵn</label>
+                                    <select
+                                        className="select select-bordered select-sm w-full"
+                                        value=""
+                                        onChange={(e) => {
+                                            const id = e.target.value;
+                                            if (!id) return;
+                                            const acc = existingAccounts.find((a) => a._id === id);
+                                            if (acc) {
+                                                const bank = BANK_CODES.find((b) => b.code === acc.bankCode);
+                                                setForm({
+                                                    bankCode: acc.bankCode || 'MB',
+                                                    bankName: bank?.name || acc.bankName || '',
+                                                    bankAccount: acc.bankAccount || '',
+                                                    userBankName: acc.userBankName || '',
+                                                    isDefault: accounts.length === 0,
+                                                    note: acc.note || '',
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">— Thêm mới hoặc chọn tài khoản —</option>
+                                        {existingAccounts.map((acc) => (
+                                            <option key={acc._id} value={acc._id}>
+                                                {acc.bankCode} - {acc.bankAccount} ({acc.userBankName})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div>
                                 <label className="label py-0">Ngân hàng</label>
                                 <select

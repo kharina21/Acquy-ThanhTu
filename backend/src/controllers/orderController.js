@@ -6,9 +6,15 @@ import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import Location from '../models/Location.js';
+import { getOnlineLocation } from './locationController.js';
 import ProductStock from '../models/ProductStock.js';
+import BankAccount from '../models/BankAccount.js';
+import PaymentLink from '../models/PaymentLink.js';
+import MemberPolicy from '../models/MemberPolicy.js';
 import { getStockAtLocation } from './productStockController.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
+import { createPayOSPaymentLink } from '../libs/payosHelper.js';
+import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
 
 const GUEST_USERNAME = '__guest_pos__';
 
@@ -53,6 +59,60 @@ const generateOrderCode = async () => {
 };
 
 /**
+ * GET /api/orders/checkout-preview – Xem trước hạng khách hàng và chiết khấu khi checkout.
+ * Trả về: tierName, discountPercent, discount, subtotal, finalTotal.
+ */
+export const checkoutPreview = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted');
+        let subtotal = 0;
+        if (cart?.items?.length) {
+            for (const item of cart.items) {
+                const product = item.product && typeof item.product === 'object' ? item.product : await Product.findById(item.product);
+                if (product && !product.isDeleted) {
+                    const qty = Number(item.quantity) || 1;
+                    const price = typeof product.price === 'number' ? product.price : Number(item.priceSnapshot) || 0;
+                    subtotal += price * qty;
+                }
+            }
+        }
+
+        const customerProfile = await getOrCreateCustomerFromUser(await User.findById(userId).lean());
+        const accumulatedAmount = customerProfile?.accumulatedAmount ?? 0;
+
+        const policies = await MemberPolicy.find({ isActive: true }).sort({ minTotalSpent: 1 }).lean();
+        const tierPolicy = getCustomerPolicy(accumulatedAmount, policies);
+        const tierName = tierPolicy?.name ?? null;
+        const discountPercent = tierPolicy?.discountPercent ?? 0;
+        const discount = Math.round((subtotal * discountPercent) / 100);
+        const finalTotal = Math.max(0, subtotal - discount);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                tierName,
+                discountPercent,
+                discount,
+                subtotal,
+                finalTotal,
+                accumulatedAmount,
+            },
+        });
+    } catch (error) {
+        console.error('checkoutPreview error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi lấy thông tin checkout',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * POST /api/orders – Tạo đơn hàng từ giỏ hàng (online, bán trên web).
  * Body: { paymentMethod, shippingAddress?, note? } – locationId tùy chọn, mặc định dùng chi nhánh đầu tiên
  */
@@ -65,16 +125,17 @@ export const createOrder = async (req, res) => {
 
         const { locationId, paymentMethod, shippingAddress = '', note = '' } = req.body || {};
 
-        const validMethods = ['vietqr', 'cash', 'transfer'];
+        // Đơn online: chỉ chấp nhận chuyển khoản (thanh toán trước)
+        const validMethods = ['vietqr', 'transfer'];
         const method = validMethods.includes(paymentMethod) ? paymentMethod : 'transfer';
 
-        // Bán online: không cần khách chọn chi nhánh, dùng chi nhánh đầu tiên đang hoạt động
+        // Bán online: dùng chi nhánh được đặt làm bán online, fallback chi nhánh đầu tiên
         let location;
         if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
             location = await Location.findById(locationId);
         }
         if (!location || !location.isActive) {
-            location = await Location.findOne({ isActive: true }).sort({ createdAt: 1 });
+            location = await getOnlineLocation();
         }
         if (!location) {
             return res.status(400).json({ message: 'Hệ thống chưa có chi nhánh. Vui lòng liên hệ quản trị viên.' });
@@ -131,6 +192,13 @@ export const createOrder = async (req, res) => {
             await Customer.findByIdAndUpdate(customerProfile._id, { type: 'registered', userId: userId });
         }
 
+        // Áp dụng giảm giá theo hạng thành viên (MemberPolicy)
+        const policies = await MemberPolicy.find({ isActive: true }).sort({ minTotalSpent: 1 }).lean();
+        const tierPolicy = getCustomerPolicy(customerProfile.accumulatedAmount ?? 0, policies);
+        const discountPercent = tierPolicy?.discountPercent ?? 0;
+        const discount = Math.round((totalAmount * discountPercent) / 100);
+        const finalTotal = Math.max(0, totalAmount - discount);
+
         const code = await generateOrderCode();
 
         const order = await Order.create({
@@ -141,7 +209,8 @@ export const createOrder = async (req, res) => {
             location: location._id,
             createdBy: null,
             items: orderItems,
-            totalAmount,
+            totalAmount: finalTotal,
+            discount,
             status: 'pending',
             paymentMethod: method,
             paymentStatus: 'pending',
@@ -189,6 +258,21 @@ const getOrCreateDefaultWalkinCustomer = async () => {
     return newC.toObject();
 };
 
+/**
+ * Lấy policy hạng thành viên cao nhất mà khách đạt được (theo accumulatedAmount).
+ * Policies nên được sắp xếp theo minTotalSpent tăng dần.
+ */
+const getCustomerPolicy = (accumulatedAmount, policies) => {
+    if (!Array.isArray(policies) || policies.length === 0) return null;
+    const amount = Number(accumulatedAmount) || 0;
+    const active = policies.filter((p) => p.isActive !== false);
+    let matched = null;
+    for (const p of active) {
+        if (amount >= (p.minTotalSpent ?? 0)) matched = p;
+    }
+    return matched;
+};
+
 /** Lấy hoặc tạo Customer từ User (đơn online) */
 const getOrCreateCustomerFromUser = async (user) => {
     if (!user) return null;
@@ -231,7 +315,18 @@ export const createOrderFromItems = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const { items: rawItems = [], locationId, paymentMethod, note = '', discount: discountAmount = 0, isPreOrder = false, customerId, customerName, customerPhone, createdBy: sellerId } = req.body || {};
+        const {
+            items: rawItems = [],
+            locationId,
+            paymentMethod,
+            note = '',
+            discount: discountAmount = 0,
+            isPreOrder = false,
+            customerId,
+            customerName,
+            customerPhone,
+            createdBy: sellerId,
+        } = req.body || {};
         // createdBy (sellerId): Admin/Manager có thể chọn người bán khác
 
         if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
@@ -428,7 +523,7 @@ export const getOrders = async (req, res) => {
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limitNum)
-                .populate('items.product', 'sku name')
+                .populate('items.product', 'sku name image images')
                 .populate('location', 'code name')
                 .populate('customer', 'username email firstName lastName')
                 .populate('customerProfile', 'name phone type')
@@ -458,6 +553,128 @@ export const getOrders = async (req, res) => {
 };
 
 /**
+ * GET /api/orders/:id/generate-vietqr – Tạo mã QR VietQR cho đơn hàng (thanh toán chuyển khoản).
+ * Dùng tài khoản ngân hàng mặc định của chi nhánh.
+ */
+export const generateVietQRForOrder = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id)
+            .populate('location', 'name')
+            .populate('customerProfile', 'name phone')
+            .populate('items.product', 'name')
+            .lean();
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        const canViewAll = await canViewAllOrders(userId);
+        if (!canViewAll && order.customer?.toString() !== userId.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền tạo mã QR cho đơn này' });
+        }
+
+        const locationId = order.location?._id || order.location;
+        if (!locationId) {
+            return res.status(400).json({ message: 'Đơn hàng không có chi nhánh' });
+        }
+
+        const amount = order.totalAmount || 0;
+        const memo = (order.code || '').replace(/[^\w-]/g, '').slice(0, 25) || 'DonHang';
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;
+        const cancelUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=cancelled`;
+
+        const payosItems = (order.items || []).map((i) => ({
+            name: i.product?.name || 'Sản phẩm',
+            quantity: Math.max(1, i.quantity || 1),
+            price: Math.round(i.price || 0),
+        }));
+        const discount = Math.round(Number(order.discount) || 0);
+        if (discount > 0) {
+            payosItems.push({ name: 'Chiết khấu hạng thành viên', quantity: 1, price: -discount });
+        }
+
+        let qrDataURL = null;
+        let bankAccount = null;
+        let checkoutUrl = null;
+
+        try {
+            const payosResult = await createPayOSPaymentLink({
+                orderId: id,
+                orderCode: order.code,
+                amount,
+                description: memo,
+                returnUrl,
+                cancelUrl,
+                items: payosItems,
+            });
+            qrDataURL = payosResult.qrDataURL;
+            bankAccount = payosResult.bankAccount;
+            checkoutUrl = payosResult.checkoutUrl;
+            if (payosResult.orderCode != null && payosResult.paymentLinkId) {
+                await PaymentLink.create({
+                    order: id,
+                    orderCode: payosResult.orderCode,
+                    paymentLinkId: payosResult.paymentLinkId,
+                    status: 'pending',
+                });
+            }
+        } catch (payosErr) {
+            console.warn('PayOS error, fallback to VietQR Quick Link:', payosErr.message);
+            const acc = await BankAccount.findOne({ location: locationId }).sort({ isDefault: -1, createdAt: 1 }).lean();
+            if (!acc) {
+                return res.status(400).json({
+                    message: 'Chưa cấu hình PayOS hoặc tài khoản ngân hàng. Vào Hồ sơ cửa hàng → Tài khoản ngân hàng.',
+                });
+            }
+            qrDataURL = getVietQRQuickLink({
+                bankCode: acc.bankCode,
+                accountNumber: acc.bankAccount,
+                accountName: acc.userBankName,
+                amount,
+                memo,
+            });
+            bankAccount = {
+                bankCode: acc.bankCode,
+                bankName: acc.bankName,
+                bankAccount: acc.bankAccount,
+                userBankName: acc.userBankName,
+            };
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                qrDataURL,
+                checkoutUrl: checkoutUrl || undefined,
+                order: {
+                    code: order.code,
+                    totalAmount: amount,
+                    customerName: order.customerProfile?.name,
+                },
+                bankAccount,
+            },
+        });
+    } catch (error) {
+        console.error('generateVietQRForOrder error:', error.message);
+        return res.status(500).json({
+            message: error.message || 'Lỗi khi tạo mã QR VietQR',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * GET /api/orders/:id – Chi tiết đơn hàng.
  * User: chỉ xem đơn của mình. Admin/Manager: xem tất cả.
  */
@@ -474,7 +691,7 @@ export const getOrderById = async (req, res) => {
         }
 
         const order = await Order.findById(id)
-            .populate('items.product', 'sku name price')
+            .populate('items.product', 'sku name price image images')
             .populate('location', 'code name address phone')
             .populate('customer', 'username email firstName lastName phoneNumber')
             .populate('customerProfile', 'name phone type')
@@ -549,10 +766,7 @@ export const getOrderReport = async (req, res) => {
                 .populate('customer', 'username email firstName lastName')
                 .lean(),
             Order.countDocuments(filter),
-            Order.aggregate([
-                { $match: filter },
-                { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
-            ]),
+            Order.aggregate([{ $match: filter }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
         ]);
 
         const summary = revenueAgg[0] || { totalRevenue: 0, count: 0 };

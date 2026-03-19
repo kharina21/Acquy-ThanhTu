@@ -25,6 +25,7 @@ import bankAccountRoutes from './routes/bankAccountRoute.js';
 import cartRoutes from './routes/cartRoute.js';
 import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
+import paymentRoutes from './routes/paymentRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -41,27 +42,27 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-
-app.use('/api/auth', authRoutes);                    // Xác thực (đăng nhập, đăng ký, ...)
-app.use('/api/activity-logs', activityLogRoutes);   // Nhật ký hoạt động
-app.use('/api/users', userRoutes);                 // Quản lý người dùng
-app.use('/api/products', productRoutes);            // Quản lý sản phẩm
-app.use('/api/stock-checks', stockCheckRoutes);     // Kiểm kho
-app.use('/api/categories', categoryRoutes);        // Loại hàng
-app.use('/api/brands', brandRoutes);                // Thương hiệu
-app.use('/api/locations', locationRoutes);         // Chi nhánh
+app.use('/api/auth', authRoutes); // Xác thực (đăng nhập, đăng ký, ...)
+app.use('/api/activity-logs', activityLogRoutes); // Nhật ký hoạt động
+app.use('/api/users', userRoutes); // Quản lý người dùng
+app.use('/api/products', productRoutes); // Quản lý sản phẩm
+app.use('/api/stock-checks', stockCheckRoutes); // Kiểm kho
+app.use('/api/categories', categoryRoutes); // Loại hàng
+app.use('/api/brands', brandRoutes); // Thương hiệu
+app.use('/api/locations', locationRoutes); // Chi nhánh
 app.use('/api/product-stocks', productStockRoutes); // Tồn kho theo chi nhánh
-app.use('/api/usage-devices', usageDeviceRoutes);   // Thiết bị sử dụng
-app.use('/api/roles', roleRoutes);                  // Vai trò
-app.use('/api/employees', employeeRoutes);         // Nhân viên
+app.use('/api/usage-devices', usageDeviceRoutes); // Thiết bị sử dụng
+app.use('/api/roles', roleRoutes); // Vai trò
+app.use('/api/employees', employeeRoutes); // Nhân viên
 app.use('/api/member-policies', memberPolicyRoutes); // Chính sách khách hàng
-app.use('/api/suppliers', supplierRoutes);         // Nhà cung cấp
-app.use('/api/stock-ins', stockInRoutes);           // Nhập hàng
-app.use('/api/stock-returns', stockReturnRoutes);  // Trả hàng
-app.use('/api/bank-accounts', bankAccountRoutes);  // Tài khoản ngân hàng (VietQR)
-app.use('/api/cart', cartRoutes);                  // Giỏ hàng
-app.use('/api/orders', orderRoutes);               // Đơn hàng
-app.use('/api/customers', customerRoutes);         // Khách hàng
+app.use('/api/suppliers', supplierRoutes); // Nhà cung cấp
+app.use('/api/stock-ins', stockInRoutes); // Nhập hàng
+app.use('/api/stock-returns', stockReturnRoutes); // Trả hàng
+app.use('/api/bank-accounts', bankAccountRoutes); // Tài khoản ngân hàng (VietQR)
+app.use('/api/cart', cartRoutes); // Giỏ hàng
+app.use('/api/orders', orderRoutes); // Đơn hàng
+app.use('/api/customers', customerRoutes); // Khách hàng
+app.use('/api/payments', paymentRoutes); // Webhook PayOS
 
 connectDB().then(() =>
     app.listen(PORT, () => {

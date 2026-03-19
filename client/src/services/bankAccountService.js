@@ -5,6 +5,13 @@ export const getBankAccountsByLocation = async (locationId) => {
     return res.data;
 };
 
+export const getBankAccountsFromOtherLocations = async (excludeLocationId) => {
+    const res = await api.get('/bank-accounts/from-other-locations', {
+        params: { excludeLocationId: excludeLocationId || undefined },
+    });
+    return res.data;
+};
+
 export const createBankAccount = async (data) => {
     const res = await api.post('/bank-accounts', data);
     return res.data;

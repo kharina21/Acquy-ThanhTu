@@ -30,3 +30,13 @@ export const deleteLocation = async (id) => {
     const res = await api.delete(`/locations/${id}`);
     return res.data;
 };
+
+export const getOnlineLocation = async () => {
+    const res = await api.get('/locations/online');
+    return res.data;
+};
+
+export const setOnlineLocation = async (locationId) => {
+    const res = await api.put(`/locations/${locationId}/set-online`);
+    return res.data;
+};

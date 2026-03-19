@@ -6,7 +6,7 @@ import { getProducts } from '@/services/productService';
 import { getActiveLocations } from '@/services/locationService';
 import { getBankAccountsByLocation } from '@/services/bankAccountService';
 import { getProductStocks } from '@/services/productStockService';
-import { createOrderFromItems } from '@/services/orderService';
+import { createOrderFromItems, generateVietQR } from '@/services/orderService';
 import { searchCustomersByPhone, createCustomer, restoreCustomer } from '@/services/customerService';
 import { getMemberPolicies } from '@/services/memberPolicyService';
 import { getUsers } from '@/services/userService';
@@ -71,6 +71,7 @@ export default function CreateInvoicePage() {
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [customerModalSubmitting, setCustomerModalSubmitting] = useState(false);
     const [restoreConfirm, setRestoreConfirm] = useState({ show: false, customerId: null, message: '' });
+    const [vietQRModal, setVietQRModal] = useState({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null });
 
     const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
     const items = activeTab?.items || [];
@@ -335,7 +336,27 @@ export default function CreateInvoicePage() {
             const res = await createOrderFromItems(payload);
             const order = res?.data?.order;
             if (order) {
-                toast.success('Thanh toán thành công!');
+                if (method === 'transfer') {
+                    try {
+                        const qrRes = await generateVietQR(order._id);
+                        const qrData = qrRes?.data;
+                        if (qrData?.checkoutUrl || qrData?.qrDataURL) {
+                            setVietQRModal({
+                                show: true,
+                                qrDataURL: qrData.qrDataURL,
+                                order: qrData.order,
+                                bankAccount: qrData.bankAccount,
+                                checkoutUrl: qrData.checkoutUrl,
+                            });
+                        } else {
+                            toast.success('Đơn hàng đã tạo. Không thể tạo mã QR.');
+                        }
+                    } catch (qrErr) {
+                        toast.warning(qrErr.response?.data?.message || 'Đơn đã tạo nhưng không tạo được mã QR');
+                    }
+                } else {
+                    toast.success('Thanh toán thành công!');
+                }
                 setTabs((prev) => prev.map((t) => (t.id === activeTabId ? { ...t, items: [] } : t)));
                 setCustomerPaid('');
                 setForm((f) => ({ ...f, note: '', discount: 0 }));
@@ -933,6 +954,45 @@ export default function CreateInvoicePage() {
                     </div>
                 </aside>
             </div>
+
+            {vietQRModal.show && (
+                <dialog className='modal modal-open' open>
+                    <div className='modal-box max-w-md'>
+                        <h3 className='font-bold text-lg'>Thanh toán chuyển khoản</h3>
+                        <p className='text-sm text-base-content/70 mt-1'>
+                            Mã đơn: <span className='font-mono font-medium'>{vietQRModal.order?.code}</span> •{' '}
+                            {(vietQRModal.order?.totalAmount || 0).toLocaleString()}đ
+                        </p>
+                        {vietQRModal.checkoutUrl && (
+                            <a
+                                href={vietQRModal.checkoutUrl}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='btn btn-primary w-full my-4'
+                            >
+                                Thanh toán qua PayOS
+                            </a>
+                        )}
+                        <div className='modal-action'>
+                            <button
+                                type='button'
+                                className='btn'
+                                onClick={() => setVietQRModal({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null })}
+                            >
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                    <form method='dialog' className='modal-backdrop'>
+                        <button
+                            type='button'
+                            onClick={() => setVietQRModal({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null })}
+                        >
+                            đóng
+                        </button>
+                    </form>
+                </dialog>
+            )}
 
             {restoreConfirm.show && (
                 <ConfirmationModal
