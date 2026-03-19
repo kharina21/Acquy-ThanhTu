@@ -33,6 +33,15 @@ export function cn(...inputs) {
 }
 
 
+// Lấy tên hiển thị của người dùng (firstName + lastName hoặc username)
+export const getDisplayName = (user) => {
+  if (!user) return '';
+  const firstName = user.firstName || '';
+  const lastName = user.lastName || '';
+  if (firstName || lastName) return `${firstName} ${lastName}`.trim();
+  return user.username || '';
+};
+
 // Lấy chữ cái đầu tiên của tên người dùng
 export const getInitials = (user) => {
   if (!user) return 'U';

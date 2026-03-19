@@ -56,6 +56,7 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },
             { id: 'invoices', to: '/admin/orders/invoices', label: 'Hóa đơn' },
             { id: 'returns', to: '/admin/orders/returns', label: 'Trả hàng' },
+            { id: 'orders-report', to: '/admin/orders/report', label: 'Báo cáo đơn hàng' },
         ],
     },
     {

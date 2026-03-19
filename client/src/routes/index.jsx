@@ -29,9 +29,12 @@ import CreateInvoicePage from '../pages/CreateInvoicePage/CreateInvoicePage';
 import AdminOrderManagementPage from '../pages/AdminOrderManagementPage/AdminOrderManagementPage';
 import AdminOrderDetailPage from '../pages/AdminOrderManagementPage/AdminOrderDetailPage';
 import CustomerReturnsPage from '../pages/AdminOrderManagementPage/CustomerReturnsPage';
+import OrderManagementPage from '../pages/OrderManagementPage/OrderManagementPage';
+import OrderReportPage from '../pages/OrderManagementPage/OrderReportPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
+import ProductDetailPage from '../pages/ProductDetailPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -86,6 +89,10 @@ export const AppRoutes = () => {
                 path='/listproduct'
                 element={<ListProduct />}
             />
+            <Route
+                path='/product/:id'
+                element={<ProductDetailPage />}
+            />
             {/* Giỏ hàng */}
             <Route
                 path='/cart'
@@ -99,7 +106,6 @@ export const AppRoutes = () => {
                     path='/checkout'
                     element={<CheckoutPage />}
                 />
-
                 {/* Trang Bán hàng - layout riêng, full màn hình */}
                 <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'staff']} />}>
                     <Route
@@ -111,6 +117,14 @@ export const AppRoutes = () => {
                         }
                     />
                 </Route>
+                <Route
+                    path='/orders'
+                    element={<OrderHistoryPage />}
+                />
+                <Route
+                    path='/orders/:id'
+                    element={<OrderDetailPage />}
+                />
 
                 <Route element={<RoleBasedLayout />}>
                     {/* Common routes - Tất cả authenticated users đều có thể truy cập */}
@@ -189,6 +203,10 @@ export const AppRoutes = () => {
                         <Route
                             path='/admin/orders/returns'
                             element={<CustomerReturnsPage />}
+                        />
+                        <Route
+                            path='/admin/orders/report'
+                            element={<OrderReportPage />}
                         />
                         <Route
                             path='/admin/orders'

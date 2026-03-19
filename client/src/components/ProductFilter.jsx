@@ -18,11 +18,67 @@ export default function ProductFilter({
     const [minPrice, setMinPrice] = useState("");
     const [maxPrice, setMaxPrice] = useState("");
 
+    const [errorAh, setErrorAh] = useState("");
+    const [errorPrice, setErrorPrice] = useState("");
+
+    const showError = (type) => {
+        if (type === 'ah') {
+            setErrorAh("Không thể điền số âm");
+            setTimeout(() => setErrorAh(""), 5000);
+        } else if (type === 'price') {
+            setErrorPrice("Không thể điền số âm");
+            setTimeout(() => setErrorPrice(""), 5000);
+        }
+    };
+
     const handleCheckboxChange = (value, list, setList) => {
         if (list.includes(value)) {
             setList(list.filter(item => item !== value));
         } else {
             setList([...list, value]);
+        }
+    };
+
+    const handleNumberChange = (e, setter, type) => {
+        const val = e.target.value;
+        if (val === "") {
+            setter(val);
+        } else if (Number(val) < 0) {
+            showError(type);
+        } else {
+            setter(val);
+        }
+    };
+
+    const formatCurrency = (value) => {
+        if (!value) return "";
+        // Remove all non-digit characters
+        const numberValue = value.toString().replace(/\D/g, '');
+        // Format with commas
+        return numberValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    };
+
+    const handlePriceChange = (e, setter, type) => {
+        const rawVal = e.target.value;
+        if (rawVal.includes('-')) {
+            showError(type);
+            return;
+        }
+
+        const val = rawVal.replace(/\D/g, ''); // Extract only numbers
+        if (val === "" || Number(val) >= 0) {
+            setter(val); // Keep raw string of numbers in state
+        }
+    };
+
+    const handleRangeBlur = (minVal, maxVal, setMax) => {
+        const minNum = Number(minVal.toString().replace(/\D/g, ''));
+        const maxNum = Number(maxVal.toString().replace(/\D/g, ''));
+
+        if (minVal !== "" && maxVal !== "") {
+            if (maxNum < minNum) {
+                setMax(minVal);
+            }
         }
     };
 
@@ -132,20 +188,25 @@ export default function ProductFilter({
                 <div className="flex gap-2">
                     <input
                         type="number"
+                        min="0"
                         placeholder="Từ"
                         value={minAh}
-                        onChange={(e) => setMinAh(e.target.value)}
+                        onChange={(e) => handleNumberChange(e, setMinAh, 'ah')}
+                        onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
 
                     <input
                         type="number"
+                        min="0"
                         placeholder="Đến"
                         value={maxAh}
-                        onChange={(e) => setMaxAh(e.target.value)}
+                        onChange={(e) => handleNumberChange(e, setMaxAh, 'ah')}
+                        onBlur={() => handleRangeBlur(minAh, maxAh, setMaxAh)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
+                {errorAh && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorAh}</p>}
             </div>
 
             {/* PRICE */}
@@ -154,27 +215,30 @@ export default function ProductFilter({
 
                 <div className="flex gap-2">
                     <input
-                        type="number"
+                        type="text"
                         placeholder="Từ"
-                        value={minPrice}
-                        onChange={(e) => setMinPrice(e.target.value)}
+                        value={formatCurrency(minPrice)}
+                        onChange={(e) => handlePriceChange(e, setMinPrice, 'price')}
+                        onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
 
                     <input
-                        type="number"
+                        type="text"
                         placeholder="Đến"
-                        value={maxPrice}
-                        onChange={(e) => setMaxPrice(e.target.value)}
+                        value={formatCurrency(maxPrice)}
+                        onChange={(e) => handlePriceChange(e, setMaxPrice, 'price')}
+                        onBlur={() => handleRangeBlur(minPrice, maxPrice, setMaxPrice)}
                         className="w-full border rounded px-2 py-1"
                     />
                 </div>
+                {errorPrice && <p className="text-red-500 text-xs mt-1 animate-fade-in">{errorPrice}</p>}
             </div>
 
             {/* BUTTON */}
             <button
                 onClick={handleSubmit}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded"
+                className="btn btn-primary w-full"
             >
                 Tìm
             </button>

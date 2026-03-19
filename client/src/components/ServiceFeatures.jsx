@@ -58,9 +58,7 @@ export function ServiceFeatures() {
                   {feature.subtitle}
                 </p>
                 
-                {/* Một vệt màu nhỏ dưới chân để tạo điểm nhấn */}
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 bg-blue-500 group-hover:w-full transition-all duration-300 rounded-b-xl"></div>
-              </div>
+                </div>
             );
           })}
         </div>

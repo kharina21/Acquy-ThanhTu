@@ -14,6 +14,7 @@ const normalizeItems = (items) =>
     price: Number(i.price) || 0,
     image: i.image ?? '',
     quantity: Math.max(1, Number(i.quantity) || 1),
+    stock: typeof i.stock === 'number' ? i.stock : null,
   }));
 
 export const useCartStore = create(

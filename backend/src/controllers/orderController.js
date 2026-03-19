@@ -54,7 +54,7 @@ const generateOrderCode = async () => {
 
 /**
  * POST /api/orders – Tạo đơn hàng từ giỏ hàng (online, bán trên web).
- * Body: { locationId, paymentMethod, shippingAddress?, note? }
+ * Body: { paymentMethod, shippingAddress?, note? } – locationId tùy chọn, mặc định dùng chi nhánh đầu tiên
  */
 export const createOrder = async (req, res) => {
     try {
@@ -65,16 +65,19 @@ export const createOrder = async (req, res) => {
 
         const { locationId, paymentMethod, shippingAddress = '', note = '' } = req.body || {};
 
-        if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
-            return res.status(400).json({ message: 'Vui lòng chọn chi nhánh/kho' });
-        }
-
         const validMethods = ['vietqr', 'cash', 'transfer'];
         const method = validMethods.includes(paymentMethod) ? paymentMethod : 'transfer';
 
-        const location = await Location.findById(locationId);
+        // Bán online: không cần khách chọn chi nhánh, dùng chi nhánh đầu tiên đang hoạt động
+        let location;
+        if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            location = await Location.findById(locationId);
+        }
         if (!location || !location.isActive) {
-            return res.status(404).json({ message: 'Không tìm thấy chi nhánh hoặc chi nhánh không hoạt động' });
+            location = await Location.findOne({ isActive: true }).sort({ createdAt: 1 });
+        }
+        if (!location) {
+            return res.status(400).json({ message: 'Hệ thống chưa có chi nhánh. Vui lòng liên hệ quản trị viên.' });
         }
 
         const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted');
@@ -98,7 +101,7 @@ export const createOrder = async (req, res) => {
 
             const qty = Number(item.quantity) || 1;
             const price = typeof product.price === 'number' ? product.price : Number(item.priceSnapshot) || 0;
-            const stock = await getStockAtLocation(productId, locationId);
+            const stock = await getStockAtLocation(productId, location._id);
 
             if (stock < qty) {
                 return res.status(400).json({
@@ -135,7 +138,7 @@ export const createOrder = async (req, res) => {
             channel: 'online',
             customer: userId,
             customerProfile: customerProfile._id,
-            location: locationId,
+            location: location._id,
             createdBy: null,
             items: orderItems,
             totalAmount,
@@ -147,7 +150,7 @@ export const createOrder = async (req, res) => {
         });
 
         for (const item of orderItems) {
-            const stock = await ProductStock.findOne({ product: item.product, location: locationId });
+            const stock = await ProductStock.findOne({ product: item.product, location: location._id });
             if (stock) {
                 stock.quantity -= item.quantity;
                 await stock.save();
@@ -501,6 +504,85 @@ export const getOrderById = async (req, res) => {
 };
 
 /**
+ * GET /api/orders/report – Báo cáo đơn hàng đã xác nhận và thanh toán thành công.
+ * Chỉ Admin/Manager. Query: dateFrom, dateTo, page, limit.
+ */
+export const getOrderReport = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const canViewAll = await isAdminOrManager(userId);
+        if (!canViewAll) {
+            return res.status(403).json({ message: 'Bạn không có quyền xem báo cáo đơn hàng' });
+        }
+
+        const { dateFrom, dateTo, page = 1, limit = 20 } = req.query;
+
+        const filter = {
+            paymentStatus: 'paid',
+            status: { $in: ['confirmed', 'paid'] },
+        };
+
+        if (dateFrom) {
+            const from = new Date(dateFrom);
+            if (!isNaN(from.getTime())) filter.createdAt = { ...filter.createdAt, $gte: from };
+        }
+        if (dateTo) {
+            const to = new Date(dateTo);
+            to.setHours(23, 59, 59, 999);
+            if (!isNaN(to.getTime())) filter.createdAt = { ...filter.createdAt, $lte: to };
+        }
+
+        const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
+        const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+
+        const [orders, total, revenueAgg] = await Promise.all([
+            Order.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limitNum)
+                .populate('items.product', 'sku name')
+                .populate('location', 'code name')
+                .populate('customer', 'username email firstName lastName')
+                .lean(),
+            Order.countDocuments(filter),
+            Order.aggregate([
+                { $match: filter },
+                { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+            ]),
+        ]);
+
+        const summary = revenueAgg[0] || { totalRevenue: 0, count: 0 };
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                orders,
+                summary: {
+                    totalRevenue: summary.totalRevenue,
+                    totalOrders: summary.count,
+                },
+                pagination: {
+                    page: Math.max(1, parseInt(page)),
+                    limit: limitNum,
+                    total,
+                    totalPages: Math.ceil(total / limitNum),
+                },
+            },
+        });
+    } catch (error) {
+        console.error('getOrderReport error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi lấy báo cáo đơn hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * PUT /api/orders/:id – Cập nhật đơn hàng (status, paymentStatus).
  * Chỉ Admin/Manager. Body: { status?, paymentStatus? }
  */
@@ -518,6 +600,8 @@ export const updateOrder = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
 
+        const previousStatus = order.status;
+
         if (status) {
             const validStatuses = ['pending', 'confirmed', 'paid', 'cancelled'];
             if (validStatuses.includes(status)) order.status = status;
@@ -532,6 +616,21 @@ export const updateOrder = async (req, res) => {
                     await Customer.findByIdAndUpdate(order.customerProfile, {
                         $inc: { accumulatedAmount: order.totalAmount || 0 },
                     });
+                }
+            }
+        }
+
+        // Khi hủy đơn: hoàn lại tồn kho (chỉ khi đơn chưa từng bị hủy trước đó)
+        if (order.status === 'cancelled' && previousStatus !== 'cancelled') {
+            const locationId = order.location;
+            for (const item of order.items) {
+                const stockRow = await ProductStock.findOne({
+                    product: item.product,
+                    location: locationId,
+                });
+                if (stockRow) {
+                    stockRow.quantity += item.quantity;
+                    await stockRow.save();
                 }
             }
         }
