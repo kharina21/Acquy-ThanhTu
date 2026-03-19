@@ -294,7 +294,7 @@ const ListProduct = () => {
 
                                         <Button
                                             size="sm"
-                                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                            className="flex-1 bg-primary hover:bg-primary-focus text-white cursor-pointer transition-colors"
                                             onClick={() => handleAddToCart(p, true)}
                                         >
                                             Mua ngay
@@ -303,7 +303,7 @@ const ListProduct = () => {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            className="flex-1"
+                                            className="flex-1 border-primary text-primary hover:bg-primary hover:text-white cursor-pointer transition-colors"
                                             onClick={() => handleAddToCart(p)}
                                         >
                                             <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />

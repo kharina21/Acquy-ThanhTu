@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router';
 import { LogOut, UserRound, UserRoundPen } from 'lucide-react';
-import { getInitials, getPrimaryRole } from '@/lib/utils';
+import { getInitials, getPrimaryRole, getDisplayName } from '@/lib/utils';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBranchStore } from '@/stores/useBranchStore';
 
@@ -16,16 +16,21 @@ export default function AdminUserDropdown() {
 
     return (
         <div className="dropdown dropdown-end">
-            <div tabIndex={0} role="button" className="btn btn-sm btn-ghost btn-circle relative">
+            <div tabIndex={0} role="button" className="btn btn-sm btn-ghost gap-2 min-h-0 h-auto py-1.5">
                 {user ? (
-                    <div className="avatar relative">
-                        <div className="bg-primary text-primary-content rounded-full size-9 flex items-center justify-center text-sm font-semibold">
-                            <span>{getInitials(user)}</span>
+                    <>
+                        <div className="avatar relative">
+                            <div className="bg-primary text-primary-content rounded-full size-9 flex items-center justify-center text-sm font-semibold">
+                                <span>{getInitials(user)}</span>
+                            </div>
+                            <span className="absolute -bottom-2 -right-2 badge badge-xs badge-secondary h-4 flex items-center justify-center text-[9px] px-1 border-2 border-white">
+                                {getPrimaryRole(user)}
+                            </span>
                         </div>
-                        <span className="absolute -bottom-2 -right-2 badge badge-xs badge-secondary h-4 flex items-center justify-center text-[9px] px-1 border-2 border-white">
-                            {getPrimaryRole(user)}
+                        <span className="max-w-[120px] truncate text-sm font-medium hidden sm:inline">
+                            {getDisplayName(user)}
                         </span>
-                    </div>
+                    </>
                 ) : (
                     <UserRound className="size-5 text-primary" />
                 )}

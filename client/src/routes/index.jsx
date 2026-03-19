@@ -24,6 +24,8 @@ import UsageDeviceManagementPage from '../pages/UsageDeviceManagementPage/UsageD
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
 import CustomersPage from '../pages/CustomersPage/CustomersPage';
+import OrderManagementPage from '../pages/OrderManagementPage/OrderManagementPage';
+import OrderReportPage from '../pages/OrderManagementPage/OrderReportPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
@@ -127,6 +129,8 @@ export const AppRoutes = () => {
                         <Route path="/admin/customers" element={<CustomersPage />} />
                         <Route path="/admin/member-policies" element={<MemberPolicyPage />} />
                         <Route path="/admin/store-profile" element={<StoreProfilePage />} />
+                        <Route path="/admin/orders/report" element={<OrderReportPage />} />
+                        <Route path="/admin/orders" element={<OrderManagementPage />} />
                     </Route>
 
                     {/* Warehouse manager: kho hàng (kiểm kho, nhập hàng, nhà cung cấp) */}
