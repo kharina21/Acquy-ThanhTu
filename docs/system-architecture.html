@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Architecture - Ắc quy Thanh Tú</title>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --accent: #0ea5e9;
+      --accent-dark: #0284c7;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --tech-bg: #fef9c3;
+      --tech-border: #eab308;
+      --planned-bg: #fef3c7;
+      --planned-border: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Be Vietnam Pro', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 2rem; }
+    h1 { font-size: 1.75rem; color: var(--text); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-muted); font-size: 0.9rem; }
+    .legend {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .legend-dot.active { background: var(--accent); }
+    .legend-dot.planned { background: var(--planned-border); border: 1px dashed #b45309; }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 120px 1fr 120px;
+      grid-template-rows: auto auto auto;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .layer-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      position: relative;
+    }
+    .layer-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .client-layer {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+    }
+    .client-layer .layer-title { text-align: center; }
+    .browser-box {
+      background: var(--tech-bg);
+      border: 1px solid var(--tech-border);
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+    .arrow-box {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin: 0.5rem 0;
+      padding: 0.25rem 0.5rem;
+      background: #f1f5f9;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .main-arch {
+      grid-column: 2;
+      grid-row: 1 / 4;
+      border: 2px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem;
+      background: #f8fafc;
+    }
+    .main-arch .layer-title {
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .frontend-layer, .backend-layer {
+      margin-bottom: 1.25rem;
+    }
+    .frontend-layer:last-of-type, .backend-layer:last-of-type { margin-bottom: 0; }
+
+    .sub-layer-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    .tech-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .tech-item {
+      background: var(--tech-bg);
+      border: 1px solid var(--tech-border);
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    .tech-item.planned {
+      background: var(--planned-bg);
+      border-color: var(--planned-border);
+      border-style: dashed;
+    }
+    .ui-lib { margin-top: 0.5rem; }
+
+    .db-layer {
+      grid-column: 3;
+      grid-row: 1 / 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+    }
+    .db-icon {
+      width: 60px;
+      height: 60px;
+      background: var(--tech-bg);
+      border: 1px solid var(--tech-border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-align: center;
+      padding: 0.5rem;
+    }
+    .db-name { font-size: 0.8rem; font-weight: 600; margin-top: 0.5rem; }
+
+    .third-party {
+      grid-column: 1 / 4;
+      grid-row: 4;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 0.5rem;
+    }
+    .third-party .layer-title {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 0.75rem;
+    }
+    .third-party-item {
+      flex: 1;
+      min-width: 140px;
+      max-width: 200px;
+      padding: 0.75rem;
+      background: #eff6ff;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .third-party-item.planned {
+      background: var(--planned-bg);
+      border-color: var(--planned-border);
+      border-style: dashed;
+    }
+    .third-party-item .name { font-weight: 600; margin-bottom: 0.35rem; }
+    .third-party-item .flow { font-size: 0.65rem; color: var(--text-muted); }
+
+    .flow-arrows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+      font-size: 0.65rem;
+      color: var(--accent);
+    }
+
+    .connection-note {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--border);
+    }
+    .flow-label {
+      font-size: 0.65rem;
+      color: var(--accent);
+      font-weight: 500;
+      margin: 0.2rem 0;
+    }
+    .flow-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.65rem; color: var(--text-muted); }
+    .flow-arrow { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>System Architecture</h1>
+      <p class="subtitle">Hệ thống quản lý cửa hàng Ắc quy Thanh Tú</p>
+      <div class="legend">
+        <div class="legend-item">
+          <span class="legend-dot active"></span>
+          <span>Đã tích hợp</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot planned"></span>
+          <span>Chưa tích hợp (kế hoạch)</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="architecture">
+      <!-- Client Layer -->
+      <div class="layer-box client-layer">
+        <div class="layer-title">Client Layer</div>
+        <div class="browser-box">Browser</div>
+        <div class="flow-label">→ url request</div>
+        <div class="flow-label">← html/js/css</div>
+      </div>
+
+      <!-- Main Architecture -->
+      <div class="layer-box main-arch">
+        <div class="layer-title">System Architecture</div>
+
+        <div class="frontend-layer">
+          <div class="sub-layer-title">Frontend Layer</div>
+          <div class="tech-grid">
+            <span class="tech-item">React</span>
+            <span class="tech-item">Zustand</span>
+            <span class="tech-item">Vite</span>
+            <span class="tech-item">Axios</span>
+            <span class="tech-item">React Router</span>
+            <span class="tech-item">React Hook Form</span>
+            <span class="tech-item">Zod</span>
+            <span class="tech-item">XLSX</span>
+            <span class="tech-item">Day.js</span>
+            <span class="tech-item">JSBarcode</span>
+          </div>
+          <div class="sub-layer-title ui-lib">UI Library</div>
+          <div class="tech-grid">
+            <span class="tech-item">Tailwind</span>
+            <span class="tech-item">DaisyUI</span>
+            <span class="tech-item">Radix UI</span>
+            <span class="tech-item">Lucide Icons</span>
+          </div>
+          <div class="flow-row" style="margin-top: 0.5rem;">
+            <span>↔ rest request</span>
+            <span>↔ json response</span>
+          </div>
+        </div>
+
+        <div class="backend-layer">
+          <div class="sub-layer-title">Backend Layer</div>
+          <div class="tech-grid">
+            <span class="tech-item">Express</span>
+            <span class="tech-item">Mongoose</span>
+            <span class="tech-item">JWT</span>
+            <span class="tech-item">bcryptjs</span>
+            <span class="tech-item">Multer</span>
+            <span class="tech-item">express-validator</span>
+            <span class="tech-item">cookie-parser</span>
+            <span class="tech-item">CORS</span>
+            <span class="tech-item">Nodemailer</span>
+            <span class="tech-item">XLSX</span>
+          </div>
+          <div class="flow-row" style="margin-top: 0.5rem;">
+            <span>↔ query</span>
+            <span>↔ query result</span>
+          </div>
+        </div>
+
+        <div class="connection-note">
+          Browser ↔ Frontend: url request ↔ html/js/css · Frontend ↔ Backend: rest request ↔ json response · Backend ↔ MongoDB: query ↔ query result
+        </div>
+      </div>
+
+      <!-- Database Layer -->
+      <div class="layer-box db-layer">
+        <div class="layer-title">Database Layer</div>
+        <div class="db-icon">MongoDB</div>
+        <div class="db-name">MongoDB</div>
+        <div class="flow-label" style="margin-top: 0.5rem;">← query</div>
+        <div class="flow-label">→ query result</div>
+      </div>
+
+      <!-- 3rd Party Layer -->
+      <div class="third-party">
+        <div class="layer-title">3rd Party Layer</div>
+        <div class="third-party-item">
+          <div class="name">Cloudinary</div>
+          <div class="flow">Backend → upload image</div>
+          <div class="flow">Cloudinary → image url</div>
+        </div>
+        <div class="third-party-item">
+          <div class="name">SMTP / Nodemailer</div>
+          <div class="flow">Backend → send email</div>
+          <div class="flow">(verify, reset password)</div>
+        </div>
+        <div class="third-party-item planned">
+          <div class="name">VietQR</div>
+          <div class="flow">Backend → create payment</div>
+          <div class="flow">VietQR → payment result (webhook)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

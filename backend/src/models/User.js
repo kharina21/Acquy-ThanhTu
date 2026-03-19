@@ -5,7 +5,6 @@ const userSchema = new mongoose.Schema(
         username: {
             type: String,
             required: true,
-            unique: true,
         },
         password: {
             type: String,
@@ -14,7 +13,6 @@ const userSchema = new mongoose.Schema(
         email: {
             type: String,
             required: true,
-            unique: true,
         },
         firstName: {
             type: String,
@@ -38,6 +36,12 @@ const userSchema = new mongoose.Schema(
                 ref: 'Role',
             },
         ],
+        // Hạng thành viên hiện tại (MemberPolicy) - dùng cho khách hàng
+        memberTier: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'MemberPolicy',
+            default: null,
+        },
         isVerified: {
             type: Boolean,
             default: false,

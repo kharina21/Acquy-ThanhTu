@@ -1,9 +1,10 @@
-import { Boxes, LayoutDashboard, Package, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { BadgePercent, Boxes, LayoutDashboard, Package, ShoppingCart, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 
 /**
  * Cấu hình menu sidebar - gắn với permission RBAC.
  * permission: { resource, action } - null = luôn hiển thị (vd: Tài khoản).
  * Admin bypass tất cả, các role khác cần có permission tương ứng.
+ * subItems: dropdown con (dùng khi có children)
  */
 export const SIDEBAR_MENU_ITEMS = [
     {
@@ -17,11 +18,16 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'products',
-        to: '/admin/products',
         icon: Package,
         label: 'Sản phẩm',
         ariaLabel: 'Quản lý sản phẩm',
         permission: { resource: 'product', action: 'read' },
+        subItems: [
+            { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
+            { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
+            { id: 'usage-devices', to: '/admin/usage-devices', label: 'Thiết bị sử dụng' },
+            { id: 'brands', to: '/admin/brands', label: 'Thương hiệu' },
+        ],
     },
     {
         id: 'users',
@@ -33,15 +39,11 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'staffs',
-        type: 'submenu',
+        to: '/admin/staffs',
+        icon: UserRoundPen,
         label: 'Nhân viên',
         ariaLabel: 'Quản lý nhân viên',
-        icon: UserRoundPen,
         permission: { resource: 'user', action: 'read' },
-        subItems: [
-            { to: '/admin/staffs', label: 'Danh sách nhân viên' },
-            { to: '/admin/staffs/schedule', label: 'Lịch làm việc' },
-        ],
     },
     {
         id: 'customers',
@@ -49,15 +51,39 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UsersRound,
         label: 'Khách hàng',
         ariaLabel: 'Quản lý khách hàng',
-        permission: { resource: 'order', action: 'read' },
+        permission: { resource: 'user', action: 'read' },
+    },
+    {
+        id: 'member-policies',
+        to: '/admin/member-policies',
+        icon: BadgePercent,
+        label: 'Chính sách khách hàng',
+        ariaLabel: 'Chính sách hạng / ưu đãi khách hàng',
+        permission: { resource: 'user', action: 'read' },
+    },
+    {
+        id: 'orders',
+        icon: ShoppingCart,
+        label: 'Đơn hàng',
+        ariaLabel: 'Quản lý đơn hàng',
+        permission: { resource: 'product', action: 'read' },
+        subItems: [
+            { id: 'orders-list', to: '/admin/orders', label: 'Quản lý đơn hàng' },
+            { id: 'orders-report', to: '/admin/orders/report', label: 'Báo cáo đơn hàng' },
+        ],
     },
     {
         id: 'warehouses',
-        to: '/admin/warehouses',
         icon: Boxes,
         label: 'Kho hàng',
         ariaLabel: 'Quản lý kho hàng',
         permission: { resource: 'stock_check', action: 'read' },
+        subItems: [
+            { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
+            { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
+            { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
+            { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
+        ],
     },
     {
         id: 'profile',
