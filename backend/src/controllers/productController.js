@@ -943,8 +943,6 @@ export const getFilterOptions = async (req, res) => {
 export const filterProducts = async (req, res) => {
     try {
 
-        console.log("REQ QUERY:", req.query);
-
         const { page = 1, limit = 15, sort } = req.query;
 
         const filterQuery = buildFilter(req.query);
