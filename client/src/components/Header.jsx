@@ -52,7 +52,7 @@ export function Header({ user, onLogout }) {
         <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm">
             {/* Top bar */}
             <div className="container mx-auto px-4 lg:px-6">
-                <div className="flex items-center justify-between h-16 gap-4">
+                <div className="flex items-center justify-between h-16 gap-4 min-w-0">
                     {/* Logo */}
                     <Link to="/" className="flex items-center shrink-0">
                         <img
@@ -63,7 +63,7 @@ export function Header({ user, onLogout }) {
                     </Link>
 
                     {/* Search - Desktop */}
-                    <div className="relative hidden lg:block flex-1 max-w-md xl:max-w-lg mx-6">
+                    <div className="relative hidden lg:block flex-1 min-w-0 max-w-md xl:max-w-lg mx-4 xl:mx-6">
                         <div className="relative group">
                             <input
                                 type="text"
@@ -100,7 +100,7 @@ export function Header({ user, onLogout }) {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="flex items-center gap-2 lg:gap-3 shrink-0">
                         <Link to="/cart" className="relative">
                             <Button
                                 variant="ghost"
@@ -125,7 +125,7 @@ export function Header({ user, onLogout }) {
                                         className="rounded-xl border-gray-200 hover:border-primary/30 hover:bg-primary/5 gap-2"
                                     >
                                         <User className="w-4 h-4" />
-                                        <span className="hidden sm:inline max-w-[100px] truncate">{getDisplayName(user)}</span>
+                                        <span className="hidden sm:inline max-w-[180px] truncate">{getDisplayName(user)}</span>
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 rounded-xl shadow-lg border-gray-100 p-1">

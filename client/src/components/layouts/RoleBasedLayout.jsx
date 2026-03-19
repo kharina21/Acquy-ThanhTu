@@ -22,14 +22,9 @@ const RoleBasedLayout = () => {
         );
     }
 
-    // Layout mặc định cho user thường
-    return (
-        <div className='min-h-screen bg-base-200'>
-            <div className='container mx-auto px-4 py-8'>
-                <Outlet />
-            </div>
-        </div>
-    );
+    // Layout mặc định cho user thường (vd: Hồ sơ cá nhân)
+    // Chỉ render Outlet - trang con tự quản lý layout (Header, nội dung, Footer)
+    return <Outlet />;
 };
 
 export default RoleBasedLayout;

@@ -114,7 +114,7 @@ export const checkoutPreview = async (req, res) => {
 
 /**
  * POST /api/orders – Tạo đơn hàng từ giỏ hàng (online, bán trên web).
- * Body: { paymentMethod, shippingAddress?, note? } – locationId tùy chọn, mặc định dùng chi nhánh đầu tiên
+ * Body: { paymentMethod, shippingAddress?, shippingPhone?, note? } hoặc { provinceCode, provinceName, districtCode, districtName, wardCode, wardName, addressLine }
  */
 export const createOrder = async (req, res) => {
     try {
@@ -123,7 +123,25 @@ export const createOrder = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const { locationId, paymentMethod, shippingAddress = '', note = '' } = req.body || {};
+        const {
+            locationId,
+            paymentMethod,
+            shippingAddress: shippingAddressRaw = '',
+            shippingPhone = '',
+            note = '',
+            provinceCode = '',
+            provinceName = '',
+            districtCode = '',
+            districtName = '',
+            wardCode = '',
+            wardName = '',
+            addressLine = '',
+        } = req.body || {};
+
+        const hasStructured = provinceCode || provinceName || districtCode || districtName || wardCode || wardName || addressLine;
+        const shippingAddress = hasStructured
+            ? [String(addressLine).trim(), String(wardName).trim(), String(districtName).trim(), String(provinceName).trim()].filter(Boolean).join(', ')
+            : String(shippingAddressRaw).trim();
 
         // Đơn online: chỉ chấp nhận chuyển khoản (thanh toán trước)
         const validMethods = ['vietqr', 'transfer'];
@@ -214,7 +232,15 @@ export const createOrder = async (req, res) => {
             status: 'pending',
             paymentMethod: method,
             paymentStatus: 'pending',
-            shippingAddress: String(shippingAddress).trim(),
+            shippingAddress,
+            shippingPhone: String(shippingPhone).trim(),
+            provinceCode: String(provinceCode).trim(),
+            provinceName: String(provinceName).trim(),
+            districtCode: String(districtCode).trim(),
+            districtName: String(districtName).trim(),
+            wardCode: String(wardCode).trim(),
+            wardName: String(wardName).trim(),
+            addressLine: String(addressLine).trim(),
             note: String(note).trim(),
         });
 
@@ -791,6 +817,179 @@ export const getOrderReport = async (req, res) => {
         console.error('getOrderReport error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi lấy báo cáo đơn hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * POST /api/orders/:id/cancel – Khách hàng hủy đơn của mình.
+ * Được hủy khi: status = pending hoặc confirmed (chờ xử lý).
+ * Khi đã thanh toán: bắt buộc gửi thông tin chuyển khoản hoàn tiền (refundBankName, refundBankAccount, refundAccountHolder).
+ * Hoàn lại tồn kho khi hủy.
+ */
+export const cancelOrderByCustomer = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        const { refundBankName, refundBankAccount, refundAccountHolder } = req.body || {};
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        if (order.customer?.toString() !== userId.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền hủy đơn này' });
+        }
+
+        if (order.status === 'cancelled') {
+            return res.status(400).json({ message: 'Đơn hàng đã bị hủy trước đó' });
+        }
+
+        const cancellableStatuses = ['pending', 'confirmed'];
+        if (!cancellableStatuses.includes(order.status)) {
+            return res.status(400).json({ message: 'Đơn hàng không thể hủy ở trạng thái hiện tại' });
+        }
+
+        if (order.paymentStatus === 'paid') {
+            const bankName = String(refundBankName || '').trim();
+            const bankAccount = String(refundBankAccount || '').trim();
+            const accountHolder = String(refundAccountHolder || '').trim();
+            if (!bankName || !bankAccount || !accountHolder) {
+                return res.status(400).json({
+                    message: 'Đơn đã thanh toán. Vui lòng nhập thông tin tài khoản ngân hàng để hoàn tiền.',
+                });
+            }
+            order.refundBankName = bankName;
+            order.refundBankAccount = bankAccount;
+            order.refundAccountHolder = accountHolder;
+        }
+
+        order.status = 'cancelled';
+        await order.save();
+
+        if (order.paymentStatus === 'paid' && order.customerProfile) {
+            await Customer.findByIdAndUpdate(order.customerProfile, {
+                $inc: { accumulatedAmount: -(order.totalAmount || 0) },
+            });
+        }
+
+        // Hoàn lại tồn kho
+        const locationId = order.location;
+        for (const item of order.items) {
+            const stockRow = await ProductStock.findOne({
+                product: item.product,
+                location: locationId,
+            });
+            if (stockRow) {
+                stockRow.quantity += item.quantity;
+                await stockRow.save();
+            }
+        }
+
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku name')
+            .populate('location', 'code name')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Đã hủy đơn hàng',
+            data: { order: populated },
+        });
+    } catch (error) {
+        console.error('cancelOrderByCustomer error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi hủy đơn hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * PATCH /api/orders/:id – Khách hàng chỉnh sửa đơn (địa chỉ, số điện thoại, ghi chú).
+ * Chỉ được sửa khi chưa thanh toán và đơn chưa hủy.
+ * Body: shippingAddress?, shippingPhone?, note? hoặc provinceCode, provinceName, districtCode, districtName, wardCode, wardName, addressLine
+ */
+export const updateOrderByCustomer = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        const {
+            shippingAddress: shippingAddressRaw,
+            shippingPhone,
+            note,
+            provinceCode,
+            provinceName,
+            districtCode,
+            districtName,
+            wardCode,
+            wardName,
+            addressLine,
+        } = req.body || {};
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        if (order.customer?.toString() !== userId.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền chỉnh sửa đơn này' });
+        }
+
+        if (order.status === 'cancelled') {
+            return res.status(400).json({ message: 'Không thể sửa đơn đã hủy' });
+        }
+
+        if (order.paymentStatus === 'paid') {
+            return res.status(400).json({ message: 'Không thể sửa đơn đã thanh toán' });
+        }
+
+        const hasStructured = provinceCode !== undefined || provinceName !== undefined || districtCode !== undefined ||
+            districtName !== undefined || wardCode !== undefined || wardName !== undefined || addressLine !== undefined;
+        if (hasStructured) {
+            order.provinceCode = String(provinceCode ?? order.provinceCode ?? '').trim();
+            order.provinceName = String(provinceName ?? order.provinceName ?? '').trim();
+            order.districtCode = String(districtCode ?? order.districtCode ?? '').trim();
+            order.districtName = String(districtName ?? order.districtName ?? '').trim();
+            order.wardCode = String(wardCode ?? order.wardCode ?? '').trim();
+            order.wardName = String(wardName ?? order.wardName ?? '').trim();
+            order.addressLine = String(addressLine ?? order.addressLine ?? '').trim();
+            order.shippingAddress = [order.addressLine, order.wardName, order.districtName, order.provinceName].filter(Boolean).join(', ');
+        } else if (shippingAddressRaw !== undefined) {
+            order.shippingAddress = String(shippingAddressRaw).trim();
+        }
+        if (shippingPhone !== undefined) order.shippingPhone = String(shippingPhone).trim();
+        if (note !== undefined) order.note = String(note).trim();
+        await order.save();
+
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku name')
+            .populate('location', 'code name')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Cập nhật đơn hàng thành công',
+            data: { order: populated },
+        });
+    } catch (error) {
+        console.error('updateOrderByCustomer error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi cập nhật đơn hàng',
             error: error.message,
         });
     }

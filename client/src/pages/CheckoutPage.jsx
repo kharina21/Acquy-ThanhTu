@@ -27,6 +27,7 @@ export default function CheckoutPage() {
     wardCode: '',
     wardName: '',
     addressLine: '',
+    shippingPhone: '',
     note: '',
   });
   const [orderSuccess, setOrderSuccess] = useState(null); // { order, qrDataURL, bankAccount, checkoutUrl }
@@ -104,16 +105,28 @@ export default function CheckoutPage() {
       toast.error('Vui lòng chọn đầy đủ Tỉnh/Thành phố, Quận/Huyện, Phường/Xã');
       return;
     }
+    const shippingPhone = form.shippingPhone?.trim();
+    if (!shippingPhone) {
+      toast.error('Vui lòng nhập số điện thoại nhận hàng');
+      return;
+    }
     if (items.length === 0) {
       toast.error('Giỏ hàng trống');
       return;
     }
     setSubmitting(true);
     try {
-      const shippingAddress = buildShippingAddress();
       const res = await createOrder({
         paymentMethod: form.paymentMethod,
-        shippingAddress,
+        shippingAddress: buildShippingAddress(),
+        shippingPhone,
+        provinceCode: form.provinceCode,
+        provinceName: form.provinceName,
+        districtCode: form.districtCode,
+        districtName: form.districtName,
+        wardCode: form.wardCode,
+        wardName: form.wardName,
+        addressLine: form.addressLine?.trim(),
         note: form.note.trim(),
       });
       const order = res?.data?.order;
@@ -306,6 +319,17 @@ export default function CheckoutPage() {
                       placeholder="Ví dụ: Số 123, đường ABC"
                       value={form.addressLine}
                       onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label py-0 text-xs">Số điện thoại nhận hàng</label>
+                    <input
+                      type="tel"
+                      className="input input-bordered input-sm w-full"
+                      placeholder="Ví dụ: 0901234567"
+                      value={form.shippingPhone}
+                      onChange={(e) => setForm((f) => ({ ...f, shippingPhone: e.target.value }))}
                       required
                     />
                   </div>

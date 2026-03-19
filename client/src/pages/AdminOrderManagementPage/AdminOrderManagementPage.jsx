@@ -239,6 +239,9 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                         <p><span className="font-medium text-base-content/70">Khách hàng:</span> {formatCustomer(order)}</p>
                                                                         <p><span className="font-medium text-base-content/70">Chi nhánh:</span> {order.location?.name || '—'}</p>
                                                                         <p><span className="font-medium text-base-content/70">Địa chỉ giao hàng:</span> {order.shippingAddress || '—'}</p>
+                                                                        {order.shippingPhone && (
+                                                                            <p><span className="font-medium text-base-content/70">SĐT nhận hàng:</span> {order.shippingPhone}</p>
+                                                                        )}
                                                                         {order.note && (
                                                                             <p><span className="font-medium text-base-content/70">Ghi chú:</span> {order.note}</p>
                                                                         )}

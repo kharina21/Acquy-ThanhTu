@@ -7,6 +7,8 @@ import {
     getOrders,
     getOrderById,
     updateOrder,
+    updateOrderByCustomer,
+    cancelOrderByCustomer,
     getOrderReport,
     generateVietQRForOrder,
     checkoutPreview,
@@ -23,6 +25,8 @@ router.get('/checkout-preview', checkoutPreview);
 router.get('/', getOrders);
 router.get('/:id/generate-vietqr', generateVietQRForOrder);
 router.get('/:id', getOrderById);
+router.post('/:id/cancel', cancelOrderByCustomer);
+router.patch('/:id', updateOrderByCustomer);
 router.put('/:id', hasRole('admin', 'Quản lý chi nhánh', 'manager', 'seller', 'staff'), updateOrder);
 
 export default router;

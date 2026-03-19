@@ -37,6 +37,23 @@ export const updateOrder = async (id, data) => {
 };
 
 /**
+ * Khách hàng chỉnh sửa đơn (địa chỉ, ghi chú) - chỉ khi chưa thanh toán
+ */
+export const updateOrderByCustomer = async (id, data) => {
+    const res = await api.patch(`/orders/${id}`, data);
+    return res.data;
+};
+
+/**
+ * Khách hàng hủy đơn - khi status pending/confirmed.
+ * Khi đã thanh toán: cần truyền { refundBankName, refundBankAccount, refundAccountHolder }
+ */
+export const cancelOrderByCustomer = async (id, data = {}) => {
+    const res = await api.post(`/orders/${id}/cancel`, data);
+    return res.data;
+};
+
+/**
  * Báo cáo đơn hàng đã xác nhận và thanh toán - Admin/Manager
  */
 export const getOrderReport = async (params = {}) => {

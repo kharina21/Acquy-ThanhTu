@@ -10,7 +10,7 @@ import { useMailStore } from '@/stores/useMailStore';
 
 
 
-const AccountInfoCard = () => {
+const AccountInfoCard = ({ isCustomer }) => {
     const { user } = useAuthStore();
     const { sendVerificationCode, isLoading: isSendingCode } = useMailStore();
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -32,19 +32,23 @@ const AccountInfoCard = () => {
             return () => clearTimeout(timer);
         }
     }, [countdown]);
+    const cardClass = isCustomer
+        ? 'bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8'
+        : 'bg-base-100 rounded-lg shadow-lg p-6 md:p-8';
+
     return (
-        <div className="bg-base-100 rounded-lg shadow-lg p-6 md:p-8">
-            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-2 text-primary">
+        <div className={cardClass}>
+            <h2 className={`text-lg sm:text-xl font-bold mb-6 flex items-center gap-2 ${isCustomer ? 'text-gray-800' : 'text-primary'}`}>
                 <Shield className="w-6 h-6" />
                 Thông tin tài khoản
             </h2>
             <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-base-200 rounded-lg">
+                <div className={`flex items-center justify-between p-4 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
                     <div className="flex items-center gap-3">
                         <UserRound className="w-5 h-5 text-base-content/60" />
                         <div>
                             <p className="text-sm text-base-content/60">Tên đăng nhập</p>
-                            <p className="font-semibold">{user.username}</p>
+                            <p className="font-semibold break-all">{user.username}</p>
                         </div>
                     </div>
                 </div>
@@ -59,7 +63,7 @@ const AccountInfoCard = () => {
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-base-200 rounded-lg">
+                <div className={`flex items-center justify-between p-4 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
                     <div className="flex items-center gap-3 flex-1">
                         {user.isVerified ? (<CheckCircle2 className="w-5 h-5 text-success" />) : (<Info className="w-5 h-5 text-warning" />)}
 
@@ -101,7 +105,7 @@ const AccountInfoCard = () => {
                 </div>
 
                 {/* Change Password Button */}
-                <div className="pt-4 border-t border-base-300">
+                <div className={`pt-4 border-t ${isCustomer ? 'border-gray-100' : 'border-base-300'}`}>
                     <button
                         onClick={() => setShowChangePasswordModal(true)}
                         className="btn btn-primary btn-sm w-full gap-2"

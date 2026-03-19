@@ -44,9 +44,23 @@ const orderSchema = new mongoose.Schema(
             default: 'pending',
         },
         shippingAddress: { type: String, default: '' },
+        /** Địa chỉ chi tiết – dùng khi chỉnh sửa */
+        provinceCode: { type: String, default: '' },
+        provinceName: { type: String, default: '' },
+        districtCode: { type: String, default: '' },
+        districtName: { type: String, default: '' },
+        wardCode: { type: String, default: '' },
+        wardName: { type: String, default: '' },
+        addressLine: { type: String, default: '' },
+        /** Số điện thoại nhận hàng */
+        shippingPhone: { type: String, default: '' },
         note: { type: String, default: '' },
         vietqrTransactionId: { type: String, default: '' },
         paidAt: { type: Date, default: null },
+        /** Thông tin hoàn tiền khi khách hủy đơn đã thanh toán */
+        refundBankName: { type: String, default: '' },
+        refundBankAccount: { type: String, default: '' },
+        refundAccountHolder: { type: String, default: '' },
         /** Khách đặt hàng tại cửa hàng nhưng hàng chưa có sẵn */
         isPreOrder: { type: Boolean, default: false },
     },

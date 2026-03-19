@@ -133,11 +133,29 @@ export default function AdminOrderDetailPage() {
                                 <span className="text-base-content/70">Địa chỉ giao hàng</span>
                                 <span>{order.shippingAddress || '—'}</span>
                             </div>
+                            {order.shippingPhone && (
+                                <div className="flex justify-between">
+                                    <span className="text-base-content/70">SĐT nhận hàng</span>
+                                    <span>{order.shippingPhone}</span>
+                                </div>
+                            )}
                             {order.note && (
                                 <div className="flex justify-between">
                                     <span className="text-base-content/70">Ghi chú</span>
                                     <span>{order.note}</span>
                                 </div>
+                            )}
+                            {order.status === 'cancelled' && (order.refundBankName || order.refundBankAccount || order.refundAccountHolder) && (
+                                <>
+                                    <div className="pt-2 mt-2 border-t border-base-300">
+                                        <p className="text-sm font-medium text-base-content/70 mb-2">Thông tin hoàn tiền (khách hủy đơn đã thanh toán)</p>
+                                        <div className="space-y-1 text-sm">
+                                            {order.refundBankName && <p><span className="text-base-content/60">Ngân hàng:</span> {order.refundBankName}</p>}
+                                            {order.refundBankAccount && <p><span className="text-base-content/60">Số TK:</span> {order.refundBankAccount}</p>}
+                                            {order.refundAccountHolder && <p><span className="text-base-content/60">Chủ TK:</span> {order.refundAccountHolder}</p>}
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
 
