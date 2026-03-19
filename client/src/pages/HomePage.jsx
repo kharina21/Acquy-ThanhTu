@@ -34,7 +34,7 @@ const HomePage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-white flex flex-col font-sans">
             
             <Header
                 user={user}
@@ -43,10 +43,24 @@ const HomePage = () => {
                 onLogout={handleLogout}
             />
             
-            <HeroSlider />
-            <ServiceFeatures />
-            <ProductSection />
-            <PartnersSection />
+            <main className="flex-1">
+                <section>
+                    <HeroSlider />
+                </section>
+                
+                <section className="py-8 bg-white">
+                    <ServiceFeatures />
+                </section>
+                
+                <section>
+                    <ProductSection />
+                </section>
+                
+                <section className="py-12 bg-white">
+                    <PartnersSection />
+                </section>
+            </main>
+
             <Footer />
         </div>
     );

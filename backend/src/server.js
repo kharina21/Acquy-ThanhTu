@@ -33,11 +33,12 @@ app.use(
     cors({
         origin: true,
         credentials: true,
-    })
+    }),
 );
 
 app.use(express.json());
 app.use(cookieParser());
+
 
 app.use('/api/auth', authRoutes);                    // Xác thực (đăng nhập, đăng ký, ...)
 app.use('/api/activity-logs', activityLogRoutes);   // Nhật ký hoạt động
@@ -61,5 +62,5 @@ app.use('/api/orders', orderRoutes);              // Đơn hàng
 connectDB().then(() =>
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}🎉`);
-    })
+    }),
 );

@@ -13,7 +13,8 @@ import {
     getCarBatteryProducts,
     getMotorcycleBatteryProducts,
     getFilterOptions,
-    filterProducts
+    filterProducts,
+    getRelatedProducts
 } from '../controllers/productController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -60,6 +61,8 @@ router.get('/motorcycle-batteries', getMotorcycleBatteryProducts);
 router.post('/upload-image', uploadImage.array('image', 20), uploadProductImage);
 router.get("/filter", filterProducts);
 router.get('/filter-options', getFilterOptions);
+router.get('/:id/related', getRelatedProducts);
+
 router.get('/:id', getProductById);
 
 
