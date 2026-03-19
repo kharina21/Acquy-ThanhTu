@@ -24,6 +24,11 @@ import UsageDeviceManagementPage from '../pages/UsageDeviceManagementPage/UsageD
 import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import MemberPolicyPage from '../pages/MemberPolicyPage/MemberPolicyPage';
 import CustomersPage from '../pages/CustomersPage/CustomersPage';
+import UseCasesPage from '../pages/UseCasesPage/UseCasesPage';
+import CreateInvoicePage from '../pages/CreateInvoicePage/CreateInvoicePage';
+import AdminOrderManagementPage from '../pages/AdminOrderManagementPage/AdminOrderManagementPage';
+import AdminOrderDetailPage from '../pages/AdminOrderManagementPage/AdminOrderDetailPage';
+import CustomerReturnsPage from '../pages/AdminOrderManagementPage/CustomerReturnsPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
@@ -40,67 +45,196 @@ import DefaultRoute from '../components/auth/DefaultRoute';
 
 // Layouts
 import RoleBasedLayout from '../components/layouts/RoleBasedLayout';
-
+import SalesLayout from '../components/layouts/SalesLayout';
 
 export const AppRoutes = () => {
     return (
         <Routes>
             {/* DEFAULT ROUTE - Redirect dựa trên role */}
-            <Route path="/" element={<DefaultRoute />} />
+            <Route
+                path='/'
+                element={<DefaultRoute />}
+            />
 
             {/* PUBLIC ROUTES - Chỉ cho phép truy cập khi CHƯA đăng nhập */}
             {/* Nếu đã đăng nhập, sẽ bị redirect về trang phù hợp với role */}
             <Route element={<PublicRoute />}>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route
+                    path='/login'
+                    element={<LoginPage />}
+                />
+                <Route
+                    path='/register'
+                    element={<RegisterPage />}
+                />
+                <Route
+                    path='/forgot-password'
+                    element={<ForgotPasswordPage />}
+                />
+                <Route
+                    path='/reset-password'
+                    element={<ResetPasswordPage />}
+                />
             </Route>
 
             {/* PUBLIC HOME - Cho phép cả authenticated và unauthenticated users */}
-            <Route path="/home" element={<HomePage />} />
-            <Route path="/listproduct" element={<ListProduct />} />
+            <Route
+                path='/home'
+                element={<HomePage />}
+            />
+            <Route
+                path='/listproduct'
+                element={<ListProduct />}
+            />
             {/* Giỏ hàng */}
-            <Route path="/cart" element={<CartPage />} />
+            <Route
+                path='/cart'
+                element={<CartPage />}
+            />
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}
             <Route element={<ProtectedRoute />}>
                 {/* Checkout & Orders - User đặt hàng, xem đơn */}
-                <Route path="/checkout" element={<CheckoutPage />} />
-                <Route path="/orders" element={<OrderHistoryPage />} />
-                <Route path="/orders/:id" element={<OrderDetailPage />} />
+                <Route
+                    path='/checkout'
+                    element={<CheckoutPage />}
+                />
+
+                {/* Trang Bán hàng - layout riêng, full màn hình */}
+                <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'staff']} />}>
+                    <Route
+                        path='/sales'
+                        element={
+                            <SalesLayout>
+                                <CreateInvoicePage />
+                            </SalesLayout>
+                        }
+                    />
+                </Route>
 
                 <Route element={<RoleBasedLayout />}>
                     {/* Common routes - Tất cả authenticated users đều có thể truy cập */}
-                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route
+                        path='/profile'
+                        element={<ProfilePage />}
+                    />
 
                     {/* Admin + Manager: trang quản lý chung */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager']} />}>
-                        <Route path="/admin" element={<AdminDashboard />} />
-                        <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
-                        <Route path="/admin/products" element={<ProductManagementPage />} />
-                        <Route path="/admin/categories" element={<CategoryManagementPage />} />
-                        <Route path="/admin/brands" element={<BrandManagementPage />} />
-                        <Route path="/admin/usage-devices" element={<UsageDeviceManagementPage />} />
-                        <Route path="/users" element={<UserManagementPage />} />
-                        <Route path="/admin/staffs" element={<StaffManagementPage />} />
-                        <Route path="/admin/customers" element={<CustomersPage />} />
-                        <Route path="/admin/member-policies" element={<MemberPolicyPage />} />
-                        <Route path="/admin/store-profile" element={<StoreProfilePage />} />
+                        <Route
+                            path='/admin'
+                            element={<AdminDashboard />}
+                        />
+                        <Route
+                            path='/admin/dashboard'
+                            element={
+                                <Navigate
+                                    to='/admin'
+                                    replace
+                                />
+                            }
+                        />
+                        <Route
+                            path='/admin/products'
+                            element={<ProductManagementPage />}
+                        />
+                        <Route
+                            path='/admin/categories'
+                            element={<CategoryManagementPage />}
+                        />
+                        <Route
+                            path='/admin/brands'
+                            element={<BrandManagementPage />}
+                        />
+                        <Route
+                            path='/admin/usage-devices'
+                            element={<UsageDeviceManagementPage />}
+                        />
+                        <Route
+                            path='/users'
+                            element={<UserManagementPage />}
+                        />
+                        <Route
+                            path='/admin/staffs'
+                            element={<StaffManagementPage />}
+                        />
+                        <Route
+                            path='/admin/customers'
+                            element={<CustomersPage />}
+                        />
+                        <Route
+                            path='/admin/member-policies'
+                            element={<MemberPolicyPage />}
+                        />
+                        <Route
+                            path='/admin/store-profile'
+                            element={<StoreProfilePage />}
+                        />
+                        <Route
+                            path='/admin/use-cases'
+                            element={<UseCasesPage />}
+                        />
+                    </Route>
+
+                    {/* Quản lý đơn hàng cửa hàng: admin, manager, seller, staff */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'staff']} />}>
+                        <Route
+                            path='/admin/orders/pre-orders'
+                            element={<AdminOrderManagementPage key="pre-orders" type="pre-orders" />}
+                        />
+                        <Route
+                            path='/admin/orders/invoices'
+                            element={<AdminOrderManagementPage key="invoices" type="invoices" />}
+                        />
+                        <Route
+                            path='/admin/orders/returns'
+                            element={<CustomerReturnsPage />}
+                        />
+                        <Route
+                            path='/admin/orders'
+                            element={<AdminOrderManagementPage key="invoices" type="invoices" />}
+                        />
+                        <Route
+                            path='/admin/orders/:id'
+                            element={<AdminOrderDetailPage />}
+                        />
                     </Route>
 
                     {/* Warehouse manager: kho hàng (kiểm kho, nhập hàng, nhà cung cấp) */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'warehouse_manager']} />}>
-                        <Route path="/admin/warehouses" element={<Navigate to="/admin/warehouses/stock-check" replace />} />
-                        <Route path="/admin/warehouses/stock-check" element={<StockCheckPage />} />
-                        <Route path="/admin/warehouses/import" element={<ImportGoodsPage />} />
-                        <Route path="/admin/warehouses/stock-returns" element={<StockReturnsPage />} />
-                        <Route path="/admin/warehouses/suppliers" element={<SuppliersPage />} />
+                        <Route
+                            path='/admin/warehouses'
+                            element={
+                                <Navigate
+                                    to='/admin/warehouses/stock-check'
+                                    replace
+                                />
+                            }
+                        />
+                        <Route
+                            path='/admin/warehouses/stock-check'
+                            element={<StockCheckPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/import'
+                            element={<ImportGoodsPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/stock-returns'
+                            element={<StockReturnsPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/suppliers'
+                            element={<SuppliersPage />}
+                        />
                     </Route>
 
                     {/* Seller / Staff: dashboard nhân viên */}
                     <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff']} />}>
-                        <Route path="/staff/dashboard" element={<StaffDashboard />} />
+                        <Route
+                            path='/staff/dashboard'
+                            element={<StaffDashboard />}
+                        />
                     </Route>
 
                     {/* User Routes - Nếu cần routes riêng cho user role */}
@@ -111,9 +245,14 @@ export const AppRoutes = () => {
             </Route>
 
             {/* Error Pages */}
-            <Route path="/forbidden" element={<ForbiddenPage />} />
-            <Route path="*" element={<NotFoundPage />} />
+            <Route
+                path='/forbidden'
+                element={<ForbiddenPage />}
+            />
+            <Route
+                path='*'
+                element={<NotFoundPage />}
+            />
         </Routes>
     );
 };
-

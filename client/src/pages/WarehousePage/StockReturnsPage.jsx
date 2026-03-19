@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { getStockReturns, getStockReturnById } from '@/services/stockReturnService';
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { getStockReturns, getStockReturnById, deleteStockReturn } from '@/services/stockReturnService';
 import { getSuppliers } from '@/services/supplierService';
 import { useBranchStore } from '@/stores/useBranchStore';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { toast } from 'sonner';
 
 const formatDate = (d) => {
     if (!d) return '—';
@@ -20,6 +22,7 @@ const StockReturnsPage = () => {
     const [suppliers, setSuppliers] = useState([]);
     const [expandedId, setExpandedId] = useState(null);
     const [expandedDetail, setExpandedDetail] = useState(null);
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
 
@@ -82,6 +85,30 @@ const StockReturnsPage = () => {
         if (res.success && res.data?.stockReturn) {
             setExpandedDetail(res.data.stockReturn);
         }
+    };
+
+    const handleCancelStockReturn = (sr) => {
+        const idToDelete = sr._id;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Hủy phiếu trả hàng',
+            message: `Hủy phiếu ${sr.code} sẽ cộng lại tồn kho (đảo ngược trả hàng). Bạn có chắc?`,
+            variant: 'danger',
+            confirmText: 'Hủy phiếu',
+            onConfirm: async () => {
+                try {
+                    const res = await deleteStockReturn(idToDelete);
+                    if (res.success) {
+                        toast.success('Đã hủy phiếu trả hàng');
+                        setExpandedId(null);
+                        setExpandedDetail(null);
+                        fetchList();
+                    }
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || 'Hủy phiếu thất bại');
+                }
+            },
+        });
     };
 
     return (
@@ -221,6 +248,16 @@ const StockReturnsPage = () => {
                                                                                     </tbody>
                                                                                 </table>
                                                                             </div>
+                                                                            <div className='flex justify-start'>
+                                                                                <button
+                                                                                    type='button'
+                                                                                    className='btn btn-outline btn-error btn-sm gap-1'
+                                                                                    onClick={() => handleCancelStockReturn(expandedDetail)}
+                                                                                >
+                                                                                    <Trash2 className='w-4 h-4' />
+                                                                                    Hủy phiếu trả hàng
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </td>
@@ -257,6 +294,16 @@ const StockReturnsPage = () => {
                         )}
                     </div>
                 </div>
+
+                <ConfirmationModal
+                    isOpen={confirmModal.isOpen}
+                    title={confirmModal.title}
+                    message={confirmModal.message}
+                    variant={confirmModal.variant}
+                    confirmText={confirmModal.confirmText}
+                    onConfirm={confirmModal.onConfirm}
+                    onClose={() => setConfirmModal((p) => ({ ...p, isOpen: false }))}
+                />
             </div>
         </div>
     );

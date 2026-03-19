@@ -1,16 +1,44 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
+import Customer from '../models/Customer.js';
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import Location from '../models/Location.js';
 import ProductStock from '../models/ProductStock.js';
 import { getStockAtLocation } from './productStockController.js';
+import { assignDefaultRole } from '../libs/rbacHelpers.js';
+
+const GUEST_USERNAME = '__guest_pos__';
+
+/** Lấy hoặc tạo User "Khách vãng lai" cho đơn bán tại quầy (khi Customer không có tài khoản) */
+const getOrCreateGuestUser = async () => {
+    let guest = await User.findOne({ username: GUEST_USERNAME }).lean();
+    if (guest) return guest;
+    const hashedPassword = await bcrypt.hash('guest_pos_' + Date.now(), 10);
+    const newUser = await User.create({
+        username: GUEST_USERNAME,
+        password: hashedPassword,
+        email: 'guest@pos.system',
+        firstName: 'Khách',
+        lastName: 'vãng lai',
+    });
+    await assignDefaultRole(newUser);
+    return newUser.toObject();
+};
 
 const isAdminOrManager = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => r === 'admin' || r === 'Quản lý chi nhánh');
+    return roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
+};
+
+/** Cửa hàng: admin, manager, seller, staff có thể xem tất cả đơn */
+const canViewAllOrders = async (userId) => {
+    const user = await User.findById(userId).populate('roles', 'name').lean();
+    const roleNames = user?.roles?.map((r) => r.name) || [];
+    return roleNames.some((r) => ['admin', 'Quản lý chi nhánh', 'manager', 'seller', 'staff'].includes(r));
 };
 
 /**
@@ -92,12 +120,21 @@ export const createOrder = async (req, res) => {
             return res.status(400).json({ message: 'Không có sản phẩm hợp lệ trong giỏ hàng' });
         }
 
+        const customerProfile = await getOrCreateCustomerFromUser(await User.findById(userId).lean());
+        if (!customerProfile) {
+            return res.status(500).json({ message: 'Không thể tạo thông tin khách hàng' });
+        }
+        if (customerProfile.type !== 'registered') {
+            await Customer.findByIdAndUpdate(customerProfile._id, { type: 'registered', userId: userId });
+        }
+
         const code = await generateOrderCode();
 
         const order = await Order.create({
             code,
             channel: 'online',
             customer: userId,
+            customerProfile: customerProfile._id,
             location: locationId,
             createdBy: null,
             items: orderItems,
@@ -124,6 +161,7 @@ export const createOrder = async (req, res) => {
             .populate('items.product', 'sku name')
             .populate('location', 'code name address')
             .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
             .lean();
 
         return res.status(201).json({
@@ -140,6 +178,217 @@ export const createOrder = async (req, res) => {
     }
 };
 
+/** Lấy hoặc tạo Customer "Khách vãng lai" mặc định (khi không chọn khách) */
+const getOrCreateDefaultWalkinCustomer = async () => {
+    let c = await Customer.findOne({ type: 'walkin' }).sort({ createdAt: 1 }).lean();
+    if (c) return c;
+    const newC = await Customer.create({ name: 'Khách vãng lai', phone: '', type: 'walkin' });
+    return newC.toObject();
+};
+
+/** Lấy hoặc tạo Customer từ User (đơn online) */
+const getOrCreateCustomerFromUser = async (user) => {
+    if (!user) return null;
+    const fullUser = await User.findById(user._id).lean();
+    if (fullUser?.customerId) {
+        const c = await Customer.findById(fullUser.customerId).lean();
+        if (c) return c;
+    }
+    const name = [fullUser?.firstName, fullUser?.lastName].filter(Boolean).join(' ') || fullUser?.username || 'Khách hàng';
+    const phone = fullUser?.phoneNumber || '';
+    let customer = await Customer.findOne({ userId: user._id }).lean();
+    if (customer) return customer;
+    if (phone) {
+        customer = await Customer.findOne({ phone }).lean();
+        if (customer) {
+            await Customer.findByIdAndUpdate(customer._id, { userId: user._id, type: 'registered' });
+            await User.findByIdAndUpdate(user._id, { customerId: customer._id });
+            return customer;
+        }
+    }
+    const newC = await Customer.create({
+        name,
+        phone,
+        type: 'registered',
+        userId: user._id,
+    });
+    await User.findByIdAndUpdate(user._id, { customerId: newC._id });
+    return newC.toObject();
+};
+
+/**
+ * POST /api/orders/from-items – Tạo đơn hàng từ danh sách sản phẩm (bán tại quầy).
+ * Body: { items, locationId, paymentMethod, note?, isPreOrder?, customerId? }
+ * customerId: Customer từ bảng khách hàng. Nếu không có thì dùng "Khách vãng lai".
+ */
+export const createOrderFromItems = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const { items: rawItems = [], locationId, paymentMethod, note = '', discount: discountAmount = 0, isPreOrder = false, customerId, customerName, customerPhone, createdBy: sellerId } = req.body || {};
+        // createdBy (sellerId): Admin/Manager có thể chọn người bán khác
+
+        if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
+            return res.status(400).json({ message: 'Vui lòng chọn chi nhánh/kho' });
+        }
+
+        const validMethods = ['vietqr', 'cash', 'transfer'];
+        const method = validMethods.includes(paymentMethod) ? paymentMethod : 'cash';
+
+        const location = await Location.findById(locationId);
+        if (!location || !location.isActive) {
+            return res.status(404).json({ message: 'Không tìm thấy chi nhánh hoặc chi nhánh không hoạt động' });
+        }
+
+        if (!Array.isArray(rawItems) || rawItems.length === 0) {
+            return res.status(400).json({ message: 'Danh sách sản phẩm trống' });
+        }
+
+        const orderItems = [];
+        let totalAmount = 0;
+
+        for (const it of rawItems) {
+            const productId = it.productId?.toString?.() || it.productId;
+            if (!productId || !mongoose.Types.ObjectId.isValid(productId)) continue;
+
+            const product = await Product.findOne({ _id: productId, isDeleted: false }).lean();
+            if (!product) {
+                return res.status(400).json({
+                    message: `Sản phẩm không tồn tại hoặc đã ngừng kinh doanh`,
+                });
+            }
+
+            const qty = Math.max(1, Number(it.quantity) || 1);
+            const price = typeof product.price === 'number' ? product.price : 0;
+            const stock = await getStockAtLocation(productId, locationId);
+
+            if (stock < qty) {
+                return res.status(400).json({
+                    message: `Sản phẩm "${product.name}" không đủ tồn (yêu cầu: ${qty}, tồn: ${stock})`,
+                });
+            }
+
+            const total = price * qty;
+            orderItems.push({
+                product: product._id,
+                quantity: qty,
+                price,
+                total,
+            });
+            totalAmount += total;
+        }
+
+        if (orderItems.length === 0) {
+            return res.status(400).json({ message: 'Không có sản phẩm hợp lệ' });
+        }
+
+        const discount = Math.max(0, Number(discountAmount) || 0);
+        const finalTotal = Math.max(0, totalAmount - discount);
+
+        let customerProfile = null;
+        let orderCustomerUserId = userId;
+
+        if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+            customerProfile = await Customer.findById(customerId).lean();
+            if (customerProfile) {
+                if (customerProfile.userId) {
+                    orderCustomerUserId = customerProfile.userId;
+                } else {
+                    const guest = await getOrCreateGuestUser();
+                    orderCustomerUserId = guest._id;
+                }
+            }
+        }
+        if (!customerProfile && customerName?.trim() && customerPhone?.trim()) {
+            let existing = await Customer.findOne({ phone: customerPhone.trim() }).lean();
+            if (existing) {
+                customerProfile = existing;
+                if (customerProfile.userId) orderCustomerUserId = customerProfile.userId;
+                else orderCustomerUserId = (await getOrCreateGuestUser())._id;
+            } else {
+                const newC = await Customer.create({
+                    name: customerName.trim(),
+                    phone: customerPhone.trim(),
+                    type: 'retail',
+                });
+                customerProfile = newC.toObject();
+                orderCustomerUserId = (await getOrCreateGuestUser())._id;
+            }
+        }
+        if (!customerProfile) {
+            customerProfile = await getOrCreateDefaultWalkinCustomer();
+            const guest = await getOrCreateGuestUser();
+            orderCustomerUserId = guest._id;
+        }
+
+        let createdByUserId = userId;
+        const canSelectSeller = await isAdminOrManager(userId);
+        if (canSelectSeller && sellerId && mongoose.Types.ObjectId.isValid(sellerId) && sellerId.toString() !== userId.toString()) {
+            const seller = await User.findById(sellerId).populate('roles', 'name').lean();
+            const sellerRoles = seller?.roles?.map((r) => r.name) || [];
+            if (seller && (sellerRoles.includes('seller') || sellerRoles.includes('staff'))) {
+                createdByUserId = sellerId;
+            }
+        }
+
+        const code = await generateOrderCode();
+
+        const order = await Order.create({
+            code,
+            channel: 'in_store',
+            customer: orderCustomerUserId,
+            customerProfile: customerProfile._id,
+            location: locationId,
+            createdBy: createdByUserId,
+            items: orderItems,
+            totalAmount: finalTotal,
+            discount,
+            status: isPreOrder ? 'pending' : 'paid',
+            paymentMethod: method,
+            paymentStatus: isPreOrder ? 'pending' : 'paid',
+            paidAt: isPreOrder ? null : new Date(),
+            shippingAddress: 'Tại quầy',
+            note: String(note).trim(),
+            isPreOrder: !!isPreOrder,
+        });
+
+        if (!isPreOrder) {
+            for (const item of orderItems) {
+                const stock = await ProductStock.findOne({ product: item.product, location: locationId });
+                if (stock) {
+                    stock.quantity -= item.quantity;
+                    await stock.save();
+                }
+            }
+            await Customer.findByIdAndUpdate(customerProfile._id, {
+                $inc: { accumulatedAmount: finalTotal },
+            });
+        }
+
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku name')
+            .populate('location', 'code name address')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .lean();
+
+        return res.status(201).json({
+            success: true,
+            message: 'Tạo hóa đơn thành công',
+            data: { order: populated },
+        });
+    } catch (error) {
+        console.error('createOrderFromItems error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi tạo hóa đơn',
+            error: error.message,
+        });
+    }
+};
+
 /**
  * GET /api/orders – Danh sách đơn hàng.
  * User: chỉ đơn của mình. Admin/Manager: tất cả (có phân trang).
@@ -151,19 +400,25 @@ export const getOrders = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const canViewAll = await isAdminOrManager(userId);
+        const canViewAll = await canViewAllOrders(userId);
 
         const filter = {};
         if (!canViewAll) {
             filter.customer = userId;
         }
 
-        const { page = 1, limit = 10, status, paymentStatus } = req.query;
+        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder } = req.query;
         const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
         const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
 
         if (status) filter.status = status;
         if (paymentStatus) filter.paymentStatus = paymentStatus;
+        if (canViewAll && locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            filter.location = locationId;
+        }
+        if (isPreOrder !== undefined && isPreOrder !== '') {
+            filter.isPreOrder = isPreOrder === 'true' ? true : { $ne: true };
+        }
 
         const [orders, total] = await Promise.all([
             Order.find(filter)
@@ -173,6 +428,7 @@ export const getOrders = async (req, res) => {
                 .populate('items.product', 'sku name')
                 .populate('location', 'code name')
                 .populate('customer', 'username email firstName lastName')
+                .populate('customerProfile', 'name phone type')
                 .lean(),
             Order.countDocuments(filter),
         ]);
@@ -218,13 +474,14 @@ export const getOrderById = async (req, res) => {
             .populate('items.product', 'sku name price')
             .populate('location', 'code name address phone')
             .populate('customer', 'username email firstName lastName phoneNumber')
+            .populate('customerProfile', 'name phone type')
             .lean();
 
         if (!order) {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
 
-        const canViewAll = await isAdminOrManager(userId);
+        const canViewAll = await canViewAllOrders(userId);
 
         if (!canViewAll && order.customer?._id?.toString() !== userId.toString()) {
             return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
@@ -267,8 +524,16 @@ export const updateOrder = async (req, res) => {
         }
         if (paymentStatus) {
             const validPaymentStatuses = ['pending', 'paid', 'failed', 'refunded'];
+            const wasPaid = order.paymentStatus === 'paid';
             if (validPaymentStatuses.includes(paymentStatus)) order.paymentStatus = paymentStatus;
-            if (paymentStatus === 'paid') order.paidAt = new Date();
+            if (paymentStatus === 'paid') {
+                order.paidAt = new Date();
+                if (!wasPaid && order.customerProfile) {
+                    await Customer.findByIdAndUpdate(order.customerProfile, {
+                        $inc: { accumulatedAmount: order.totalAmount || 0 },
+                    });
+                }
+            }
         }
 
         await order.save();
@@ -277,6 +542,7 @@ export const updateOrder = async (req, res) => {
             .populate('items.product', 'sku name')
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
             .lean();
 
         return res.status(200).json({

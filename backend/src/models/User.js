@@ -42,6 +42,12 @@ const userSchema = new mongoose.Schema(
             ref: 'MemberPolicy',
             default: null,
         },
+        /** Liên kết với Customer khi khách đăng ký online (trùng SĐT) */
+        customerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Customer',
+            default: null,
+        },
         isVerified: {
             type: Boolean,
             default: false,

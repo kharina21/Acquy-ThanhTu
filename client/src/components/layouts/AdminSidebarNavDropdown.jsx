@@ -8,11 +8,13 @@ import { ChevronDown } from 'lucide-react';
  * Khi sidebar thu gọn (is-drawer-close): hover/click hiển thị dropdown bên cạnh.
  * Khi sidebar mở: dropdown inline bên trong.
  */
-export default function AdminSidebarNavDropdown({ icon: Icon, label, ariaLabel, subItems = [] }) {
+export default function AdminSidebarNavDropdown({ icon: Icon, label, ariaLabel, subItems = [], activePaths = [] }) {
     const [isOpen, setIsOpen] = useState(false);
     const pathname = useLocation().pathname;
 
-    const isAnyActive = subItems.some((sub) => pathname === sub.to || pathname.startsWith(sub.to + '/'));
+    const isAnyActive =
+        subItems.some((sub) => pathname === sub.to || pathname.startsWith(sub.to + '/')) ||
+        activePaths.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
     const subMenuContent = (
         <ul className='min-w-[200px] py-1 rounded-lg bg-base-100 text-base-content shadow-lg border border-base-300'>

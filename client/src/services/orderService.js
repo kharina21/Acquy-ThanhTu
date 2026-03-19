@@ -5,6 +5,11 @@ export const createOrder = async (data) => {
     return res.data;
 };
 
+export const createOrderFromItems = async (data) => {
+    const res = await api.post('/orders/from-items', data);
+    return res.data;
+};
+
 export const getMyOrders = async (params = {}) => {
     const res = await api.get('/orders', { params });
     return res.data;
@@ -12,5 +17,10 @@ export const getMyOrders = async (params = {}) => {
 
 export const getOrderById = async (id) => {
     const res = await api.get(`/orders/${id}`);
+    return res.data;
+};
+
+export const updateOrder = async (id, data) => {
+    const res = await api.put(`/orders/${id}`, data);
     return res.data;
 };

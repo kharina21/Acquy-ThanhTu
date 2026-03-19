@@ -201,6 +201,9 @@ const StoreProfilePage = () => {
                         </div>
                     )}
                 </section>
+
+                {/* Tài khoản ngân hàng (VietQR) */}
+                <BankAccountSection locations={locations} loading={loading} />
             </div>
 
             {showModal && (

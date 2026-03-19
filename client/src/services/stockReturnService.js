@@ -24,3 +24,8 @@ export const createStockReturn = async (data) => {
     const res = await api.post('/stock-returns', data);
     return res.data;
 };
+
+export const deleteStockReturn = async (id) => {
+    const res = await api.delete(`/stock-returns/${id}`);
+    return res.data;
+};

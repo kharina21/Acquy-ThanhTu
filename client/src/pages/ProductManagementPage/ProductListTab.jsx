@@ -311,7 +311,12 @@ const ProductListTab = () => {
         setShowBarcodeModal(true);
     };
 
-    const handlePrintBarcode = (template) => {
+    /**
+     * In tem mã vạch 35×22mm (2 cell/hàng).
+     * - Khổ giấy: 70×22mm = 1 hàng, chia 2 cell (mỗi cell 35×22mm).
+     * - Chẵn (2,4,6...): in cả 2 cell mỗi hàng. Lẻ: hàng cuối chỉ cell trái.
+     */
+    const handlePrintBarcode = () => {
         if (!selectedProduct) return;
         const barcodeValue = (selectedProduct.barcode || selectedProduct.sku || '').toString().replace(/[^\w\s-]/g, '');
         if (!barcodeValue) {
@@ -319,17 +324,24 @@ const ProductListTab = () => {
             return;
         }
         const qty = Math.min(5000, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
-        const w = template.width ?? 75;
-        const h = template.height ?? 100;
-        const barcodeHeight = h >= 130 ? 36 : 30;
-        const padding = h >= 130 ? 2 : 1.5;
-        const fontSize = h >= 130 ? 11 : 10;
-        const maxChars = h >= 130 ? 35 : 28;
+        const w = 35;
+        const h = 22;
+        const barcodeHeight = 25;
+        const padding = 0;
+        const fontSize = 7;
+        const nameFontSize = 7;
+        const maxChars = 14;
         const fullName = (selectedProduct.name || selectedProduct.sku || '').toString();
         const showBarcodeText = fullName.trim().toUpperCase() !== barcodeValue.trim().toUpperCase();
         const barcodeCanvas = document.createElement('canvas');
         try {
-            JsBarcode(barcodeCanvas, barcodeValue, { format: 'CODE128', width: 1.2, height: barcodeHeight, displayValue: false });
+            JsBarcode(barcodeCanvas, barcodeValue, {
+                format: 'CODE128',
+                width: 1.0,
+                height: barcodeHeight,
+                displayValue: false,
+                margin: 4,
+            });
         } catch (error) {
             console.error('JsBarcode error:', error);
             toast.error('Không tạo được mã vạch. Kiểm tra mã không chứa ký tự đặc biệt.');
@@ -337,7 +349,7 @@ const ProductListTab = () => {
         }
         const priceStr = barcodeShowPrice && selectedProduct.price != null ? formatVND(selectedProduct.price) : '';
         const name = fullName.length > maxChars ? fullName.slice(0, maxChars) + '…' : fullName;
-        const pxPerMm = 6;
+        const pxPerMm = 12;
         const pxW = Math.round(w * pxPerMm);
         const pxH = Math.round(h * pxPerMm);
         const labelCanvas = document.createElement('canvas');
@@ -349,51 +361,96 @@ const ProductListTab = () => {
         ctx.fillStyle = '#000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const fontPx = Math.max(8, fontSize * pxPerMm * 0.35);
-        ctx.font = `bold ${fontPx}px Arial`;
+        const fontPx = Math.max(6, fontSize * pxPerMm * 0.35);
+        const nameFontPx = Math.max(6, nameFontSize * pxPerMm * 0.35);
         const pad = padding * pxPerMm;
-        let y = pad;
-        ctx.fillText(name, pxW / 2, y);
-        y += fontPx * 1.05 + pad * 0.2;
-        const maxBcW = pxW - pad * 2;
-        const targetBcH = pxH * 0.28;
+        const maxBcW = pxW;
+        const targetBcH = pxH * 0.58;
         const scale = Math.min(maxBcW / barcodeCanvas.width, targetBcH / barcodeCanvas.height);
         const bcW = barcodeCanvas.width * scale;
         const bcH = barcodeCanvas.height * scale;
+        const nameGap = nameFontPx * 0.92;
+        const codeGap = fontPx * 0.6;
+        const barcodeMarginBottom = 0;
+        const priceMarginTop = 8;
+        const priceH = priceStr ? fontPx * 1.15 : 0;
+        const totalH = pad + nameGap + bcH + barcodeMarginBottom + codeGap + priceMarginTop + priceH + pad;
+        const offsetY = Math.max(0, (pxH - totalH) / 2);
+        let y = offsetY + pad;
+        ctx.font = `${nameFontPx}px Arial`;
+        ctx.fillText(name, pxW / 2, y);
+        y += nameGap;
         ctx.drawImage(barcodeCanvas, (pxW - bcW) / 2, y, bcW, bcH);
-        y += bcH + pad * 0.1;
-        if (showBarcodeText) {
-            ctx.font = `bold ${Math.max(10, fontPx + 2)}px Arial`;
-            ctx.fillText(barcodeValue, pxW / 2, y);
-            y += fontPx + 1;
-        }
-        y += pad * 0.1;
+        y += bcH + barcodeMarginBottom;
+        ctx.font = `${Math.max(6, fontPx * 0.85)}px Arial`;
+        ctx.fillText(barcodeValue, pxW / 2, y);
+        y += codeGap + priceMarginTop;
         if (priceStr) {
-            ctx.font = `${fontPx}px Arial`;
+            ctx.font = `${Math.max(8, fontPx * 1.1)}px Arial`;
             ctx.fillText(priceStr, pxW / 2, y);
         }
         const labelDataUrl = labelCanvas.toDataURL('image/png');
-        const imgTags = Array(qty).fill(`<img src="${labelDataUrl}" alt="tem" style="width:${w}mm;height:${h}mm;display:block;margin:0;padding:0;" />`).join('');
-        const singleStyle = qty === 1 ? `html,body{width:${w}mm;height:${h}mm;overflow:hidden !important;margin:0;padding:0;}` : '';
-        const win = window.open('', '_blank');
-        win.document.write(`
+
+        // Khổ giấy 70×22mm = 2 cell (35×22mm/cell). Chẵn: cả 2 cell; lẻ: chỉ cell trái.
+        const sheetW = w * 2; // 70mm
+        const sheetH = h; // 22mm
+        const cellW = w; // 35mm
+        const cellH = h; // 22mm
+        const rows = Math.ceil(qty / 2);
+        const bodyStyle = rows === 1 ? `style="height:${sheetH}mm;max-height:${sheetH}mm;overflow:hidden;margin:0;padding:0;"` : `style="padding-top:42px;"`;
+        const imgStyle = `width:${cellW}mm;height:${cellH}mm;min-width:${cellW}mm;min-height:${cellH}mm;max-width:${cellW}mm;max-height:${cellH}mm;display:block;margin:0;padding:0;object-fit:contain;object-position:center;box-sizing:border-box;flex-shrink:0;image-rendering:crisp-edges;-webkit-print-color-adjust:exact;`;
+        const imgTag = `<img src="${labelDataUrl}" alt="tem" style="${imgStyle}" />`;
+        const emptyCell = `<div style="width:${cellW}mm;height:${cellH}mm;flex-shrink:0;background:#fff;"></div>`;
+        const rowHtml = [];
+        for (let row = 0; row < rows; row++) {
+            const count = Math.min(2, qty - row * 2);
+            const rightCell = count >= 2 ? imgTag : emptyCell;
+            const isLast = row === rows - 1;
+            const pageBreakBefore = row === 0 ? 'page-break-before:avoid;' : '';
+            rowHtml.push(
+                `<div style="display:flex;width:${sheetW}mm;height:${sheetH}mm;margin:0;padding:0;${pageBreakBefore}page-break-after:${isLast ? 'avoid' : 'always'};">${imgTag}${rightCell}</div>`,
+            );
+        }
+        const bodyHtml = rowHtml.join('');
+        const singleRowFix =
+            rows === 1 ? `html,body{height:${sheetH}mm !important;max-height:${sheetH}mm !important;overflow:hidden !important;}div{page-break-after:avoid !important;}` : '';
+        const pageStyle = `@page{size:${sheetW}mm ${sheetH}mm landscape;margin:0;}@media print{html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}${singleRowFix}img{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+
+        const hintStyle = `.print-hint{display:block;}@media print{.print-hint{display:none !important;}body{padding:0 !important;margin:0 !important;}}`;
+        const printBody = `<div class="print-hint" style="position:fixed;top:0;left:0;right:0;background:#fef3c7;color:#92400e;padding:8px 12px;font-size:13px;text-align:center;z-index:9999;border-bottom:1px solid #fcd34d;">⚠️ Chọn <strong>Landscape</strong> và <strong>Actual size</strong> trong hộp thoại in.</div>${bodyHtml}`;
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(`
           <!DOCTYPE html><html><head><title>In tem mã - ${selectedProduct.sku}</title>
+          <meta charset="utf-8">
           <style>
-            *{margin:0;padding:0;}
+            *{margin:0;padding:0;box-sizing:border-box;}
             html,body{margin:0;padding:0;}
             img{display:block;}
             img:not(:last-child){page-break-after:always;}
             img:last-child{page-break-after:avoid;}
-            @media print{${singleStyle}}
+            ${hintStyle}
+            @media print{${pageStyle}}
           </style></head>
-          <body>${imgTags}</body></html>
+          <body ${bodyStyle}>${printBody}</body></html>
         `);
-        win.document.close();
-        win.focus();
+        doc.close();
+        iframe.contentWindow.addEventListener('beforeprint', function onBeforePrint() {
+            iframe.contentDocument.body.innerHTML = bodyHtml;
+            iframe.contentDocument.body.style.cssText = 'margin:0;padding:0;';
+        });
+        iframe.contentWindow.addEventListener('afterprint', () => {
+            document.body.removeChild(iframe);
+        });
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        // Fallback: remove iframe nếu afterprint không fire (một số browser)
         setTimeout(() => {
-            win.print();
-            win.close();
-        }, 300);
+            if (iframe.parentNode) document.body.removeChild(iframe);
+        }, 1000);
     };
 
     const handleExportBarcodeExcel = () => {
@@ -1234,13 +1291,13 @@ const ProductListTab = () => {
                     aria-modal='true'
                     aria-labelledby='barcode-modal-title'
                 >
-                    <div className='modal-box max-w-7xl max-h-[90vh] overflow-y-auto'>
+                    <div className='modal-box max-w-lg max-h-[90vh] overflow-y-auto'>
                         <div className='flex justify-between items-center mb-4'>
                             <h3
                                 id='barcode-modal-title'
                                 className='font-bold text-lg'
                             >
-                                Chọn loại giấy in tem mã
+                                In tem mã vạch 35×22mm
                             </h3>
                             <button
                                 type='button'
@@ -1251,44 +1308,42 @@ const ProductListTab = () => {
                                 <X className='w-5 h-5' />
                             </button>
                         </div>
-                        <div className='grid md:grid-cols-4 gap-6'>
-                            {/* Cột trái: Thiết lập in */}
-                            <div className='md:col-span-1 space-y-4'>
+                        <div className='flex flex-col sm:flex-row gap-5'>
+                            {/* Thiết lập in */}
+                            <div className='flex-1 min-w-0 space-y-3'>
                                 <div>
-                                    <label className='label'>
-                                        <span className='label-text font-semibold'>Số lượng in</span>
+                                    <label className='label py-0'>
+                                        <span className='label-text font-medium'>Số lượng in</span>
                                     </label>
                                     <input
                                         type='number'
                                         min={1}
                                         max={500}
-                                        className='input outline-none w-full focus:border-primary'
+                                        className='input input-sm outline-none w-full focus:border-primary'
                                         value={barcodePrintQty}
                                         onChange={(e) => setBarcodePrintQty(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                                     />
                                 </div>
                                 <div>
-                                    <label className='label'>
+                                    <label className='label py-0'>
                                         <span className='label-text'>Mã hàng</span>
                                     </label>
                                     <input
                                         type='text'
-                                        className='input outline-none w-full focus:border-primary bg-base-200'
+                                        className='input input-sm outline-none w-full focus:border-primary bg-base-200'
                                         value={selectedProduct.sku || ''}
                                         readOnly
                                     />
                                 </div>
-                                <div className='flex flex-col gap-2'>
-                                    <label className='label cursor-pointer gap-2'>
-                                        <input
-                                            type='checkbox'
-                                            className='checkbox checkbox-sm'
-                                            checked={barcodeShowPrice}
-                                            onChange={(e) => setBarcodeShowPrice(e.target.checked)}
-                                        />
-                                        <span className='label-text'>Giá kèm VND</span>
-                                    </label>
-                                </div>
+                                <label className='label cursor-pointer gap-2 py-0'>
+                                    <input
+                                        type='checkbox'
+                                        className='checkbox checkbox-sm'
+                                        checked={barcodeShowPrice}
+                                        onChange={(e) => setBarcodeShowPrice(e.target.checked)}
+                                    />
+                                    <span className='label-text'>Giá kèm VND</span>
+                                </label>
                                 <button
                                     type='button'
                                     className='btn btn-success btn-sm gap-2 w-full'
@@ -1297,45 +1352,24 @@ const ProductListTab = () => {
                                     <FileSpreadsheet className='w-4 h-4' />
                                     Xuất file Excel
                                 </button>
-                                <div className='text-xs text-base-content/60 bg-base-200/50 rounded-lg p-3 space-y-1'>
-                                    <p className='font-semibold'>Lưu ý:</p>
-                                    <p>Nếu mã vạch in không đầy đủ, hãy dùng mẫu giấy lớn hơn hoặc rút ngắn mã hàng.</p>
-                                    <p>Hỗ trợ in tối đa 500 tem/lần, không chứa ký tự đặc biệt hoặc chữ có dấu.</p>
-                                </div>
                             </div>
-                            {/* Cột phải: Mẫu giấy */}
-                            <div className='md:col-span-3'>
-                                <p className='text-sm font-semibold mb-3'>Chọn mẫu giấy in nhãn</p>
-                                <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                                    {[
-                                        { id: '75x130', name: '75×130mm', width: 75, height: 130 },
-                                        { id: '75x100', name: '75×100mm', width: 75, height: 100 },
-                                    ].map((tpl) => (
-                                        <div
-                                            key={tpl.id}
-                                            className='flex flex-col items-center gap-2 p-4 rounded-lg border border-base-300 bg-base-200/30 hover:border-primary/50 transition-colors'
-                                        >
-                                            <div
-                                                className='w-20 h-28 flex items-center justify-center rounded border-2 border-dashed border-base-300 bg-base-100'
-                                                title={`${tpl.width}×${tpl.height}mm`}
-                                            >
-                                                <span className='text-xs font-mono text-base-content/70'>
-                                                    {tpl.width}×{tpl.height}
-                                                </span>
-                                            </div>
-                                            <p className='text-sm font-medium'>{tpl.name}</p>
-                                            <button
-                                                type='button'
-                                                className='btn btn-primary btn-sm gap-1 w-full'
-                                                onClick={() => handlePrintBarcode(tpl)}
-                                            >
-                                                <Barcode className='w-4 h-4' />
-                                                Xem bản in
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
+                            {/* In tem */}
+                            <div className='shrink-0 flex flex-col items-center justify-center gap-2'>
+                                <button
+                                    type='button'
+                                    className='btn btn-primary btn-sm gap-1'
+                                    onClick={() => handlePrintBarcode()}
+                                >
+                                    <Barcode className='w-4 h-4' />
+                                    Xem bản in
+                                </button>
+                                <p className='text-[11px] text-amber-600 font-medium text-center'>
+                                    Chọn <strong>70×22mm</strong> trong hộp thoại in
+                                </p>
                             </div>
+                        </div>
+                        <div className='mt-4 text-[11px] text-base-content/50 bg-base-200/50 rounded-lg px-2.5 py-2'>
+                            In tối đa 500 tem/lần. Mã không chứa ký tự đặc biệt.
                         </div>
                     </div>
                     <form

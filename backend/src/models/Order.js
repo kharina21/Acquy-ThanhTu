@@ -18,11 +18,16 @@ const orderSchema = new mongoose.Schema(
     {
         code: { type: String, required: true, unique: true, trim: true },
         channel: { type: String, enum: ['online', 'in_store'], default: 'online' },
+        /** User đặt hàng (online) hoặc guest (in_store). Dùng cho permission. */
         customer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        /** Khách hàng từ bảng Customer – Order luôn trỏ tới Customer (bắt buộc khi tạo mới) */
+        customerProfile: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
         location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null = Bán trên web
         items: [orderItemSchema],
         totalAmount: { type: Number, required: true, default: 0 },
+        /** Giảm giá (VNĐ) – từ chính sách hạng khách hàng hoặc giảm thủ công */
+        discount: { type: Number, default: 0, min: 0 },
         status: {
             type: String,
             enum: ['pending', 'confirmed', 'paid', 'cancelled'],
@@ -42,15 +47,19 @@ const orderSchema = new mongoose.Schema(
         note: { type: String, default: '' },
         vietqrTransactionId: { type: String, default: '' },
         paidAt: { type: Date, default: null },
+        /** Khách đặt hàng tại cửa hàng nhưng hàng chưa có sẵn */
+        isPreOrder: { type: Boolean, default: false },
     },
     { timestamps: true }
 );
 
 orderSchema.index({ customer: 1 });
+orderSchema.index({ customerProfile: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ paymentStatus: 1 });
 orderSchema.index({ location: 1 });
+orderSchema.index({ isPreOrder: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

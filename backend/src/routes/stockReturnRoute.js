@@ -4,6 +4,7 @@ import {
     getAllStockReturns,
     getStockReturnById,
     createStockReturn,
+    deleteStockReturn,
 } from '../controllers/stockReturnController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -17,5 +18,6 @@ router.get('/next-code', getNextCode);
 router.get('/', getAllStockReturns);
 router.get('/:id', getStockReturnById);
 router.post('/', createStockReturn);
+router.delete('/:id', deleteStockReturn);
 
 export default router;

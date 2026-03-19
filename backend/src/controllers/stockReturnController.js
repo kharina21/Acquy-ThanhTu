@@ -194,3 +194,31 @@ export const createStockReturn = async (req, res) => {
         res.status(500).json({ message: 'Lỗi khi tạo phiếu trả hàng', error: error.message });
     }
 };
+
+/**
+ * Hủy phiếu trả hàng: cộng lại tồn kho (đảo ngược trả hàng) rồi xóa phiếu.
+ */
+export const deleteStockReturn = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const stockReturn = await StockReturn.findById(id).lean();
+        if (!stockReturn) {
+            return res.status(404).json({ message: 'Không tìm thấy phiếu trả hàng' });
+        }
+
+        const locationId = stockReturn.location;
+        for (const it of stockReturn.items || []) {
+            await ProductStock.findOneAndUpdate(
+                { product: it.product, location: locationId },
+                { $inc: { quantity: it.quantity } },
+                { upsert: false }
+            );
+        }
+
+        await StockReturn.findByIdAndDelete(id);
+        res.status(200).json({ success: true, message: 'Đã hủy phiếu trả hàng' });
+    } catch (error) {
+        console.error('deleteStockReturn error:', error.message);
+        res.status(500).json({ message: 'Lỗi khi hủy phiếu trả hàng', error: error.message });
+    }
+};
