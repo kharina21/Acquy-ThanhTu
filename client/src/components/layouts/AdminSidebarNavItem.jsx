@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils';
 export default function AdminSidebarNavItem({ to, icon: Icon, label, ariaLabel, activePaths = [] }) {
     const pathname = useLocation().pathname;
     const isActive =
-        activePaths.length > 0 ? activePaths.includes(pathname) : pathname === to;
+        activePaths.length > 0
+            ? activePaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
+            : pathname === to;
 
     return (
         <li>

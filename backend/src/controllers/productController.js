@@ -90,9 +90,12 @@ export const getAllProducts = async (req, res) => {
 
         const query = { isDeleted: false };
         if (search) {
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = esc(search);
             query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { sku: { $regex: search, $options: 'i' } },
+                { name: { $regex: re, $options: 'i' } },
+                { sku: { $regex: re, $options: 'i' } },
+                { barcode: { $regex: re, $options: 'i' } },
             ];
         }
         if (brand && mongoose.Types.ObjectId.isValid(brand)) {
@@ -247,6 +250,10 @@ export const getProductById = async (req, res) => {
                 if (populated?.brand?.name) {
                     product.brand = populated.brand;
                     product.brandName = populated.brand.name;
+                }
+                if (populated?.usageDevice?.name) {
+                    product.usageDevice = populated.usageDevice;
+                    product.usageDeviceName = populated.usageDevice.name;
                 }
             } catch (error) {
                 product.category = null;
@@ -655,7 +662,7 @@ export const getCarBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -667,20 +674,27 @@ export const getCarBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
         })
-            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .sort({ createdAt: -1 })
             .limit(limit)
             .populate('category', 'name')
             .populate('brand', 'name')
             .populate('usageDevice', 'name')
             .lean();
 
+        const productIds = products.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: productIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
+
         const processedProducts = products.map(product => {
             normalizeProductImages(product);
+            product.totalStock = totalsAgg[product._id.toString()] ?? 0;
             return product;
         });
 
@@ -702,7 +716,7 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     try {
         const limit = 5;
 
-        // 1️⃣ Tìm usageDevice phù hợp
+        // Tìm usageDevice phù hợp
         const usageDevices = await UsageDevice.find({
             name: {
                 $in: [
@@ -713,20 +727,27 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
 
         const usageDeviceIds = usageDevices.map(u => u._id);
 
-        // 2️⃣ Lấy sản phẩm theo usageDevice
+        // Lấy sản phẩm theo usageDevice
         const products = await Product.find({
             isDeleted: false,
             usageDevice: { $in: usageDeviceIds }
         })
-            .sort({ createdAt: -1 }) // hoặc sort theo bán chạy nếu có field sold
+            .sort({ createdAt: -1 })
             .limit(limit)
             .populate('category', 'name')
             .populate('brand', 'name')
             .populate('usageDevice', 'name')
             .lean();
 
+        const productIds = products.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: productIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
+
         const processedProducts = products.map(product => {
             normalizeProductImages(product);
+            product.totalStock = totalsAgg[product._id.toString()] ?? 0;
             return product;
         });
 
@@ -744,3 +765,386 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
     }
 };
 
+const buildFilter = (queryParams) => {
+    const {
+        category,
+        brand,
+        usageDevice,
+        minAh,
+        maxAh,
+        minPrice,
+        maxPrice,
+        search
+    } = queryParams;
+
+    const query = {
+        isDeleted: false
+    };
+
+
+
+    if (category) {
+        const ids = category
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.category = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (brand) {
+        const ids = brand
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.brand = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (usageDevice) {
+        const ids = usageDevice
+            .split(',')
+            .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        if (ids.length) {
+            query.usageDevice = {
+                $in: ids.map(id => new mongoose.Types.ObjectId(id))
+            };
+        }
+    }
+
+    if (minAh || maxAh) {
+
+        const capacityNumber = {
+            $convert: {
+                input: {
+                    $replaceAll: {
+                        input: "$capacity",
+                        find: "Ah",
+                        replacement: ""
+                    }
+                },
+                to: "double",
+                onError: null,
+                onNull: null
+            }
+        };
+
+        const exprConditions = [];
+
+        if (minAh) {
+            exprConditions.push({
+                $gte: [capacityNumber, Number(minAh)]
+            });
+        }
+
+        if (maxAh) {
+            exprConditions.push({
+                $lte: [capacityNumber, Number(maxAh)]
+            });
+        }
+
+        query.$or = [
+            {
+                $expr: { $and: exprConditions }
+            },
+            {
+                capacity: { $exists: false }
+            },
+            {
+                capacity: ""
+            }
+        ];
+    }
+
+    if (minPrice || maxPrice) {
+        query.price = {};
+
+        if (minPrice && minPrice !== "0") {
+            query.price.$gte = parseFloat(minPrice);
+        }
+
+        if (maxPrice && maxPrice !== "0") {
+            query.price.$lte = parseFloat(maxPrice);
+        }
+
+        if (Object.keys(query.price).length === 0) {
+            delete query.price;
+        }
+    }
+
+    function escapeRegex(text) {
+        return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    }
+
+    if (search) {
+        const safeSearch = escapeRegex(search);
+        query.name = {
+            $regex: safeSearch,
+            $options: 'i'
+        };
+    }
+
+    return query;
+
+};
+
+const buildSort = (sort) => {
+
+    switch (sort) {
+
+        case "price_asc":
+            return { price: 1 };
+
+        case "price_desc":
+            return { price: -1 };
+
+        case "ah_asc":
+            return { capacityNumber: 1 };
+
+        case "ah_desc":
+            return { capacityNumber: -1 };
+
+        default:
+            return { createdAt: -1 };
+
+    }
+
+};
+
+export const getFilterOptions = async (req, res) => {
+    try {
+        const categories = await Category.find({}).select('name');
+        const brands = await Brand.find({}).select('name');
+        const usageDevices = await UsageDevice.find({}).select('name');
+
+        res.json({
+            success: true,
+            data: {
+                categories,
+                brands,
+                usageDevices
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Lỗi khi lấy tùy chọn lọc',
+            error: error.message
+        });
+    }
+}
+
+export const filterProducts = async (req, res) => {
+    try {
+
+        const { page = 1, limit = 15, sort } = req.query;
+
+        const filterQuery = buildFilter(req.query);
+        const sortQuery = buildSort(sort);
+
+        const skip = (page - 1) * limit;
+
+        const products = await Product.aggregate([
+
+            { $match: filterQuery },
+
+            {
+                $addFields: {
+                    capacityNumber: {
+                        $convert: {
+                            input: {
+                                $replaceAll: {
+                                    input: "$capacity",
+                                    find: "Ah",
+                                    replacement: ""
+                                }
+                            },
+                            to: "double",
+                            onError: null,
+                            onNull: null
+                        }
+                    }
+                }
+            },
+
+            {
+                $lookup: {
+                    from: 'productstocks',
+                    localField: '_id',
+                    foreignField: 'product',
+                    as: 'stocks'
+                }
+            },
+            {
+                $addFields: {
+                    totalStock: { $sum: '$stocks.quantity' }
+                }
+            },
+            { $project: { stocks: 0 } },
+
+            { $sort: sortQuery },
+
+            { $skip: skip },
+
+            { $limit: Number(limit) }
+
+        ]);
+
+        await Product.populate(products, [
+            { path: "category", select: "name" },
+            { path: "brand", select: "name" },
+            { path: "usageDevice", select: "name" }
+        ]);
+
+        const totalProducts = await Product.countDocuments(filterQuery);
+
+        const processedProducts = products.map(product => {
+            normalizeProductImages(product);
+            return product;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                products: processedProducts,
+                totalProducts,
+                totalPages: Math.ceil(totalProducts / limit),
+                currentPage: Number(page)
+            }
+        });
+    } catch (error) {
+        console.error('filterProducts error:', error.message);
+        res.status(500).json({
+            message: "Lỗi khi lọc danh sách sản phẩm",
+            error: error.message
+        });
+    }
+
+
+};
+
+
+/**
+ * Lấy danh sách sản phẩm liên quan
+ */
+export const getRelatedProducts = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const limit = parseInt(req.query.limit) || 4;
+
+        // 1. Lấy thông tin sản phẩm gốc
+        const targetProduct = await Product.findById(id).lean();
+        if (!targetProduct || targetProduct.isDeleted) {
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+        }
+
+        const targetId = targetProduct._id.toString();
+        const targetUsageDevice = targetProduct.usageDevice?.toString();
+        const targetCategory = targetProduct.category?.toString();
+
+        // 2. Thu thập ứng viên theo nhiều mức độ ưu tiên
+        let candidates = [];
+
+        // Mức 1: Cùng cả thiết bị sử dụng VÀ cùng danh mục
+        if (targetUsageDevice && targetCategory) {
+            const lv1 = await Product.find({
+                _id: { $ne: targetId },
+                isDeleted: false,
+                usageDevice: targetUsageDevice,
+                category: targetCategory,
+            })
+                .limit(limit * 2)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...lv1];
+        }
+
+        // Mức 2: Nếu chưa đủ limit, tìm cùng thiết bị sử dụng (khác danh mục cũng được)
+        if (candidates.length < limit && targetUsageDevice) {
+            const existingIds = candidates.map((c) => c._id.toString());
+            const lv2 = await Product.find({
+                _id: { $ne: targetId, $nin: existingIds },
+                isDeleted: false,
+                usageDevice: targetUsageDevice,
+            })
+                .limit(limit)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...candidates, ...lv2];
+        }
+
+        // Mức 3: Nếu vẫn chưa đủ limit, tìm cùng danh mục
+        if (candidates.length < limit && targetCategory) {
+            const existingIds = [targetId, ...candidates.map((c) => c._id.toString())];
+            const lv3 = await Product.find({
+                _id: { $nin: existingIds },
+                isDeleted: false,
+                category: targetCategory,
+            })
+                .limit(limit)
+                .populate("category brand usageDevice")
+                .lean();
+            candidates = [...candidates, ...lv3];
+        }
+
+        // 3. Xử lý logic dung lượng (Capacity) để sắp xếp trong cùng một mức ưu tiên nếu cần
+        const parseCapacity = (capStr) => {
+            if (!capStr) return 0;
+            const match = String(capStr).match(/\d+(\.\d+)?/);
+            return match ? parseFloat(match[0]) : 0;
+        };
+        const targetCap = parseCapacity(targetProduct.capacity);
+
+        // Hàm tính điểm ưu tiên (Score)
+        // Cùng device: +1000 điểm
+        // Cùng category: +500 điểm
+        // Độ lệch dung lượng: trừ điểm
+        const getScore = (p) => {
+            let score = 0;
+            const pDevice = p.usageDevice?._id?.toString() || p.usageDevice?.toString();
+            const pCategory = p.category?._id?.toString() || p.category?.toString();
+            
+            if (targetUsageDevice && pDevice === targetUsageDevice) score += 1000;
+            if (targetCategory && pCategory === targetCategory) score += 500;
+            
+            const capDiff = Math.abs(parseCapacity(p.capacity) - targetCap);
+            score -= capDiff; // Dung lượng càng gần càng tốt
+            
+            return score;
+        };
+
+        // Sắp xếp lại dựa trên score
+        candidates.sort((a, b) => getScore(b) - getScore(a));
+
+        // 4. Lấy top X
+        const topProducts = candidates.slice(0, limit);
+        const topIds = topProducts.map((p) => p._id);
+        const totalsAgg = await ProductStock.aggregate([
+            { $match: { product: { $in: topIds } } },
+            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+        ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
+
+        // Normalize dữ liệu trước khi trả về
+        topProducts.forEach((p) => {
+            normalizeProductImages(p);
+            p.totalStock = totalsAgg[p._id.toString()] ?? 0;
+            if (p.category) p.categoryName = p.category.name;
+            if (p.brand) p.brandName = p.brand.name;
+            if (p.usageDevice) p.usageDeviceName = p.usageDevice.name;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: { products: topProducts },
+        });
+    } catch (error) {
+        console.error("getRelatedProducts error:", error.message);
+        res.status(500).json({ message: "Lỗi khi lấy sản phẩm liên quan", error: error.message });
+    }
+};

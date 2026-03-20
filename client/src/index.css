@@ -151,6 +151,15 @@ body {
     border-color: var(--color-primary-border-hover) !important;
 }
 
+/* input-error: viền đỏ khi lỗi (vd: hết hàng) */
+.input.input-bordered.input-error {
+    border-color: var(--color-error) !important;
+}
+.input.input-bordered.input-error:focus {
+    border-color: var(--color-error) !important;
+    box-shadow: 0 0 0 2px var(--color-error) !important;
+}
+
 /* Tương tự cho textarea và select */
 .textarea.textarea-bordered {
     border-color: var(--color-primary-border) !important;

@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
+import { getStockAtLocation } from './productStockController.js';
+import { getOnlineLocation } from './locationController.js';
+
+/** Chi nhánh bán online – dùng cho giỏ hàng và đơn online. */
+const getOnlineLoc = () => getOnlineLocation();
 
 const mapCartToResponse = (cart) => {
     if (!cart) {
@@ -37,6 +42,17 @@ const mapCartToResponse = (cart) => {
     });
 };
 
+/** Thêm stock vào từng item. */
+const addStockToItems = async (items, locationId) => {
+    if (!locationId || !items?.length) return items;
+    const result = [];
+    for (const item of items) {
+        const stock = await getStockAtLocation(item.productId, locationId);
+        result.push({ ...item, stock });
+    }
+    return result;
+};
+
 const getOrCreateCart = async (userId) => {
     let cart = await Cart.findOne({ userId });
     if (!cart) {
@@ -56,7 +72,11 @@ export const getCart = async (req, res) => {
             .populate('items.product', 'name price image images isDeleted')
             .lean();
 
-        const items = mapCartToResponse(cart);
+        let items = mapCartToResponse(cart);
+        const defaultLocation = await getOnlineLoc();
+        if (defaultLocation) {
+            items = await addStockToItems(items, defaultLocation._id);
+        }
 
         return res.status(200).json({
             success: true,
@@ -100,6 +120,19 @@ export const addItemToCart = async (req, res) => {
             (item) => item.product.toString() === productId.toString()
         );
 
+        const newQuantity = existingIndex !== -1 ? cart.items[existingIndex].quantity + qty : qty;
+
+        // Kiểm tra tồn kho trước khi thêm
+        const defaultLocation = await getOnlineLoc();
+        if (defaultLocation) {
+            const stock = await getStockAtLocation(productId, defaultLocation._id);
+            if (newQuantity > stock) {
+                return res.status(400).json({
+                    message: `Số lượng vượt quá tồn kho. Tồn kho hiện tại: ${stock}`,
+                });
+            }
+        }
+
         if (existingIndex !== -1) {
             cart.items[existingIndex].quantity += qty;
         } else {
@@ -118,7 +151,10 @@ export const addItemToCart = async (req, res) => {
             .populate('items.product', 'name price image images isDeleted')
             .lean();
 
-        const items = mapCartToResponse(populated);
+        let items = mapCartToResponse(populated);
+        if (defaultLocation) {
+            items = await addStockToItems(items, defaultLocation._id);
+        }
 
         return res.status(200).json({
             success: true,
@@ -165,6 +201,15 @@ export const updateCartItem = async (req, res) => {
         if (qty <= 0) {
             cart.items.splice(index, 1);
         } else {
+            const defaultLoc = await getOnlineLoc();
+            if (defaultLoc) {
+                const stock = await getStockAtLocation(productId, defaultLoc._id);
+                if (qty > stock) {
+                    return res.status(400).json({
+                        message: `Số lượng vượt quá tồn kho. Tồn kho hiện tại: ${stock}`,
+                    });
+                }
+            }
             cart.items[index].quantity = qty;
         }
 
@@ -174,7 +219,11 @@ export const updateCartItem = async (req, res) => {
             .populate('items.product', 'name price image images isDeleted')
             .lean();
 
-        const items = mapCartToResponse(populated);
+        let items = mapCartToResponse(populated);
+        const defaultLocation = await getOnlineLoc();
+        if (defaultLocation) {
+            items = await addStockToItems(items, defaultLocation._id);
+        }
 
         return res.status(200).json({
             success: true,
@@ -219,7 +268,11 @@ export const removeCartItem = async (req, res) => {
             .populate('items.product', 'name price image images isDeleted')
             .lean();
 
-        const items = mapCartToResponse(populated);
+        let items = mapCartToResponse(populated);
+        const defaultLocation = await getOnlineLoc();
+        if (defaultLocation) {
+            items = await addStockToItems(items, defaultLocation._id);
+        }
 
         return res.status(200).json({
             success: true,

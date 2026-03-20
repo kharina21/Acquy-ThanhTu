@@ -35,7 +35,6 @@ const cartSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
             required: true,
-            unique: true,
         },
         items: {
             type: [cartItemSchema],
@@ -44,8 +43,6 @@ const cartSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
-
-cartSchema.index({ userId: 1 }, { unique: true });
 
 const Cart = mongoose.model('Cart', cartSchema);
 

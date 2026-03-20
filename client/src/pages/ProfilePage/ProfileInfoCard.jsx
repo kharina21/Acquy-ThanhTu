@@ -15,7 +15,7 @@ const profileSchema = z.object({
     address: z.string().optional(),
 });
 
-const ProfileInfoCard = () => {
+const ProfileInfoCard = ({ isCustomer }) => {
     const { user, updateUser, updatingProfile: isSaving } = useAuthStore();
     const [isEditing, setIsEditing] = useState(false);
 
@@ -70,10 +70,14 @@ const ProfileInfoCard = () => {
             });
         }
     }, [user, reset]);
+    const cardClass = isCustomer
+        ? 'bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8'
+        : 'bg-base-100 rounded-lg shadow-lg p-6 md:p-8 lg:col-span-2';
+
     return (
-        <div className="bg-base-100 rounded-lg shadow-lg p-6 md:p-8 lg:col-span-2">
+        <div className={cardClass}>
             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-primary">
+                <h2 className={`text-lg sm:text-xl font-bold flex items-center gap-2 ${isCustomer ? 'text-gray-800' : 'text-primary'}`}>
                     <UserRound className="w-6 h-6 text-primary" />
                     Thông tin cá nhân
                 </h2>
@@ -137,9 +141,9 @@ const ProfileInfoCard = () => {
                                 )}
                             </>
                         ) : (
-                            <div className="flex items-center gap-3 p-3 bg-base-200 rounded-lg">
-                                <UserRound className="w-5 h-5 text-base-content/60" />
-                                <span className="text-base-content">
+                            <div className={`flex items-center gap-3 p-3 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
+                                <UserRound className={`w-5 h-5 ${isCustomer ? 'text-gray-400' : 'text-base-content/60'}`} />
+                                <span className={`break-words ${isCustomer ? 'text-gray-800' : 'text-base-content'}`}>
                                     {user.firstName || 'Chưa có thông tin'}
                                 </span>
                             </div>
@@ -165,9 +169,9 @@ const ProfileInfoCard = () => {
                                 )}
                             </>
                         ) : (
-                            <div className="flex items-center gap-3 p-3 bg-base-200 rounded-lg">
-                                <UserRound className="w-5 h-5 text-base-content/60" />
-                                <span className="text-base-content">
+                            <div className={`flex items-center gap-3 p-3 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
+                                <UserRound className={`w-5 h-5 ${isCustomer ? 'text-gray-400' : 'text-base-content/60'}`} />
+                                <span className={`break-words ${isCustomer ? 'text-gray-800' : 'text-base-content'}`}>
                                     {user.lastName || 'Chưa có thông tin'}
                                 </span>
                             </div>
@@ -196,9 +200,9 @@ const ProfileInfoCard = () => {
                                 )}
                             </>
                         ) : (
-                            <div className="flex items-center gap-3 p-3 bg-base-200 rounded-lg">
-                                <Mail className="w-5 h-5 text-base-content/60" />
-                                <span className="text-base-content">{user.email}</span>
+                            <div className={`flex items-center gap-3 p-3 rounded-xl min-w-0 ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
+                                <Mail className={`w-5 h-5 shrink-0 ${isCustomer ? 'text-gray-400' : 'text-base-content/60'}`} />
+                                <span className={`break-all min-w-0 ${isCustomer ? 'text-gray-800' : 'text-base-content'}`}>{user.email}</span>
                             </div>
                         )}
                     </div>
@@ -221,9 +225,9 @@ const ProfileInfoCard = () => {
                                 </div>
                             </>
                         ) : (
-                            <div className="flex items-center gap-3 p-3 bg-base-200 rounded-lg">
-                                <Phone className="w-5 h-5 text-base-content/60" />
-                                <span className="text-base-content">
+                            <div className={`flex items-center gap-3 p-3 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
+                                <Phone className={`w-5 h-5 ${isCustomer ? 'text-gray-400' : 'text-base-content/60'}`} />
+                                <span className={`break-words ${isCustomer ? 'text-gray-800' : 'text-base-content'}`}>
                                     {user.phoneNumber || 'Chưa có thông tin'}
                                 </span>
                             </div>
@@ -249,9 +253,9 @@ const ProfileInfoCard = () => {
                             </div>
                         </>
                     ) : (
-                        <div className="flex items-start gap-3 p-3 bg-base-200 rounded-lg">
-                            <MapPin className="w-5 h-5 text-base-content/60 mt-0.5" />
-                            <span className="text-base-content">
+                        <div className={`flex items-start gap-3 p-3 rounded-xl ${isCustomer ? 'bg-gray-50' : 'bg-base-200 rounded-lg'}`}>
+                            <MapPin className={`w-5 h-5 mt-0.5 ${isCustomer ? 'text-gray-400' : 'text-base-content/60'}`} />
+                            <span className={`break-words ${isCustomer ? 'text-gray-800' : 'text-base-content'}`}>
                                 {user.address || 'Chưa có thông tin'}
                             </span>
                         </div>

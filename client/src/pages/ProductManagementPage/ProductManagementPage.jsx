@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Package, DollarSign, ClipboardList } from 'lucide-react';
+import { Package, DollarSign } from 'lucide-react';
 import ProductListTab from './ProductListTab';
 import PriceSettingsTab from './PriceSettingsTab';
-import StockCheckTab from './StockCheckTab';
 
 const TABS = [
     { id: 'list', label: 'Danh sách sản phẩm', icon: Package, component: ProductListTab },
-    { id: 'stock-check', label: 'Kiểm kho', icon: ClipboardList, component: StockCheckTab },
     { id: 'price', label: 'Thiết lập giá', icon: DollarSign, component: PriceSettingsTab },
 ];
 

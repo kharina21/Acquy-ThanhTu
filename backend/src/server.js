@@ -17,10 +17,18 @@ import usageDeviceRoutes from './routes/usageDeviceRoute.js';
 import productStockRoutes from './routes/productStockRoute.js';
 import roleRoutes from './routes/roleRoute.js';
 import employeeRoutes from './routes/employeeRoute.js';
-import workScheduleRoutes from './routes/workScheduleRoute.js';
-import shiftRoutes from './routes/shiftRoute.js';
+import memberPolicyRoutes from './routes/memberPolicyRoute.js';
+import supplierRoutes from './routes/supplierRoute.js';
+import stockInRoutes from './routes/stockInRoute.js';
+import stockReturnRoutes from './routes/stockReturnRoute.js';
+import bankAccountRoutes from './routes/bankAccountRoute.js';
 import cartRoutes from './routes/cartRoute.js';
 import batteryTradeInRoutes from './routes/batteryTradeInRoute.js';
+import orderRoutes from './routes/orderRoute.js';
+import customerRoutes from './routes/customerRoute.js';
+import paymentRoutes from './routes/paymentRoute.js';
+import workScheduleRoutes from './routes/workScheduleRoute.js';
+import shiftRoutes from './routes/shiftRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -31,7 +39,7 @@ app.use(
     cors({
         origin: true,
         credentials: true,
-    })
+    }),
 );
 
 app.use(express.json());
@@ -49,13 +57,21 @@ app.use('/api/product-stocks', productStockRoutes);
 app.use('/api/usage-devices', usageDeviceRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/employees', employeeRoutes);
+app.use('/api/member-policies', memberPolicyRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/stock-ins', stockInRoutes);
+app.use('/api/stock-returns', stockReturnRoutes);
+app.use('/api/bank-accounts', bankAccountRoutes);
 app.use('/api/work-schedules', workScheduleRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/battery-trade-in', batteryTradeInRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/payments', paymentRoutes);
 
 connectDB().then(() =>
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}🎉`);
-    })
+    }),
 );

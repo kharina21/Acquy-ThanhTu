@@ -29,6 +29,9 @@ export const sendVerificationEmail = async (email, code) => {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
         },
+        tls: {
+            rejectUnauthorized: process.env.NODE_ENV === 'production',
+        },
     });
 
     await transporter.sendMail({
@@ -74,7 +77,9 @@ export const sendPasswordResetEmail = async (email, resetToken, resetUrl) => {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS,
             },
-
+            tls: {
+                rejectUnauthorized: process.env.NODE_ENV === 'production',
+            },
         };
         const transporter = nodemailer.createTransport(transporterConfig);
 

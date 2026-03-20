@@ -1,10 +1,46 @@
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge"
 
+/**
+ * Tính hạng khách hàng dựa trên accumulatedAmount và danh sách MemberPolicy.
+ * Policies nên được sắp xếp theo minTotalSpent tăng dần.
+ * Trả về policy.name của hạng cao nhất mà khách đạt được, hoặc null nếu không có.
+ */
+export function getCustomerTier(accumulatedAmount, policies) {
+    const policy = getCustomerPolicy(accumulatedAmount, policies);
+    return policy?.name ?? null;
+}
+
+/**
+ * Trả về policy object đầy đủ (name, discountPercent, ...) của hạng cao nhất khách đạt được.
+ * Dùng để lấy discountPercent áp dụng giảm giá.
+ */
+export function getCustomerPolicy(accumulatedAmount, policies) {
+    if (!Array.isArray(policies) || policies.length === 0) return null;
+    const amount = Number(accumulatedAmount) || 0;
+    const active = policies.filter((p) => p.isActive !== false);
+    let matched = null;
+    for (const p of active) {
+        if (amount >= (p.minTotalSpent ?? 0)) {
+            matched = p;
+        }
+    }
+    return matched;
+}
+
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+
+// Lấy tên hiển thị của người dùng (firstName + lastName hoặc username)
+export const getDisplayName = (user) => {
+  if (!user) return '';
+  const firstName = user.firstName || '';
+  const lastName = user.lastName || '';
+  if (firstName || lastName) return `${firstName} ${lastName}`.trim();
+  return user.username || '';
+};
 
 // Lấy chữ cái đầu tiên của tên người dùng
 export const getInitials = (user) => {

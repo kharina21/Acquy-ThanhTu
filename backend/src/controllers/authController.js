@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Customer from '../models/Customer.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
@@ -59,6 +60,34 @@ export const registerUser = async (req, res) => {
         });
         //gán role mặc định cho user
         await assignDefaultRole(user);
+
+        // Kiểm tra đã có Customer chưa, nếu chưa thì tạo mới và liên kết
+        let customer = null;
+        if (phoneNumber?.trim()) {
+            customer = await Customer.findOne({
+                phone: phoneNumber.trim(),
+                type: { $in: ['retail', 'walkin'] },
+                userId: null,
+            });
+        }
+        if (customer) {
+            customer.userId = user._id;
+            customer.type = 'registered';
+            customer.name = [firstName, lastName].filter(Boolean).join(' ') || customer.name;
+            await customer.save();
+            user.customerId = customer._id;
+            await user.save();
+        } else {
+            const name = [firstName, lastName].filter(Boolean).join(' ') || username || 'Khách hàng';
+            const newCustomer = await Customer.create({
+                name,
+                phone: phoneNumber?.trim() || '',
+                type: 'registered',
+                userId: user._id,
+            });
+            user.customerId = newCustomer._id;
+            await user.save();
+        }
 
         // Log activity
         await logAuthActivity({

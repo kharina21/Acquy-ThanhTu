@@ -1,0 +1,15 @@
+---
+description: Keep use cases in sync when adding or removing features
+globs: client/src/data/useCases.js, USE_CASES.md, backend/**/*.js, client/src/pages/**/*.jsx
+alwaysApply: false
+---
+
+# Use Cases Sync Rule
+
+When you add or remove a feature/use case in this project:
+
+1. **Update `client/src/data/useCases.js`** – Add or remove the corresponding entry in the `USE_CASES` array. Format: `{ id: number, module: string, useCase: string, description: string }`. Use the next available `id` when adding.
+
+2. **Update `USE_CASES.md`** – Regenerate the markdown table so it matches `useCases.js`. The table is used for documentation and should stay in sync.
+
+3. **Source of truth**: `client/src/data/useCases.js` is the single source. The UseCasesPage UI and USE_CASES.md both derive from it.
