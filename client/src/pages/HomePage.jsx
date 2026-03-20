@@ -7,6 +7,7 @@ import { Header } from '@/components/Header';
 import { HeroSlider } from '@/components/HeroSlider';
 import { ServiceFeatures } from '@/components/ServiceFeatures';
 import { ProductSection } from '@/components/ProductSection';
+import { BatteryTradeInBanner } from '@/components/BatteryTradeInBanner';
 import { PartnersSection } from '@/components/PartnersSection';
 import { Footer } from '@/components/Footer';
 
@@ -46,6 +47,7 @@ const HomePage = () => {
             <HeroSlider />
             <ServiceFeatures />
             <ProductSection />
+            <BatteryTradeInBanner />
             <PartnersSection />
             <Footer />
         </div>

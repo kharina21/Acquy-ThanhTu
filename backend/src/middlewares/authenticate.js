@@ -42,3 +42,22 @@ export const authenticate = async (req, res, next) => {
         return res.status(500).json({ message: 'Authentication error', error: error.message });
     }
 };
+
+/**
+ * Xác thực tùy chọn - nếu có token hợp lệ thì set req.user, không thì tiếp tục (không lỗi)
+ */
+export const optionalAuthenticate = async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.split(' ')[1]) {
+            return next();
+        }
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.userId).select('-password');
+        if (user) req.user = user;
+        next();
+    } catch {
+        next();
+    }
+};

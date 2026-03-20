@@ -16,6 +16,7 @@ import StoreProfilePage from '../pages/StoreProfilePage/StoreProfilePage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
+import BatteryTradeInPage from '../pages/BatteryTradeInPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -49,6 +50,7 @@ export const AppRoutes = () => {
             {/* PUBLIC HOME - Cho phép cả authenticated và unauthenticated users */}
             <Route path="/home" element={<HomePage />} />
             <Route path="/listproduct" element={<ListProduct />} />
+            <Route path="/battery-trade-in" element={<BatteryTradeInPage />} />
             {/* Giỏ hàng - giao diện only */}
             <Route path="/cart" element={<CartPage />} />
 
