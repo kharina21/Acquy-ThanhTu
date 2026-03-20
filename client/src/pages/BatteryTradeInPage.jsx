@@ -10,7 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { submitBatteryTradeIn, uploadBatteryImage } from '@/services/batteryTradeInService';
 import { getProducts } from '@/services/productService';
-import { FileText, ImagePlus, X } from 'lucide-react';
+import { FileText, ImagePlus, X, CheckCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const POLICY_SECTIONS = [
     {
@@ -20,7 +21,7 @@ const POLICY_SECTIONS = [
                 <p className="font-medium text-blue-900">Mục đích:</p>
                 <p className="mb-2 text-gray-600">Hỗ trợ khách hàng tiết kiệm chi phí khi thay thế ắc quy mới, đồng thời thu hồi các sản phẩm cũ đạt chất lượng để tối ưu hóa vòng đời sản phẩm.</p>
                 <p className="font-medium text-blue-900">Phạm vi:</p>
-                <p className="text-gray-600">Áp dụng cho tất cả khách hàng mang ắc quy đến giao dịch trực tiếp tại cửa hàng hoặc yêu cầu dịch vụ tận nơi. Chỉ áp dụng cho các dòng ắc quy Ô tô / Xe máy / Xe điện.</p>
+                <p className="text-gray-600">Áp dụng cho tất cả khách hàng mang ắc quy đến giao dịch trực tiếp tại cửa hàng hoặc gửi yêu cầu cho cửa hàng. Chỉ áp dụng cho các dòng ắc quy Ô tô / Xe máy / Xe điện.</p>
             </>
         ),
     },
@@ -32,7 +33,7 @@ const POLICY_SECTIONS = [
                 <p className="font-medium text-blue-900 mt-3">Về tuổi thọ và niên hạn:</p>
                 <ul className="list-disc pl-5 mb-2 text-gray-600 space-y-1">
                     <li>Ắc quy có năm sản xuất từ sau năm 2022 trở lại đây.</li>
-                    <li>Hoặc ắc quy còn ít nhất 3 năm niên hạn sử dụng theo tiêu chuẩn khuyến cáo của nhà sản xuất.</li>
+                    <li>Hoặc ắc quy còn ít nhất 2 năm niên hạn sử dụng theo tiêu chuẩn khuyến cáo của nhà sản xuất.</li>
                 </ul>
                 <p className="font-medium text-blue-900 mt-3">Về tình trạng kỹ thuật:</p>
                 <ul className="list-disc pl-5 mb-2 text-gray-600 space-y-1">
@@ -51,7 +52,7 @@ const POLICY_SECTIONS = [
         title: 'III. Khung định giá và Chính sách trợ giá',
         content: (
             <>
-                <p className="mb-2 text-gray-600">Giá trị thu lại của ắc quy cũ sẽ được xác định dựa trên thương hiệu, dung lượng (Ah) và tỷ lệ hao mòn thực tế sau khi kiểm tra.</p>
+                <p className="mb-2 text-gray-600">Giá trị thu lại của ắc quy cũ sẽ được xác định dựa trên thương hiệu, dung lượng (Ah), khối lượng và tỷ lệ hao mòn thực tế sau khi kiểm tra.</p>
                 <p className="font-medium text-blue-900">Trợ giá đặc biệt:</p>
                 <p className="text-gray-600">Khách hàng sẽ được thu mua với mức giá cao hơn mức định giá tiêu chuẩn nếu cung cấp được Hóa đơn mua hàng hợp lệ (hóa đơn giấy hoặc điện tử) từ các cửa hàng cũ/đại lý trước đó, chứng minh được nguồn gốc và thời gian sử dụng thực tế của bình.</p>
             </>
@@ -61,10 +62,10 @@ const POLICY_SECTIONS = [
         title: 'IV. Quy trình thực hiện',
         content: (
             <ol className="list-decimal pl-5 space-y-2 text-gray-600">
-                <li><strong className="text-blue-900">Tiếp nhận:</strong> Nhân viên tiếp nhận ắc quy và ghi nhận thông tin ban đầu, kiểm tra các chứng từ liên quan (nếu có).</li>
-                <li><strong className="text-blue-900">Thẩm định:</strong> Kỹ thuật viên kiểm tra ngoại quan và sử dụng thiết bị đo lường để đánh giá tình trạng cell pin/dung dịch bên trong.</li>
+                <li><strong className="text-blue-900">Tiếp nhận:</strong> Nhân viên tiếp nhận ắc quy và ghi nhận thông tin ban đầu, liên hệ và  kiểm tra các chứng từ liên quan (nếu có).</li>
+                <li><strong className="text-blue-900">Thẩm định:</strong> Khách hàng mang bình đến cửa hàng sẽ được Kỹ thuật viên kiểm tra ngoại quan và sử dụng thiết bị đo lường để đánh giá tình trạng cell pin/dung dịch bên trong.</li>
                 <li><strong className="text-blue-900">Báo giá:</strong> Cửa hàng thông báo mức giá thu lại cho khách hàng dựa trên tình trạng thực tế.</li>
-                <li><strong className="text-blue-900">Thanh toán/Khấu trừ:</strong> Số tiền thu cũ sẽ được trừ trực tiếp vào hóa đơn mua ắc quy mới của khách hàng tại cửa hàng.</li>
+                <li><strong className="text-blue-900">Thanh toán/Khấu trừ:</strong> Số tiền thu cũ sẽ được thanh toán trực tiếp hoặc trừ trực tiếp vào hóa đơn mua ắc quy mới của khách hàng tại cửa hàng.</li>
             </ol>
         ),
     },
@@ -97,6 +98,7 @@ export default function BatteryTradeInPage() {
         productId: '',
         batteryName: '',
         images: [],
+        quantity: 1,
         manufacturingDate: '',
         expiryDate: '',
         condition: '',
@@ -107,6 +109,7 @@ export default function BatteryTradeInPage() {
         weightKg: '',
     });
     const [uploadingImages, setUploadingImages] = useState(false);
+    const [showSuccessDialog, setShowSuccessDialog] = useState(false);
 
     // Tự động điền thông tin từ profile khi đã đăng nhập
     useEffect(() => {
@@ -180,6 +183,7 @@ export default function BatteryTradeInPage() {
                 productId: productId || undefined,
                 batteryName: batteryName?.trim() || '',
                 images: form.images || [],
+                quantity: Math.max(1, parseInt(form.quantity, 10) || 1),
                 manufacturingDate: form.manufacturingDate || undefined,
                 expiryDate: form.expiryDate || undefined,
                 condition: form.condition?.trim() || '',
@@ -189,7 +193,7 @@ export default function BatteryTradeInPage() {
                 remainingAmps: form.pricingType === 'ampe' ? form.remainingAmps?.trim() || '' : '',
                 weightKg: form.pricingType === 'weight' ? form.weightKg?.trim() || '' : '',
             });
-            toast.success('Đã gửi yêu cầu thu cũ thành công. Cửa hàng sẽ liên hệ với bạn sớm.');
+            setShowSuccessDialog(true);
             setForm({
                 name: '',
                 phone: '',
@@ -199,6 +203,7 @@ export default function BatteryTradeInPage() {
                 productId: '',
                 batteryName: '',
                 images: [],
+                quantity: 1,
                 manufacturingDate: '',
                 expiryDate: '',
                 condition: '',
@@ -267,7 +272,7 @@ export default function BatteryTradeInPage() {
             <Header user={user} onLogout={handleLogout} />
 
             <main className="flex-1 container mx-auto px-4 py-8">
-                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-8 text-center">Thu cũ đổi mới ắc quy</h1>
+                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-8 text-center">Chương trình thu cũ ắc quy</h1>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
                     {/* Bên trái: Form điền thông tin */}
@@ -410,6 +415,19 @@ export default function BatteryTradeInPage() {
                                                 </label>
                                             )}
                                         </div>
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="quantity" className="text-gray-700 font-medium">Số lượng acquy thu cũ</Label>
+                                        <Input
+                                            id="quantity"
+                                            name="quantity"
+                                            type="number"
+                                            min={1}
+                                            value={form.quantity}
+                                            onChange={handleChange}
+                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 w-24"
+                                        />
                                     </div>
 
                                     <div>
@@ -583,6 +601,27 @@ export default function BatteryTradeInPage() {
             </main>
 
             <Footer />
+
+            {/* Popup thông báo gửi yêu cầu thành công */}
+            <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <div className="flex flex-col items-center gap-4 text-center">
+                            <div className="p-3 bg-green-100 rounded-full">
+                                <CheckCircle className="w-12 h-12 text-green-600" />
+                            </div>
+                            <DialogTitle className="text-xl">Đã gửi yêu cầu thành công</DialogTitle>
+                        </div>
+                    </DialogHeader>
+                    <div className="space-y-4 text-gray-600">
+                        <p>Chuyên viên cửa hàng sẽ liên hệ để xác nhận và xử lý.</p>
+                        <p>Mọi thắc mắc hay yêu cầu xin gọi về <a href="tel:0386806456" className="font-semibold text-blue-600 hover:underline">0386806456</a> để được hỗ trợ sớm nhất.</p>
+                    </div>
+                    <div className="flex justify-center pt-2">
+                        <Button onClick={() => setShowSuccessDialog(false)} className="bg-blue-600 hover:bg-blue-700">Đóng</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

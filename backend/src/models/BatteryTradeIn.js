@@ -19,6 +19,7 @@ const batteryTradeInSchema = new mongoose.Schema(
         productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
         batteryName: { type: String, default: '' },
         images: { type: [String], default: [] },
+        quantity: { type: Number, default: 1 },
         manufacturingDate: { type: Date },
         expiryDate: { type: Date },
         condition: { type: String, default: '' },
