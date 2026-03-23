@@ -651,9 +651,11 @@ export const generateVietQRForOrder = async (req, res) => {
 
         const amount = order.totalAmount || 0;
         const memo = (order.code || '').replace(/[^\w-]/g, '').slice(0, 25) || 'DonHang';
-        const frontendUrl = import.meta.env.NODE_ENV === 'production' ? 'https://acquy-thanhtu.onrender.com' : process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = process.env.NODE_ENV === 'production' ? 'https://acquy-thanhtu.onrender.com' : process.env.FRONTEND_URL || 'http://localhost:5173';
         const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;
+        console.log('returnUrl', returnUrl);
         const cancelUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=cancelled`;
+        console.log('cancelUrl', cancelUrl);
 
         const payosItems = (order.items || []).map((i) => ({
             name: i.product?.name || 'Sản phẩm',
