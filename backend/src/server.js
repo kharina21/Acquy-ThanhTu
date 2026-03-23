@@ -28,8 +28,6 @@ import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
 import dashboardRoutes from './routes/dashboardRoute.js';
-import workScheduleRoutes from './routes/workScheduleRoute.js';
-import shiftRoutes from './routes/shiftRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -63,8 +61,6 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/stock-ins', stockInRoutes);
 app.use('/api/stock-returns', stockReturnRoutes);
 app.use('/api/bank-accounts', bankAccountRoutes);
-app.use('/api/work-schedules', workScheduleRoutes);
-app.use('/api/shifts', shiftRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/battery-trade-in', batteryTradeInRoutes);
 app.use('/api/orders', orderRoutes);

@@ -14,7 +14,6 @@ const paymentLinkSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-paymentLinkSchema.index({ orderCode: 1 });
 paymentLinkSchema.index({ order: 1 });
 
 const PaymentLink = mongoose.model('PaymentLink', paymentLinkSchema);
