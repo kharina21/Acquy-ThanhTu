@@ -127,6 +127,7 @@ export const createOrder = async (req, res) => {
         const {
             locationId,
             paymentMethod,
+            recipientName = '',
             shippingAddress: shippingAddressRaw = '',
             shippingPhone = '',
             note = '',
@@ -143,6 +144,42 @@ export const createOrder = async (req, res) => {
         const shippingAddress = hasStructured
             ? [String(addressLine).trim(), String(wardName).trim(), String(districtName).trim(), String(provinceName).trim()].filter(Boolean).join(', ')
             : String(shippingAddressRaw).trim();
+
+        // Validate thông tin checkout
+        const recipientNameStr = String(recipientName).trim();
+        if (!recipientNameStr) {
+            return res.status(400).json({ message: 'Vui lòng nhập tên người nhận' });
+        }
+        if (recipientNameStr.length < 2 || recipientNameStr.length > 100) {
+            return res.status(400).json({ message: 'Tên người nhận phải từ 2–100 ký tự' });
+        }
+        if (!/^[\p{L}\s.'-]+$/u.test(recipientNameStr)) {
+            return res.status(400).json({ message: 'Tên người nhận chỉ được chứa chữ cái, dấu cách hoặc dấu chấm' });
+        }
+
+        const shippingPhoneStr = String(shippingPhone).trim().replace(/\s/g, '');
+        if (!shippingPhoneStr) {
+            return res.status(400).json({ message: 'Vui lòng nhập số điện thoại nhận hàng' });
+        }
+        if (!/^0[2-9][0-9]{8,9}$/.test(shippingPhoneStr)) {
+            return res.status(400).json({ message: 'Số điện thoại không hợp lệ (ví dụ: 0901234567)' });
+        }
+
+        if (!shippingAddress || shippingAddress.length < 10) {
+            return res.status(400).json({ message: 'Địa chỉ giao hàng phải có ít nhất 10 ký tự' });
+        }
+        if (shippingAddress.length > 300) {
+            return res.status(400).json({ message: 'Địa chỉ giao hàng không quá 300 ký tự' });
+        }
+
+        if (hasStructured && (!provinceCode || !districtCode || !wardCode)) {
+            return res.status(400).json({ message: 'Vui lòng chọn đầy đủ Tỉnh/Thành phố, Quận/Huyện, Phường/Xã' });
+        }
+
+        const noteStr = String(note).trim();
+        if (noteStr.length > 500) {
+            return res.status(400).json({ message: 'Ghi chú không quá 500 ký tự' });
+        }
 
         // Đơn online: chỉ chấp nhận chuyển khoản (thanh toán trước)
         const validMethods = ['vietqr', 'transfer'];
@@ -234,7 +271,8 @@ export const createOrder = async (req, res) => {
             paymentMethod: method,
             paymentStatus: 'pending',
             shippingAddress,
-            shippingPhone: String(shippingPhone).trim(),
+            shippingRecipientName: recipientNameStr,
+            shippingPhone: shippingPhoneStr,
             provinceCode: String(provinceCode).trim(),
             provinceName: String(provinceName).trim(),
             districtCode: String(districtCode).trim(),
@@ -242,7 +280,7 @@ export const createOrder = async (req, res) => {
             wardCode: String(wardCode).trim(),
             wardName: String(wardName).trim(),
             addressLine: String(addressLine).trim(),
-            note: String(note).trim(),
+            note: noteStr,
         });
 
         for (const item of orderItems) {
@@ -750,7 +788,6 @@ export const syncPaymentFromPayOS = async (req, res) => {
         if (isPaid) {
             await Order.findByIdAndUpdate(id, {
                 paymentStatus: 'paid',
-                status: 'completed',
                 paidAt: new Date(),
             });
             if (order.customerProfile) {
@@ -862,7 +899,6 @@ export const getOrderReport = async (req, res) => {
 
         const filter = {
             paymentStatus: 'paid',
-            status: 'completed',
         };
         if (effectiveLocationId && mongoose.Types.ObjectId.isValid(effectiveLocationId)) {
             filter.location = effectiveLocationId;

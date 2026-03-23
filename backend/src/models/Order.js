@@ -44,6 +44,8 @@ const orderSchema = new mongoose.Schema(
             default: 'pending',
         },
         shippingAddress: { type: String, default: '' },
+        /** Tên người nhận hàng */
+        shippingRecipientName: { type: String, default: '' },
         /** Địa chỉ chi tiết – dùng khi chỉnh sửa */
         provinceCode: { type: String, default: '' },
         provinceName: { type: String, default: '' },

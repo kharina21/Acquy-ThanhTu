@@ -9,6 +9,40 @@ import { createOrder, generateVietQR, getCheckoutPreview } from '@/services/orde
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { toast } from 'sonner';
 
+// Validate tên người nhận: 2–100 ký tự, chữ và dấu cách, không số
+const validateRecipientName = (name) => {
+  const s = (name || '').trim();
+  if (!s) return 'Vui lòng nhập tên người nhận';
+  if (s.length < 2) return 'Tên người nhận phải có ít nhất 2 ký tự';
+  if (s.length > 100) return 'Tên người nhận không quá 100 ký tự';
+  if (!/^[\p{L}\s.'-]+$/u.test(s)) return 'Tên chỉ được chứa chữ cái, dấu cách hoặc dấu chấm';
+  return null;
+};
+
+// Validate SĐT Việt Nam: 10–11 số, bắt đầu 03/05/07/08/09/02
+const validatePhone = (phone) => {
+  const s = (phone || '').trim().replace(/\s/g, '');
+  if (!s) return 'Vui lòng nhập số điện thoại nhận hàng';
+  if (!/^0[2-9][0-9]{8,9}$/.test(s)) return 'Số điện thoại không hợp lệ (ví dụ: 0901234567)';
+  return null;
+};
+
+// Validate địa chỉ: ít nhất 10 ký tự, tối đa 200
+const validateAddressLine = (addr) => {
+  const s = (addr || '').trim();
+  if (!s) return 'Vui lòng nhập địa chỉ cụ thể (số nhà, tên đường...)';
+  if (s.length < 10) return 'Địa chỉ phải có ít nhất 10 ký tự';
+  if (s.length > 200) return 'Địa chỉ không quá 200 ký tự';
+  return null;
+};
+
+// Validate ghi chú: tối đa 500 ký tự (nếu có nhập)
+const validateNote = (note) => {
+  const s = (note || '').trim();
+  if (s.length > 500) return 'Ghi chú không quá 500 ký tự';
+  return null;
+};
+
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user, accessToken, logout } = useAuthStore();
@@ -20,6 +54,7 @@ export default function CheckoutPage() {
   const [wards, setWards] = useState([]);
   const [form, setForm] = useState({
     paymentMethod: 'transfer',
+    recipientName: '',
     provinceCode: '',
     provinceName: '',
     districtCode: '',
@@ -32,6 +67,7 @@ export default function CheckoutPage() {
   });
   const [orderSuccess, setOrderSuccess] = useState(null); // { order, qrDataURL, bankAccount, checkoutUrl }
   const [checkoutPreview, setCheckoutPreview] = useState(null); // { tierName, discountPercent, discount, subtotal, finalTotal }
+  const [errors, setErrors] = useState({}); // { recipientName?, shippingPhone?, addressLine?, provinceCode?, districtCode?, wardCode?, note? }
 
   useEffect(() => {
     if (!accessToken) {
@@ -96,28 +132,45 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const addressLine = form.addressLine?.trim();
-    if (!addressLine) {
-      toast.error('Vui lòng nhập địa chỉ cụ thể (số nhà, tên đường...)');
-      return;
-    }
-    if (!form.provinceCode || !form.districtCode || !form.wardCode) {
-      toast.error('Vui lòng chọn đầy đủ Tỉnh/Thành phố, Quận/Huyện, Phường/Xã');
-      return;
-    }
-    const shippingPhone = form.shippingPhone?.trim();
-    if (!shippingPhone) {
-      toast.error('Vui lòng nhập số điện thoại nhận hàng');
-      return;
-    }
+
     if (items.length === 0) {
       toast.error('Giỏ hàng trống');
+      return;
+    }
+
+    const recipientName = form.recipientName?.trim();
+    const shippingPhone = form.shippingPhone?.trim();
+    const addressLine = form.addressLine?.trim();
+
+    const errRecipient = validateRecipientName(recipientName);
+    const errPhone = validatePhone(shippingPhone);
+    const errAddress = validateAddressLine(addressLine);
+    const errProvince = !form.provinceCode ? 'Vui lòng chọn Tỉnh/Thành phố' : null;
+    const errDistrict = !form.districtCode ? 'Vui lòng chọn Quận/Huyện' : null;
+    const errWard = !form.wardCode ? 'Vui lòng chọn Phường/Xã' : null;
+    const errNote = validateNote(form.note);
+
+    const newErrors = {
+      recipientName: errRecipient,
+      shippingPhone: errPhone,
+      addressLine: errAddress,
+      provinceCode: errProvince,
+      districtCode: errDistrict,
+      wardCode: errWard,
+      note: errNote,
+    };
+    setErrors(newErrors);
+
+    const hasError = errRecipient || errPhone || errAddress || errProvince || errDistrict || errWard || errNote;
+    if (hasError) {
+      toast.error('Vui lòng kiểm tra và sửa thông tin chưa hợp lệ');
       return;
     }
     setSubmitting(true);
     try {
       const res = await createOrder({
         paymentMethod: form.paymentMethod,
+        recipientName,
         shippingAddress: buildShippingAddress(),
         shippingPhone,
         provinceCode: form.provinceCode,
@@ -238,9 +291,24 @@ export default function CheckoutPage() {
                 <h2 className="font-semibold text-gray-800 mb-4">Địa chỉ giao hàng</h2>
                 <div className="space-y-3">
                   <div>
+                    <label className="label py-0 text-xs">Tên người nhận</label>
+                    <input
+                      type="text"
+                      className={`input input-bordered input-sm w-full ${errors.recipientName ? 'input-error' : ''}`}
+                      placeholder="Ví dụ: Nguyễn Văn A"
+                      value={form.recipientName}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, recipientName: e.target.value }));
+                        if (errors.recipientName) setErrors((e) => ({ ...e, recipientName: null }));
+                      }}
+                      required
+                    />
+                    {errors.recipientName && <p className="text-xs text-red-600 mt-1">{errors.recipientName}</p>}
+                  </div>
+                  <div>
                     <label className="label py-0 text-xs">Tỉnh / Thành phố</label>
                     <select
-                      className="select select-bordered select-sm w-full"
+                      className={`select select-bordered select-sm w-full ${errors.provinceCode ? 'select-error' : ''}`}
                       value={form.provinceCode}
                       onChange={(e) => {
                         const code = e.target.value;
@@ -250,6 +318,7 @@ export default function CheckoutPage() {
                           provinceCode: code,
                           provinceName: p?.name || '',
                         }));
+                        if (errors.provinceCode) setErrors((er) => ({ ...er, provinceCode: null }));
                       }}
                       required
                     >
@@ -260,11 +329,12 @@ export default function CheckoutPage() {
                         </option>
                       ))}
                     </select>
+                    {errors.provinceCode && <p className="text-xs text-red-600 mt-1">{errors.provinceCode}</p>}
                   </div>
                   <div>
                     <label className="label py-0 text-xs">Quận / Huyện</label>
                     <select
-                      className="select select-bordered select-sm w-full"
+                      className={`select select-bordered select-sm w-full ${errors.districtCode ? 'select-error' : ''}`}
                       value={form.districtCode}
                       onChange={(e) => {
                         const code = e.target.value;
@@ -274,6 +344,7 @@ export default function CheckoutPage() {
                           districtCode: code,
                           districtName: d?.name || '',
                         }));
+                        if (errors.districtCode) setErrors((er) => ({ ...er, districtCode: null }));
                       }}
                       required
                       disabled={!form.provinceCode}
@@ -285,11 +356,12 @@ export default function CheckoutPage() {
                         </option>
                       ))}
                     </select>
+                    {errors.districtCode && <p className="text-xs text-red-600 mt-1">{errors.districtCode}</p>}
                   </div>
                   <div>
                     <label className="label py-0 text-xs">Phường / Xã / Thị trấn</label>
                     <select
-                      className="select select-bordered select-sm w-full"
+                      className={`select select-bordered select-sm w-full ${errors.wardCode ? 'select-error' : ''}`}
                       value={form.wardCode}
                       onChange={(e) => {
                         const code = e.target.value;
@@ -299,6 +371,7 @@ export default function CheckoutPage() {
                           wardCode: code,
                           wardName: w?.name || '',
                         }));
+                        if (errors.wardCode) setErrors((er) => ({ ...er, wardCode: null }));
                       }}
                       required
                       disabled={!form.districtCode}
@@ -310,28 +383,37 @@ export default function CheckoutPage() {
                         </option>
                       ))}
                     </select>
+                    {errors.wardCode && <p className="text-xs text-red-600 mt-1">{errors.wardCode}</p>}
                   </div>
                   <div>
                     <label className="label py-0 text-xs">Địa chỉ cụ thể (số nhà, tên đường...)</label>
                     <input
                       type="text"
-                      className="input input-bordered input-sm w-full"
-                      placeholder="Ví dụ: Số 123, đường ABC"
+                      className={`input input-bordered input-sm w-full ${errors.addressLine ? 'input-error' : ''}`}
+                      placeholder="Ví dụ: Số 123, đường ABC, phường 1"
                       value={form.addressLine}
-                      onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, addressLine: e.target.value }));
+                        if (errors.addressLine) setErrors((er) => ({ ...er, addressLine: null }));
+                      }}
                       required
                     />
+                    {errors.addressLine && <p className="text-xs text-red-600 mt-1">{errors.addressLine}</p>}
                   </div>
                   <div>
                     <label className="label py-0 text-xs">Số điện thoại nhận hàng</label>
                     <input
                       type="tel"
-                      className="input input-bordered input-sm w-full"
+                      className={`input input-bordered input-sm w-full ${errors.shippingPhone ? 'input-error' : ''}`}
                       placeholder="Ví dụ: 0901234567"
                       value={form.shippingPhone}
-                      onChange={(e) => setForm((f) => ({ ...f, shippingPhone: e.target.value }))}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, shippingPhone: e.target.value }));
+                        if (errors.shippingPhone) setErrors((er) => ({ ...er, shippingPhone: null }));
+                      }}
                       required
                     />
+                    {errors.shippingPhone && <p className="text-xs text-red-600 mt-1">{errors.shippingPhone}</p>}
                   </div>
                 </div>
               </div>
@@ -344,11 +426,15 @@ export default function CheckoutPage() {
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="font-semibold text-gray-800 mb-3">Ghi chú</h2>
                 <textarea
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl min-h-[60px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Ghi chú cho đơn hàng (tùy chọn)"
+                  className={`w-full px-4 py-3 border rounded-xl min-h-[60px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.note ? 'border-red-500' : 'border-gray-200'}`}
+                  placeholder="Ghi chú cho đơn hàng (tùy chọn, tối đa 500 ký tự)"
                   value={form.note}
-                  onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, note: e.target.value }));
+                    if (errors.note) setErrors((er) => ({ ...er, note: null }));
+                  }}
                 />
+                {errors.note && <p className="text-xs text-red-600 mt-1">{errors.note}</p>}
               </div>
 
               <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 lg:hidden">

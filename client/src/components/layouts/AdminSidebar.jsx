@@ -9,7 +9,8 @@ export default function AdminSidebar() {
     const { hasAnyRole } = useUserRole();
 
     const visibleItems = SIDEBAR_MENU_ITEMS.filter((item) => {
-        if (item.allowedRoles === null) return true;
+        if (item.allowedRoles === null) return true; // null = luôn hiển thị (vd: Tài khoản)
+        if (!Array.isArray(item.allowedRoles)) return false; // undefined = ẩn
         return hasAnyRole(...item.allowedRoles);
     });
 

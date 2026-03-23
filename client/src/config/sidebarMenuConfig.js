@@ -1,4 +1,4 @@
-import { BadgePercent, Boxes, FileText, LayoutDashboard, Package, Receipt, RotateCw, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { BadgePercent, Boxes, LayoutDashboard, Package, Receipt, RotateCw, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 
 /**
  * Cấu hình menu sidebar - RBAC theo vai trò.
@@ -51,7 +51,7 @@ export const SIDEBAR_MENU_ITEMS = [
         label: 'Thu cũ acquy',
         ariaLabel: 'Quản lý yêu cầu thu cũ acquy',
         activePaths: ['/admin/battery-trade-in'],
-        permission: { resource: 'product', action: 'read' },
+        allowedRoles: ['admin'],
     },
     {
         id: 'orders',
@@ -95,14 +95,6 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
             { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
         ],
-    },
-    {
-        id: 'use-cases',
-        to: '/admin/use-cases',
-        icon: FileText,
-        label: 'Use Cases',
-        ariaLabel: 'Danh sách use cases',
-        allowedRoles: ['admin'],
     },
     {
         id: 'profile',
