@@ -93,21 +93,19 @@ export const AppRoutes = () => {
                 path='/product/:id'
                 element={<ProductDetailPage />}
             />
-            {/* Giỏ hàng */}
-            <Route
-                path='/cart'
-                element={<CartPage />}
-            />
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}
             <Route element={<ProtectedRoute />}>
-                {/* Checkout & Orders - User đặt hàng, xem đơn */}
-                <Route
-                    path='/checkout'
-                    element={<CheckoutPage />}
-                />
+                {/* Mua hàng online - Chỉ user, customer */}
+                <Route element={<RoleProtectedRoute allowedRoles={['user', 'customer']} redirectTo='/home' />}>
+                    <Route path='/cart' element={<CartPage />} />
+                    <Route path='/checkout' element={<CheckoutPage />} />
+                    <Route path='/orders' element={<OrderHistoryPage />} />
+                    <Route path='/orders/:id' element={<OrderDetailPage />} />
+                </Route>
+
                 {/* Trang Bán hàng - layout riêng, full màn hình */}
-                <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'staff']} />}>
+                <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller']} />}>
                     <Route
                         path='/sales'
                         element={
@@ -117,14 +115,6 @@ export const AppRoutes = () => {
                         }
                     />
                 </Route>
-                <Route
-                    path='/orders'
-                    element={<OrderHistoryPage />}
-                />
-                <Route
-                    path='/orders/:id'
-                    element={<OrderDetailPage />}
-                />
 
                 <Route element={<RoleBasedLayout />}>
                     {/* Common routes - Tất cả authenticated users đều có thể truy cập */}
@@ -184,14 +174,18 @@ export const AppRoutes = () => {
                             path='/admin/store-profile'
                             element={<StoreProfilePage />}
                         />
+                    </Route>
+
+                    {/* Use Cases: chỉ admin */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
                         <Route
                             path='/admin/use-cases'
                             element={<UseCasesPage />}
                         />
                     </Route>
 
-                    {/* Quản lý đơn hàng cửa hàng: admin, manager, seller, staff */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'staff']} />}>
+                    {/* Quản lý đơn hàng cửa hàng: admin, manager, seller */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller']} />}>
                         <Route
                             path='/admin/orders/pre-orders'
                             element={<AdminOrderManagementPage key="pre-orders" type="pre-orders" />}
@@ -248,7 +242,7 @@ export const AppRoutes = () => {
                     </Route>
 
                     {/* Seller / Staff: dashboard nhân viên */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff']} />}>
+                    <Route element={<RoleProtectedRoute allowedRoles={['seller']} />}>
                         <Route
                             path='/staff/dashboard'
                             element={<StaffDashboard />}

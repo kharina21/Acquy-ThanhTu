@@ -13,7 +13,8 @@ import PaymentLink from '../models/PaymentLink.js';
 import MemberPolicy from '../models/MemberPolicy.js';
 import { getStockAtLocation } from './productStockController.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
-import { createPayOSPaymentLink } from '../libs/payosHelper.js';
+import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+import { createPayOSPaymentLink, getPayOSPaymentStatus } from '../libs/payosHelper.js';
 import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
 
 const GUEST_USERNAME = '__guest_pos__';
@@ -37,14 +38,14 @@ const getOrCreateGuestUser = async () => {
 const isAdminOrManager = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
+    return roleNames.some((r) => ['admin', 'manager'].includes(r));
 };
 
-/** Cửa hàng: admin, manager, seller, staff có thể xem tất cả đơn */
+/** Cửa hàng: admin, manager, seller có thể xem tất cả đơn */
 const canViewAllOrders = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => ['admin', 'Quản lý chi nhánh', 'manager', 'seller', 'staff'].includes(r));
+    return roleNames.some((r) => ['admin', 'manager', 'seller'].includes(r));
 };
 
 /**
@@ -453,7 +454,7 @@ export const createOrderFromItems = async (req, res) => {
         if (canSelectSeller && sellerId && mongoose.Types.ObjectId.isValid(sellerId) && sellerId.toString() !== userId.toString()) {
             const seller = await User.findById(sellerId).populate('roles', 'name').lean();
             const sellerRoles = seller?.roles?.map((r) => r.name) || [];
-            if (seller && (sellerRoles.includes('seller') || sellerRoles.includes('staff'))) {
+            if (seller && sellerRoles.includes('seller')) {
                 createdByUserId = sellerId;
             }
         }
@@ -470,7 +471,7 @@ export const createOrderFromItems = async (req, res) => {
             items: orderItems,
             totalAmount: finalTotal,
             discount,
-            status: isPreOrder ? 'pending' : 'paid',
+            status: isPreOrder ? 'pending' : 'completed',
             paymentMethod: method,
             paymentStatus: isPreOrder ? 'pending' : 'paid',
             paidAt: isPreOrder ? null : new Date(),
@@ -701,6 +702,83 @@ export const generateVietQRForOrder = async (req, res) => {
 };
 
 /**
+ * GET /api/orders/:id/sync-payment – Đồng bộ trạng thái thanh toán từ PayOS ngay khi khách quay về.
+ * Gọi PayOS API GET payment-requests/{orderCode} để lấy status, nếu PAID thì cập nhật Order ngay.
+ */
+export const syncPaymentFromPayOS = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        const canViewAll = await canViewAllOrders(userId);
+        if (!canViewAll && order.customer?.toString() !== userId.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền đồng bộ đơn này' });
+        }
+
+        if (order.paymentStatus === 'paid') {
+            const populated = await Order.findById(order._id)
+                .populate('items.product', 'sku name')
+                .populate('location', 'code name')
+                .populate('customer', 'username email firstName lastName')
+                .populate('customerProfile', 'name phone type')
+                .lean();
+            return res.status(200).json({ success: true, data: { order: populated } });
+        }
+
+        const paymentLink = await PaymentLink.findOne({ order: id }).lean();
+        if (!paymentLink?.orderCode) {
+            const populated = await Order.findById(order._id)
+                .populate('items.product', 'sku name')
+                .populate('location', 'code name')
+                .populate('customer', 'username email firstName lastName')
+                .populate('customerProfile', 'name phone type')
+                .lean();
+            return res.status(200).json({ success: true, data: { order: populated } });
+        }
+
+        const payosStatus = await getPayOSPaymentStatus(paymentLink.orderCode);
+        const isPaid = payosStatus && (payosStatus.status === 'PAID' || payosStatus.status === 'COMPLETED');
+        if (isPaid) {
+            await Order.findByIdAndUpdate(id, {
+                paymentStatus: 'paid',
+                status: 'completed',
+                paidAt: new Date(),
+            });
+            if (order.customerProfile) {
+                await Customer.findByIdAndUpdate(order.customerProfile, {
+                    $inc: { accumulatedAmount: order.totalAmount || 0 },
+                });
+            }
+            await PaymentLink.updateOne({ _id: paymentLink._id }, { status: 'paid' });
+        }
+
+        const populated = await Order.findById(id)
+            .populate('items.product', 'sku name')
+            .populate('location', 'code name')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .lean();
+
+        return res.status(200).json({ success: true, data: { order: populated } });
+    } catch (error) {
+        console.error('syncPaymentFromPayOS error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi đồng bộ trạng thái thanh toán',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * GET /api/orders/:id – Chi tiết đơn hàng.
  * User: chỉ xem đơn của mình. Admin/Manager: xem tất cả.
  */
@@ -748,7 +826,8 @@ export const getOrderById = async (req, res) => {
 
 /**
  * GET /api/orders/report – Báo cáo đơn hàng đã xác nhận và thanh toán thành công.
- * Chỉ Admin/Manager. Query: dateFrom, dateTo, page, limit.
+ * Chỉ Admin/Manager. Query: dateFrom, dateTo, page, limit, locationId.
+ * Manager: chỉ được xem chi nhánh được phân công.
  */
 export const getOrderReport = async (req, res) => {
     try {
@@ -762,12 +841,32 @@ export const getOrderReport = async (req, res) => {
             return res.status(403).json({ message: 'Bạn không có quyền xem báo cáo đơn hàng' });
         }
 
-        const { dateFrom, dateTo, page = 1, limit = 20 } = req.query;
+        const { dateFrom, dateTo, page = 1, limit = 20, locationId } = req.query;
+
+        let effectiveLocationId = locationId || '';
+        const allowedIds = await getManagerAllowedLocationIds(userId);
+        if (allowedIds !== null) {
+            if (allowedIds.length === 0) {
+                return res.status(403).json({
+                    message: 'Bạn chưa được phân công chi nhánh. Vui lòng liên hệ quản trị viên.',
+                });
+            }
+            if (!effectiveLocationId) {
+                effectiveLocationId = allowedIds[0];
+            } else if (!allowedIds.includes(effectiveLocationId.toString())) {
+                return res.status(403).json({
+                    message: 'Bạn không có quyền xem báo cáo chi nhánh này. Chỉ được xem chi nhánh được phân công.',
+                });
+            }
+        }
 
         const filter = {
             paymentStatus: 'paid',
-            status: { $in: ['confirmed', 'paid'] },
+            status: 'completed',
         };
+        if (effectiveLocationId && mongoose.Types.ObjectId.isValid(effectiveLocationId)) {
+            filter.location = effectiveLocationId;
+        }
 
         if (dateFrom) {
             const from = new Date(dateFrom);
@@ -824,7 +923,7 @@ export const getOrderReport = async (req, res) => {
 
 /**
  * POST /api/orders/:id/cancel – Khách hàng hủy đơn của mình.
- * Được hủy khi: status = pending hoặc confirmed (chờ xử lý).
+ * Được hủy khi: status = pending (chờ xử lý).
  * Khi đã thanh toán: bắt buộc gửi thông tin chuyển khoản hoàn tiền (refundBankName, refundBankAccount, refundAccountHolder).
  * Hoàn lại tồn kho khi hủy.
  */
@@ -851,7 +950,7 @@ export const cancelOrderByCustomer = async (req, res) => {
             return res.status(400).json({ message: 'Đơn hàng đã bị hủy trước đó' });
         }
 
-        const cancellableStatuses = ['pending', 'confirmed'];
+        const cancellableStatuses = ['pending'];
         if (!cancellableStatuses.includes(order.status)) {
             return res.status(400).json({ message: 'Đơn hàng không thể hủy ở trạng thái hiện tại' });
         }
@@ -1016,7 +1115,7 @@ export const updateOrder = async (req, res) => {
         const previousStatus = order.status;
 
         if (status) {
-            const validStatuses = ['pending', 'confirmed', 'paid', 'cancelled'];
+            const validStatuses = ['pending', 'completed', 'cancelled'];
             if (validStatuses.includes(status)) order.status = status;
         }
         if (paymentStatus) {

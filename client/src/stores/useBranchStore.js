@@ -12,17 +12,22 @@ export const useBranchStore = create(
             loading: false,
             loaded: false,
 
-            fetchLocations: async () => {
+            /**
+             * @param {{ scope?: 'mine'|'all' }} opts - scope=mine: manager chỉ thấy chi nhánh được phân công
+             */
+            fetchLocations: async (opts = {}) => {
                 set({ loading: true });
                 try {
-                    const res = await getLocations();
+                    const params = opts.scope === 'mine' ? { scope: 'mine' } : {};
+                    const res = await getLocations(params);
                     const list = (res.success && res.data?.locations) ? res.data.locations : [];
                     const activeList = list.filter((l) => l.isActive !== false);
                     set({ locations: activeList, loaded: true });
 
                     const { currentLocationId } = get();
+                    const isAll = currentLocationId === 'all';
                     const validId = activeList.some((l) => l._id === currentLocationId);
-                    if (activeList.length > 0 && (!currentLocationId || !validId)) {
+                    if (activeList.length > 0 && !isAll && (!currentLocationId || !validId)) {
                         set({ currentLocationId: activeList[0]._id });
                     }
                     if (activeList.length === 0) {

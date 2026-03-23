@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { getOrderById, updateOrder } from '@/services/orderService';
+import { getOrderById, updateOrder, syncPaymentStatus } from '@/services/orderService';
 import { toast } from 'sonner';
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
-    confirmed: 'Đã xác nhận',
-    paid: 'Đã thanh toán',
+    completed: 'Hoàn thành',
     cancelled: 'Đã hủy',
 };
 
@@ -22,6 +21,7 @@ export default function AdminOrderDetailPage() {
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
     const [updating, setUpdating] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
     const fetchOrder = async () => {
         if (!id) return;
@@ -52,6 +52,20 @@ export default function AdminOrderDetailPage() {
             toast.error(err.response?.data?.message || 'Lỗi khi cập nhật');
         } finally {
             setUpdating(false);
+        }
+    };
+
+    const handleSyncPayOS = async () => {
+        if (!id) return;
+        setSyncing(true);
+        try {
+            const res = await syncPaymentStatus(id);
+            setOrder(res?.data?.order || order);
+            toast.success('Đã đồng bộ trạng thái từ PayOS');
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không thể đồng bộ từ PayOS');
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -107,7 +121,7 @@ export default function AdminOrderDetailPage() {
                                 <span className="text-base-content/70">Trạng thái</span>
                                 <select
                                     className="select select-bordered select-sm"
-                                    value={order.status || 'pending'}
+                                    value={['paid', 'confirmed'].includes(order.status) ? 'completed' : (order.status || 'pending')}
                                     onChange={(e) => handleUpdate('status', e.target.value)}
                                     disabled={updating}
                                 >
@@ -116,18 +130,31 @@ export default function AdminOrderDetailPage() {
                                     ))}
                                 </select>
                             </div>
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center gap-2">
                                 <span className="text-base-content/70">Thanh toán</span>
-                                <select
-                                    className="select select-bordered select-sm"
-                                    value={order.paymentStatus || 'pending'}
-                                    onChange={(e) => handleUpdate('paymentStatus', e.target.value)}
-                                    disabled={updating}
-                                >
-                                    {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
-                                        <option key={v} value={v}>{l}</option>
-                                    ))}
-                                </select>
+                                <div className="flex items-center gap-1">
+                                    <select
+                                        className="select select-bordered select-sm"
+                                        value={order.paymentStatus || 'pending'}
+                                        onChange={(e) => handleUpdate('paymentStatus', e.target.value)}
+                                        disabled={updating}
+                                    >
+                                        {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
+                                            <option key={v} value={v}>{l}</option>
+                                        ))}
+                                    </select>
+                                    {order.paymentStatus === 'pending' && ['vietqr', 'transfer'].includes(order.paymentMethod) && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            title="Đồng bộ trạng thái từ PayOS"
+                                            onClick={handleSyncPayOS}
+                                            disabled={syncing}
+                                        >
+                                            {syncing ? <span className="loading loading-spinner loading-sm" /> : '↻ Đồng bộ'}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-base-content/70">Địa chỉ giao hàng</span>

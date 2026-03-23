@@ -45,7 +45,7 @@ const OrderManagementPage = () => {
         if (order.status !== 'pending') return;
         setUpdatingId(order._id);
         try {
-            const res = await updateOrder(order._id, { status: 'confirmed' });
+            const res = await updateOrder(order._id, { status: 'completed' });
             if (res.success) {
                 toast.success('Đã xác nhận đơn hàng');
                 fetchOrders(pagination.page);
@@ -61,7 +61,7 @@ const OrderManagementPage = () => {
         if (order.paymentStatus === 'paid') return;
         setUpdatingId(order._id);
         try {
-            const res = await updateOrder(order._id, { paymentStatus: 'paid', status: 'paid' });
+            const res = await updateOrder(order._id, { paymentStatus: 'paid', status: 'completed' });
             if (res.success) {
                 toast.success('Đã xác nhận thanh toán');
                 fetchOrders(pagination.page);

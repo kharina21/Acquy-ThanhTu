@@ -109,6 +109,27 @@ export const createPayOSPaymentLink = async ({ orderId, orderCode, amount, descr
 };
 
 /**
+ * Lấy trạng thái thanh toán từ PayOS API (GET /v2/payment-requests/{id}).
+ * @param {number} orderCode - Mã đơn PayOS (orderCode integer)
+ * @returns {Promise<{status: string, amountPaid?: number} | null>} null nếu PayOS chưa cấu hình hoặc lỗi
+ */
+export const getPayOSPaymentStatus = async (orderCode) => {
+    const payos = getPayOS();
+    if (!payos || !orderCode) return null;
+    try {
+        const res = await payos.get(`/v2/payment-requests/${orderCode}`);
+        // PayOS API: { code, desc, data: { status, amountPaid, ... } } hoặc SDK có thể unwrap
+        const data = res?.data ?? res;
+        if (!data || typeof data !== 'object') return null;
+        const status = String(data.status || '').toUpperCase();
+        return { status, amountPaid: data.amountPaid };
+    } catch (err) {
+        console.warn('getPayOSPaymentStatus error:', err?.message);
+        return null;
+    }
+};
+
+/**
  * Xác thực và lấy dữ liệu webhook từ PayOS.
  * @param {Object} webhookBody - Body từ PayOS { code, desc, success, data, signature }
  * @returns {Promise<Object>} data đã xác thực

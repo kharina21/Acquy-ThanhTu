@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { getOrderReport } from '@/services/orderService';
 import { toast } from 'sonner';
 import { BarChart3, DollarSign, FileText, ChevronRight } from 'lucide-react';
@@ -12,6 +13,8 @@ const formatVND = (num) => {
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—');
 
 const OrderReportPage = () => {
+    const { currentLocationId, locations } = useBranchStore();
+    const currentLocation = locations?.find((l) => l._id === currentLocationId);
     const [orders, setOrders] = useState([]);
     const [summary, setSummary] = useState({ totalRevenue: 0, totalOrders: 0 });
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
@@ -25,6 +28,7 @@ const OrderReportPage = () => {
             const params = { page, limit: 20 };
             if (dateFrom) params.dateFrom = dateFrom;
             if (dateTo) params.dateTo = dateTo;
+            if (currentLocationId) params.locationId = currentLocationId;
             const res = await getOrderReport(params);
             const data = res?.data;
             setOrders(data?.orders || []);
@@ -39,7 +43,7 @@ const OrderReportPage = () => {
 
     useEffect(() => {
         fetchReport(1);
-    }, [dateFrom, dateTo]);
+    }, [dateFrom, dateTo, currentLocationId]);
 
     const getCustomerName = (order) => {
         const c = order.customer;
@@ -58,6 +62,11 @@ const OrderReportPage = () => {
 
                 <p className="text-base-content/70 mb-6">
                     Thống kê doanh thu từ các đơn hàng đã được xác nhận và thanh toán thành công.
+                    {currentLocation && (
+                        <span className="block mt-1 font-medium text-primary">
+                            Đang xem: {currentLocation.code} - {currentLocation.name}
+                        </span>
+                    )}
                 </p>
 
                 {/* Tổng quan */}
@@ -156,7 +165,7 @@ const OrderReportPage = () => {
                                             <tr key={order._id}>
                                                 <td className="font-medium">
                                                     <Link
-                                                        to={`/orders/${order._id}`}
+                                                        to={`/admin/orders/${order._id}`}
                                                         className="link link-primary hover:underline"
                                                     >
                                                         {order.code}
@@ -170,7 +179,7 @@ const OrderReportPage = () => {
                                                 </td>
                                                 <td>
                                                     <Link
-                                                        to={`/orders/${order._id}`}
+                                                        to={`/admin/orders/${order._id}`}
                                                         className="btn btn-ghost btn-xs"
                                                         title="Xem chi tiết"
                                                     >

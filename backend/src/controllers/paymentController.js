@@ -44,6 +44,7 @@ export const handlePayOSWebhook = async (req, res) => {
             if (order) {
                 await Order.findByIdAndUpdate(paymentLink.order, {
                     paymentStatus: 'paid',
+                    status: 'completed',
                     paidAt: new Date(),
                     vietqrTransactionId: data?.reference || '',
                 });

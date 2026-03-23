@@ -1,4 +1,4 @@
-import { usePermissions } from '@/hooks/usePermissions';
+import { useUserRole } from '@/hooks/useUserRole';
 import { SIDEBAR_MENU_ITEMS } from '@/config/sidebarMenuConfig';
 import AdminSidebarNavItem from './AdminSidebarNavItem';
 import AdminSidebarNavDropdown from './AdminSidebarNavDropdown';
@@ -6,11 +6,11 @@ import AdminSidebarNavDropdown from './AdminSidebarNavDropdown';
 const DRAWER_ID = 'my-drawer-4';
 
 export default function AdminSidebar() {
-    const { hasPermission } = usePermissions();
+    const { hasAnyRole } = useUserRole();
 
     const visibleItems = SIDEBAR_MENU_ITEMS.filter((item) => {
-        if (item.permission === null) return true;
-        return hasPermission(item.permission.resource, item.permission.action);
+        if (item.allowedRoles === null) return true;
+        return hasAnyRole(...item.allowedRoles);
     });
 
     return (

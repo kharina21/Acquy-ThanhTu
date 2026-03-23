@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middlewares/authenticate.js';
+import { hasRole } from '../middlewares/rbac.js';
 import {
     getCart,
     addItemToCart,
@@ -10,8 +11,9 @@ import {
 
 const router = express.Router();
 
-// Tất cả routes giỏ hàng đều yêu cầu đăng nhập
+// Tất cả routes giỏ hàng đều yêu cầu đăng nhập + role user hoặc customer
 router.use(authenticate);
+router.use(hasRole('user', 'customer'));
 
 // Lấy giỏ hàng hiện tại của user
 router.get('/', getCart);

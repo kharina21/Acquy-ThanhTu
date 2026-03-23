@@ -55,7 +55,7 @@ export function ProductSection() {
       return;
     }
 
-    if (!hasAnyRole('user', 'Người dùng thường')) {
+    if (!hasAnyRole('user', 'customer')) {
       toast.error('Tài khoản hiện tại không có quyền mua hàng.');
       return;
     }

@@ -11,16 +11,6 @@ const roleSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
-        permissions: [
-            {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'Permission',
-            },
-        ],
-        isActive: {
-            type: Boolean,
-            default: true,
-        },
     },
     { timestamps: true }
 );

@@ -5,7 +5,6 @@ import {
     createRole,
     updateRole,
     deleteRole,
-    getAllPermissions,
 } from '../controllers/roleController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -17,7 +16,6 @@ router.use(authenticate);
 router.use(hasRole('admin'));
 
 router.get('/', getAllRoles);
-router.get('/permissions', getAllPermissions);
 router.get('/:id', getRoleById);
 router.post('/', createRole);
 router.put('/:id', updateRole);

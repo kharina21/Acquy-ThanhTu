@@ -21,7 +21,7 @@ router.get('/active', getActiveLocations);
 // Chi nhánh bán online (cho frontend)
 router.get('/online', getOnlineLocationHandler);
 
-router.use(hasRole('admin', 'manager', 'Quản lý chi nhánh'));
+router.use(hasRole('admin', 'manager'));
 
 router.get('/', getAllLocations);
 router.get('/:id', getLocationById);

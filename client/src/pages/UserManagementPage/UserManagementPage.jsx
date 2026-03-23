@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react';
-import {
-
-    getRoles,
-} from '@/services/userService';
+import { getRoles } from '@/services/userService';
 
 import Header from './Header';
 import FilterField from './FilterField';
 import UserTable from './UserTable';
-import RoleManagementTab from './RoleManagementTab';
 
 const UserManagementPage = () => {
     const [roles, setRoles] = useState([]);
@@ -40,7 +36,6 @@ const UserManagementPage = () => {
     const [formErrors, setFormErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
-    const [activeTab, setActiveTab] = useState('users');
 
     // Function to trigger refresh
     const triggerRefresh = () => {
@@ -86,54 +81,30 @@ const UserManagementPage = () => {
                 {/* Header */}
                 <Header roles={roles} triggerRefresh={triggerRefresh} />
 
-                {/* Tabs */}
-                <div className="tabs tabs-lifted bg-base-100">
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'users' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('users')}
-                    >
-                        Quản lý người dùng
-                    </button>
-                    <button
-                        type="button"
-                        className={`tab tab-sm ${activeTab === 'roles' ? 'tab-active [--tab-border-color:var(--color-primary)]' : ''}`}
-                        onClick={() => setActiveTab('roles')}
-                    >
-                        Vai trò & quyền
-                    </button>
-                </div>
-
-                {activeTab === 'roles' ? (
-                    <RoleManagementTab />
-                ) : (
-                    <>
-                        <FilterField
-                            filters={filters}
-                            setFilters={setFilters}
-                            pagination={pagination}
-                            setPagination={setPagination}
-                            roles={roles}
-                        />
-                        <UserTable
-                            filters={filters}
-                            setFilters={setFilters}
-                            selectedUser={selectedUser}
-                            setSelectedUser={setSelectedUser}
-                            formData={formData}
-                            setFormData={setFormData}
-                            formErrors={formErrors}
-                            setFormErrors={setFormErrors}
-                            submitting={submitting}
-                            setSubmitting={setSubmitting}
-                            resetForm={resetForm}
-                            pagination={pagination}
-                            setPagination={setPagination}
-                            roles={roles}
-                            refreshKey={refreshKey}
-                        />
-                    </>
-                )}
+                <FilterField
+                    filters={filters}
+                    setFilters={setFilters}
+                    pagination={pagination}
+                    setPagination={setPagination}
+                    roles={roles}
+                />
+                <UserTable
+                    filters={filters}
+                    setFilters={setFilters}
+                    selectedUser={selectedUser}
+                    setSelectedUser={setSelectedUser}
+                    formData={formData}
+                    setFormData={setFormData}
+                    formErrors={formErrors}
+                    setFormErrors={setFormErrors}
+                    submitting={submitting}
+                    setSubmitting={setSubmitting}
+                    resetForm={resetForm}
+                    pagination={pagination}
+                    setPagination={setPagination}
+                    roles={roles}
+                    refreshKey={refreshKey}
+                />
             </div>
         </div>
     );

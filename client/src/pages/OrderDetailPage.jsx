@@ -6,7 +6,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { OrderStatusBadge, PaymentStatusBadge } from '@/components/order/StatusBadge';
-import { getOrderById, generateVietQR, updateOrderByCustomer, cancelOrderByCustomer } from '@/services/orderService';
+import { getOrderById, generateVietQR, updateOrderByCustomer, cancelOrderByCustomer, syncPaymentStatus } from '@/services/orderService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { toast } from 'sonner';
 import { Pencil, XCircle } from 'lucide-react';
@@ -35,7 +35,7 @@ export default function OrderDetailPage() {
     const loadCartFromServer = useCartStore((s) => s.loadCartFromServer);
 
     const canEdit = order && order.status !== 'cancelled' && order.paymentStatus === 'pending';
-    const canCancel = order && order.status !== 'cancelled' && ['pending', 'confirmed'].includes(order.status);
+    const canCancel = order && order.status !== 'cancelled' && order.status === 'pending';
 
     useEffect(() => {
         const payment = searchParams.get('payment');
@@ -50,10 +50,14 @@ export default function OrderDetailPage() {
 
     useEffect(() => {
         if (!id || !accessToken) return;
+        const isReturnFromPayOS = searchParams.get('payment') === 'success';
         const fetchOrder = async () => {
             setLoading(true);
             try {
-                const res = await getOrderById(id);
+                // Khi quay về từ PayOS: gọi sync để lấy trạng thái mới nhất từ PayOS API ngay lập tức
+                const res = isReturnFromPayOS
+                    ? await syncPaymentStatus(id)
+                    : await getOrderById(id);
                 const ord = res?.data?.order;
                 setOrder(ord);
                 if (ord && ord.paymentStatus === 'pending' && (ord.paymentMethod === 'transfer' || ord.paymentMethod === 'vietqr')) {
@@ -72,20 +76,7 @@ export default function OrderDetailPage() {
             }
         };
         fetchOrder();
-    }, [id, accessToken]);
-    // Refetch khi quay về từ PayOS (returnUrl) để cập nhật paymentStatus sau khi webhook xử lý
-    useEffect(() => {
-        if (searchParams.get('payment') !== 'success' || !id) return;
-        const t = setTimeout(() => {
-            getOrderById(id)
-                .then((res) => {
-                    const ord = res?.data?.order;
-                    if (ord) setOrder(ord);
-                })
-                .catch(() => {});
-        }, 2500);
-        return () => clearTimeout(t);
-    }, [id, searchParams.get('payment')]);
+    }, [id, accessToken, searchParams.get('payment')]);
 
     const handleLogout = async () => {
         try {
@@ -435,15 +426,11 @@ export default function OrderDetailPage() {
                             </div>
                         </div>
 
-                        {vietQRData && vietQRData.checkoutUrl && order.paymentStatus === 'pending' && order.status !== 'cancelled' && (
+                        {vietQRData?.checkoutUrl && order.paymentStatus === 'pending' && order.status !== 'cancelled' && (
                             <div className='bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6'>
                                 <h2 className='font-semibold text-gray-800 mb-4'>Thanh toán chuyển khoản</h2>
                                 <Button asChild size='lg' className='w-full'>
-                                    <a
-                                        href={vietQRData.checkoutUrl}
-                                        target='_blank'
-                                        rel='noopener noreferrer'
-                                    >
+                                    <a href={vietQRData.checkoutUrl} target='_blank' rel='noopener noreferrer'>
                                         Thanh toán qua PayOS
                                     </a>
                                 </Button>

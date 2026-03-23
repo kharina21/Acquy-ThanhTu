@@ -2,7 +2,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { useMemo } from 'react';
 
 /**
- * Hook để kiểm tra role và permission của user hiện tại
+ * Hook để kiểm tra role của user hiện tại
  */
 export const useUserRole = () => {
     const { user } = useAuthStore();
@@ -30,7 +30,8 @@ export const useUserRole = () => {
 
     // Memoize các giá trị boolean để tránh re-render không cần thiết
     const isAdmin = useMemo(() => userRoles.includes('admin'), [userRoles]);
-    const isUser = useMemo(() => userRoles.includes('user'), [userRoles]);
+    const isCustomer = useMemo(() => userRoles.includes('customer'), [userRoles]);
+    const isUser = useMemo(() => userRoles.includes('user') || userRoles.includes('customer'), [userRoles]);
     const isSeller = useMemo(() => userRoles.includes('seller'), [userRoles]);
     const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
     const isWarehouseManager = useMemo(() => userRoles.includes('warehouse_manager'), [userRoles]);
@@ -43,6 +44,7 @@ export const useUserRole = () => {
         hasAnyRole,
         hasAllRoles,
         isAdmin,
+        isCustomer,
         isUser,
         isSeller,
         isManager,

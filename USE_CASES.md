@@ -1,7 +1,7 @@
 # Use Cases
 
-| # | Module | Use Case | Description |
-|---|--------|----------|-------------|
+| # | Module | Use Case | Description | Ghi chú |
+|---|--------|----------|-------------|:-------:|
 | 1 | **Auth** | Login | User signs in with credentials |
 | 2 | Auth | Register | New user creates an account |
 | 3 | Auth | Forgot Password | User requests password reset link |
@@ -10,6 +10,7 @@
 | 6 | Auth | Refresh Token | Refresh access token when expired |
 | 7 | Auth | Get Current User | Retrieve authenticated user profile |
 | 8 | **Users** | List Users | View all users (admin/manager) |
+| 112 | Users | Search Users | Search users by username, email, name, role |
 | 9 | Users | View User Detail | View single user details |
 | 10 | Users | Create User | Create new user |
 | 11 | Users | Update User | Update user information |
@@ -18,13 +19,13 @@
 | 14 | Users | Remove Roles | Remove roles from user |
 | 15 | Users | Reset Password | Admin resets user password |
 | 16 | **Staffs** | List Employees | View all staff/employees |
+| 117 | Staffs | Search Employees | Search employees by name, phone, role, location |
 | 17 | Staffs | View Employee Detail | View single employee details |
 | 18 | Staffs | Create Employee | Create new employee |
 | 19 | Staffs | Update Employee | Update employee information |
 | 20 | Staffs | Delete Employee | Remove employee |
-| 21 | Staffs | Manage Work Schedule | Create/update/delete work schedules |
-| 22 | Staffs | Manage Shifts | Create/update/delete shifts |
 | 23 | **Products** | List Products | View products (search by SKU, barcode, name) |
+| 111 | Products | Search Products | Search products by SKU, barcode, name (catalog, create invoice, import) |
 | 24 | Products | View Product Detail | View single product details |
 | 25 | Products | Create Product | Create new product |
 | 26 | Products | Update Product | Update product information |
@@ -35,6 +36,7 @@
 | 31 | Products | Print Barcode Labels | Print labels (75×130mm, 75×100mm, 35×22mm 2 cell/hàng) |
 | 32 | Products | Export Barcode Excel | Export barcode data to Excel |
 | 33 | **Categories** | List Categories | View all product categories |
+| 116 | Categories | Search Categories | Search categories by name |
 | 34 | Categories | Create Category | Create new category |
 | 35 | Categories | Update Category | Update category |
 | 36 | Categories | Delete Category | Remove category |
@@ -61,6 +63,7 @@
 | 57 | Stock Return | View Stock Return Detail | View single return record details |
 | 58 | Stock Return | Cancel Stock Return | Cancel return and restore inventory |
 | 59 | **Suppliers** | List Suppliers | View all suppliers |
+| 113 | Suppliers | Search Suppliers | Search suppliers by code, name, phone |
 | 60 | Suppliers | View Supplier Detail | View single supplier details |
 | 61 | Suppliers | Create Supplier | Create new supplier |
 | 62 | Suppliers | Update Supplier | Update supplier |
@@ -72,33 +75,55 @@
 | 68 | **Product Stock** | View Product Stocks | View inventory by location |
 | 69 | Product Stock | Update Stock | Update stock quantity |
 | 70 | Product Stock | Bulk Update Stock | Bulk update stock quantities |
-| 71 | **Customers** | List Customers | View all customers |
-| 72 | **Member Policies** | List Member Policies | View all customer policies |
-| 73 | Member Policies | Create Member Policy | Create new policy |
-| 74 | Member Policies | Update Member Policy | Update policy |
-| 75 | Member Policies | Delete Member Policy | Remove policy |
-| 76 | **Store Profile** | View Store Profile | View store information |
-| 77 | Store Profile | Update Store Profile | Update store information |
-| 78 | **Cart** | View Cart | View cart items |
-| 79 | Cart | Add to Cart | Add product to cart |
-| 80 | Cart | Update Cart Item | Update item quantity |
-| 81 | Cart | Remove from Cart | Remove item from cart |
-| 82 | Cart | Clear Cart | Clear all cart items |
-| 83 | **Orders** | Create Order | Create order from cart (checkout) |
-| 84 | Orders | List My Orders | View user's order history |
-| 85 | Orders | View Order Detail | View single order details |
-| 86 | Orders | Update Order | Update order status (admin/manager) |
-| 87 | **Roles** | List Roles | View all roles |
-| 88 | Roles | List Permissions | View all permissions |
-| 89 | Roles | Create Role | Create new role |
-| 90 | Roles | Update Role | Update role |
-| 91 | Roles | Delete Role | Remove role |
-| 92 | **Activity Logs** | List Activity Logs | View activity logs (admin) |
-| 93 | Activity Logs | List My Logs | View own activity logs |
-| 94 | Activity Logs | Delete Activity Log | Remove activity log |
-| 95 | **Profile** | View Profile | View own profile |
-| 96 | Profile | Update Profile | Update own profile |
+| 71 | **Customers** | List Customers | View all customers (search, filter by type) |
+| 114 | Customers | Search Customers | Search customers by phone or name (create invoice, customer list) |
+| 72 | Customers | Create Customer | Create new customer |
+| 73 | Customers | Update Customer | Update customer information |
+| 74 | Customers | Delete Customer | Soft delete customer |
+| 75 | Customers | Restore Customer | Restore soft-deleted customer |
+| 76 | **Member Policies** | List Member Policies | View all customer policies |
+| 77 | Member Policies | Create Member Policy | Create new policy |
+| 78 | Member Policies | Update Member Policy | Update policy |
+| 79 | Member Policies | Delete Member Policy | Remove policy |
+| 80 | **Store Profile** | View Store Profile | View store information |
+| 81 | Store Profile | Update Store Profile | Update store information |
+| 82 | **Cart** | View Cart | View cart items |
+| 83 | Cart | Add to Cart | Add product to cart |
+| 84 | Cart | Update Cart Item | Update item quantity |
+| 85 | Cart | Remove from Cart | Remove item from cart |
+| 86 | Cart | Clear Cart | Clear all cart items |
+| 87 | **Orders** | Create Order | Create order from cart (checkout) |
+| 88 | Orders | List My Orders | View user's order history |
+| 89 | Orders | View Order Detail | View single order details |
+| 90 | Orders | Update Order | Update order status and payment status (admin/manager) |
+| 91 | **Roles** | List Roles | View all roles |
+| 93 | Roles | Create Role | Create new role |
+| 94 | Roles | Update Role | Update role |
+| 95 | Roles | Delete Role | Remove role |
+| 96 | **Activity Logs** | List Activity Logs | View activity logs (admin) |
+| 115 | Activity Logs | Search Activity Logs | Search/filter activity logs by description, resource, action |
+| 97 | Activity Logs | List My Logs | View own activity logs |
+| 98 | Activity Logs | Delete Activity Log | Remove activity log |
+| 99 | **Profile** | View Profile | View own profile |
+| 100 | Profile | Update Profile | Update own profile |
+| 101 | **Dashboard** | View Dashboard Stats | View revenue, paid orders, top customers, top products (filter by branch, period) |
+| 102 | Dashboard | Switch Branch | Select branch or "Tất cả chi nhánh" for aggregated view |
+| 103 | Orders | List Admin Orders | View orders by type: invoices, pre-orders, returns (filter by status, payment) | |
+| 104 | Orders | Create Invoice | Create in-store order (bán tại quầy) | |
+| 105 | Orders | View Order Report | View order report by date range and branch | |
+| 106 | **Payment (PayOS)** | Create Payment Link | Create online payment link for order | |
+| 107 | Payment (PayOS) | Webhook Confirm | PayOS callback updates payment status when paid | |
+| 108 | Payment (PayOS) | Sync Payment Status | Check and sync payment status from PayOS API | |
+| 109 | Locations | Set Online Location | Set branch that receives online orders (isOnlineLocation) | |
+| 110 | Locations | Assign Manager Locations | Assign branches to manager (Employee.locations) | |
+| 118 | Orders | Refund Order | Hoàn tiền khi hủy đơn đã thanh toán | 🟡 |
+| 119 | **Chat AI** | Chat AI Support | Hỗ trợ khách hàng hỏi đáp về cửa hàng, sản phẩm | 🟡 |
+| 120 | Orders | Create Pre-Order | Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder) | 🟡 |
+| 121 | **Feedback** | Submit Feedback | Người dùng gửi phản hồi, đánh giá | 🟡 |
+| 122 | Feedback | Manage Feedback | Quản lý cửa hàng xem và phản hồi feedback từ khách | 🟡 |
 
 ---
 
-**Note:** Order and Cart routes exist in the backend but may not be mounted in `server.js`. Verify API configuration if checkout/orders features are not working.
+**Chú thích:** 🟡 = Đánh dấu (Hoàn tiền, Chat AI, Đặt hàng, Feedback – kế hoạch / đặc biệt)
+
+**Nguồn:** `client/src/data/useCases.js` – Single source of truth. UseCasesPage và USE_CASES.md đồng bộ từ file này.

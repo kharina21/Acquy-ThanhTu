@@ -19,7 +19,8 @@ export default function AdminLayout({ children }) {
 
     useEffect(() => {
         if (user && needsBranch) {
-            fetchLocations();
+            const scope = hasAnyRole('manager') && !hasAnyRole('admin') ? 'mine' : 'all';
+            fetchLocations({ scope });
         }
     }, [user, needsBranch, fetchLocations]);
 

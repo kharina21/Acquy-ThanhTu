@@ -18,7 +18,7 @@ router.get('/from-other-locations', authenticate, getBankAccountsFromOtherLocati
 
 // Tạo/sửa/xóa - chỉ admin, manager
 router.use(authenticate);
-router.use(hasRole('admin', 'manager', 'Quản lý chi nhánh'));
+router.use(hasRole('admin', 'manager'));
 router.post('/', createBankAccount);
 router.put('/:id', updateBankAccount);
 router.delete('/:id', deleteBankAccount);

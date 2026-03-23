@@ -189,7 +189,7 @@ export default function CreateInvoicePage() {
             getUsers({ kindFilter: 'staff', limit: 100 })
                 .then((res) => {
                     const list = res?.data?.users || [];
-                    const sellerList = list.filter((u) => u.roles?.some((r) => r?.name === 'seller' || r?.name === 'staff'));
+                    const sellerList = list.filter((u) => u.roles?.some((r) => r?.name === 'seller'));
                     setSellers(sellerList);
                 })
                 .catch(() => setSellers([]));

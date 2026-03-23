@@ -79,7 +79,6 @@ const ActivityLogPage = () => {
             logout: 'badge-neutral',
             assign_role: 'badge-primary',
             revoke_role: 'badge-error',
-            update_permission: 'badge-warning',
         };
         return colors[action] || 'badge-neutral';
     };
@@ -130,7 +129,7 @@ const ActivityLogPage = () => {
                             <input
                                 type='text'
                                 className='input input-bordered w-full'
-                                placeholder='user, role, permission...'
+                                placeholder='user, role...'
                                 value={filters.resource}
                                 onChange={(e) =>
                                     setFilters({ ...filters, resource: e.target.value })

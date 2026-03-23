@@ -9,7 +9,7 @@ import AdminUserDropdown from './AdminUserDropdown';
 export default function AdminNavbar() {
     const { hasAnyRole } = useUserRole();
     const needsBranch = hasAnyRole('admin', 'manager', 'warehouse_manager');
-    const canSell = hasAnyRole('admin', 'manager', 'seller', 'staff');
+    const canSell = hasAnyRole('admin', 'manager', 'seller');
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
 
     const salesHref = currentLocationId ? `/sales?locationId=${currentLocationId}` : '/sales';

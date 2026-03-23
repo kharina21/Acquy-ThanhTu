@@ -1,9 +1,8 @@
-import { BadgePercent, Boxes, LayoutDashboard, Package, Receipt, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import { BadgePercent, Boxes, FileText, LayoutDashboard, Package, Receipt, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
 
 /**
- * Cấu hình menu sidebar - gắn với permission RBAC.
- * permission: { resource, action } - null = luôn hiển thị (vd: Tài khoản).
- * Admin bypass tất cả, các role khác cần có permission tương ứng.
+ * Cấu hình menu sidebar - RBAC theo vai trò.
+ * allowedRoles: mảng tên role được phép xem. null = luôn hiển thị (vd: Tài khoản).
  * subItems: dropdown con (dùng khi có children)
  */
 export const SIDEBAR_MENU_ITEMS = [
@@ -14,14 +13,14 @@ export const SIDEBAR_MENU_ITEMS = [
         label: 'Tổng quan',
         ariaLabel: 'Tổng quan',
         activePaths: ['/admin', '/admin/dashboard'],
-        permission: { resource: 'product', action: 'read' },
+        allowedRoles: ['admin', 'manager'],
     },
     {
         id: 'products',
         icon: Package,
         label: 'Sản phẩm',
         ariaLabel: 'Quản lý sản phẩm',
-        permission: { resource: 'product', action: 'read' },
+        allowedRoles: ['admin', 'manager'],
         subItems: [
             { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
             { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
@@ -35,7 +34,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UsersRound,
         label: 'Người dùng',
         ariaLabel: 'Quản lý người dùng',
-        permission: { resource: 'user', action: 'read' },
+        allowedRoles: ['admin', 'manager'],
     },
     {
         id: 'staffs',
@@ -43,14 +42,14 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UserRoundPen,
         label: 'Nhân viên',
         ariaLabel: 'Quản lý nhân viên',
-        permission: { resource: 'user', action: 'read' },
+        allowedRoles: ['admin', 'manager'],
     },
     {
         id: 'orders',
         icon: Receipt,
         label: 'Đơn hàng',
         ariaLabel: 'Quản lý đơn hàng cửa hàng',
-        permission: { resource: 'product', action: 'read' },
+        allowedRoles: ['admin', 'manager', 'seller'],
         activePaths: ['/admin/orders'],
         subItems: [
             { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },
@@ -65,7 +64,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UsersRound,
         label: 'Khách hàng',
         ariaLabel: 'Quản lý khách hàng',
-        permission: { resource: 'user', action: 'read' },
+        allowedRoles: ['admin', 'manager', 'seller'],
     },
     {
         id: 'member-policies',
@@ -73,14 +72,14 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: BadgePercent,
         label: 'Chính sách khách hàng',
         ariaLabel: 'Chính sách hạng / ưu đãi khách hàng',
-        permission: { resource: 'user', action: 'read' },
+        allowedRoles: ['admin', 'manager'],
     },
     {
         id: 'warehouses',
         icon: Boxes,
         label: 'Kho hàng',
         ariaLabel: 'Quản lý kho hàng',
-        permission: { resource: 'stock_check', action: 'read' },
+        allowedRoles: ['admin', 'manager', 'warehouse_manager'],
         subItems: [
             { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
             { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
@@ -89,11 +88,19 @@ export const SIDEBAR_MENU_ITEMS = [
         ],
     },
     {
+        id: 'use-cases',
+        to: '/admin/use-cases',
+        icon: FileText,
+        label: 'Use Cases',
+        ariaLabel: 'Danh sách use cases',
+        allowedRoles: ['admin'],
+    },
+    {
         id: 'profile',
         to: '/profile',
         icon: UserRound,
         label: 'Tài khoản',
         ariaLabel: 'Xem tài khoản',
-        permission: null,
+        allowedRoles: null,
     },
 ];

@@ -26,6 +26,7 @@ import cartRoutes from './routes/cartRoute.js';
 import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
+import dashboardRoutes from './routes/dashboardRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -63,6 +64,7 @@ app.use('/api/cart', cartRoutes); // Giỏ hàng
 app.use('/api/orders', orderRoutes); // Đơn hàng
 app.use('/api/customers', customerRoutes); // Khách hàng
 app.use('/api/payments', paymentRoutes); // Webhook PayOS
+app.use('/api/dashboard', dashboardRoutes); // Tổng quan (Admin/Manager)
 
 connectDB().then(() =>
     app.listen(PORT, () => {

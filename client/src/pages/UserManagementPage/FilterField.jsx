@@ -1,7 +1,8 @@
 import { Search, X } from 'lucide-react';
 import React from 'react';
+import { ROLE_LABELS } from '@/config/roleConfig';
 
-const FilterField = ({ filters, setFilters, pagination, setPagination, roles }) => {
+const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [] }) => {
     const clearFilters = () => {
         // Giữ nguyên các filter không liên quan (vd: kind cho màn nhân viên)
         setFilters((prev) => ({
@@ -56,7 +57,7 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles }) 
                             <option value="">Tất cả</option>
                             {roles.map((role) => (
                                 <option key={role._id} value={role.name}>
-                                    {role.name}
+                                    {ROLE_LABELS[role.name] || role.name}
                                 </option>
                             ))}
                         </select>

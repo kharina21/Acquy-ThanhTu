@@ -193,7 +193,7 @@ export const login = async (req, res) => {
     }
 };
 
-// Lấy thông tin user hiện tại (với roles và permissions cho RBAC sidebar)
+// Lấy thông tin user hiện tại (với roles cho RBAC theo vai trò)
 export const getCurrentUser = async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
@@ -201,11 +201,6 @@ export const getCurrentUser = async (req, res) => {
             .populate({
                 path: 'roles',
                 select: 'name description',
-                match: { isActive: true },
-                populate: {
-                    path: 'permissions',
-                    select: 'resource action',
-                },
             });
 
         if (!user) {
@@ -266,11 +261,6 @@ export const updateProfile = async (req, res) => {
             .populate({
                 path: 'roles',
                 select: 'name description',
-                match: { isActive: true },
-                populate: {
-                    path: 'permissions',
-                    select: 'resource action',
-                },
             });
 
         if (!updatedUser) {
@@ -409,11 +399,6 @@ export const verifyEmail = async (req, res) => {
             .populate({
                 path: 'roles',
                 select: 'name description',
-                match: { isActive: true },
-                populate: {
-                    path: 'permissions',
-                    select: 'resource action',
-                },
             });
 
         // Đánh dấu mã đã được sử dụng

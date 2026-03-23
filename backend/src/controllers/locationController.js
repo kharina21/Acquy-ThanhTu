@@ -1,5 +1,6 @@
 import Location from '../models/Location.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
+import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 
 /**
  * Chi nhánh nhận đơn online – chỉ một. Fallback: chi nhánh đầu tiên đang hoạt động.
@@ -84,11 +85,21 @@ export const getActiveLocations = async (req, res) => {
 
 export const getAllLocations = async (req, res) => {
     try {
-        const { isActive } = req.query;
+        const { isActive, scope } = req.query;
         const filter = {};
         if (isActive !== undefined && isActive !== '') {
             filter.isActive = isActive === 'true';
         }
+
+        if (scope === 'mine' && req.user?._id) {
+            const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+            if (allowedIds !== null && allowedIds.length > 0) {
+                filter._id = { $in: allowedIds };
+            } else if (allowedIds !== null) {
+                filter._id = { $in: [] };
+            }
+        }
+
         const locations = await Location.find(filter).sort({ code: 1 });
 
         res.status(200).json({

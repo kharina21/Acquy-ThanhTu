@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Role from '../models/Role.js';
 import Employee from '../models/Employee.js';
+import Order from '../models/Order.js';
 import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
@@ -18,19 +19,40 @@ export const getAllUsers = async (req, res) => {
         const dateTo = req.query.dateTo;
         const skip = (page - 1) * limit;
 
-        // Build query
-        const query = {};
+        // Build query - loại bỏ user đã soft-delete
+        const query = { isDeleted: { $ne: true } };
 
-        // Filter by role (cụ thể)
+        // Filter by role (cụ thể) - hỗ trợ tên tiếng Anh và nhãn tiếng Việt
         if (roleFilter) {
-            const role = await Role.findOne({ name: roleFilter });
+            const raw = roleFilter.trim();
+            const labelToName = {
+                'quản trị viên': 'admin',
+                'người dùng thường': 'user',
+                'khách hàng': 'customer',
+                'nhân viên bán hàng': 'seller',
+                'quản lý kho': 'warehouse_manager',
+                'quản lý chi nhánh': 'manager',
+                'quản lý': 'manager',
+            };
+            const roleName = labelToName[raw.toLowerCase()] || raw;
+            const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const namePattern = `^${escapeRegex(roleName)}$`;
+            const descPattern = escapeRegex(raw);
+            const role = await Role.findOne({
+                $or: [
+                    { name: { $regex: namePattern, $options: 'i' } },
+                    { description: { $regex: descPattern, $options: 'i' } },
+                ],
+            });
             if (role) {
-                query.roles = role._id;
+                query.roles = { $in: [role._id] };
+            } else {
+                query.roles = { $in: [] };
             }
         } else if (kindFilter) {
             // Lọc theo loại tài khoản (staff / customer) khi không chọn role cụ thể
             if (kindFilter === 'staff') {
-                const staffRoleNames = ['seller', 'warehouse_manager', 'manager', 'staff'];
+                const staffRoleNames = ['seller', 'warehouse_manager', 'manager'];
                 const staffRoles = await Role.find({ name: { $in: staffRoleNames } }).select('_id');
                 const ids = staffRoles.map((r) => r._id);
                 if (ids.length) {
@@ -40,9 +62,10 @@ export const getAllUsers = async (req, res) => {
                     query.roles = { $in: [] };
                 }
             } else if (kindFilter === 'customer') {
-                const userRole = await Role.findOne({ name: 'user' }).select('_id');
-                if (userRole) {
-                    query.roles = userRole._id;
+                const customerRoles = await Role.find({ name: { $in: ['user', 'customer'] } }).select('_id');
+                const ids = customerRoles.map((r) => r._id);
+                if (ids.length) {
+                    query.roles = { $in: ids };
                 } else {
                     query.roles = { $in: [] };
                 }
@@ -71,15 +94,36 @@ export const getAllUsers = async (req, res) => {
             }
         }
 
-        // Search by username, email, firstName, lastName
-        // MongoDB automatically combines $or with other fields using AND logic
+        // Search by username, email, firstName, lastName, hoặc tên vai trò (tiếng Việt)
         if (search) {
-            query.$or = [
+            const searchLower = search.trim().toLowerCase();
+            const roleSearchKeywords = {
+                admin: ['quản trị viên', 'admin'],
+                manager: ['quản lý chi nhánh', 'quản lý', 'manager'],
+                warehouse_manager: ['quản lý kho', 'warehouse_manager'],
+                seller: ['nhân viên bán hàng', 'seller'],
+                user: ['người dùng thường', 'user'],
+                customer: ['khách hàng', 'customer'],
+            };
+
+            let matchedRoleIds = [];
+            for (const [roleName, keywords] of Object.entries(roleSearchKeywords)) {
+                if (keywords.some((kw) => searchLower.includes(kw) || kw.includes(searchLower))) {
+                    const role = await Role.findOne({ name: roleName }).select('_id');
+                    if (role) matchedRoleIds.push(role._id);
+                }
+            }
+
+            const orConditions = [
                 { username: { $regex: search, $options: 'i' } },
                 { email: { $regex: search, $options: 'i' } },
                 { firstName: { $regex: search, $options: 'i' } },
                 { lastName: { $regex: search, $options: 'i' } },
             ];
+            if (matchedRoleIds.length > 0) {
+                orConditions.push({ roles: { $in: matchedRoleIds } });
+            }
+            query.$or = orConditions;
         }
 
         // Get users with pagination
@@ -110,9 +154,12 @@ export const getAllUsers = async (req, res) => {
                 empCodeMap[uid] = emp.empCode || null;
             }
         }
+        const userIdsWithOrders = await Order.distinct('customer', { customer: { $in: userIds } });
+        const hasPurchasesSet = new Set(userIdsWithOrders.map((id) => String(id)));
         const users = usersRaw.map((u) => ({
             ...u,
             empCode: empCodeMap[String(u._id)] ?? null,
+            hasPurchases: hasPurchasesSet.has(String(u._id)),
         }));
 
         // Get total count
@@ -192,6 +239,16 @@ export const createUser = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng chọn vai trò cho người dùng' });
         }
 
+        const roleName = roles[0];
+        if (roleName === 'admin') {
+            return res.status(403).json({ message: 'Không được gán vai trò quản trị viên khi tạo user' });
+        }
+        if (roleName === 'customer') {
+            return res.status(400).json({
+                message: 'Không thể gán vai trò Khách hàng cho user mới (chưa có đơn hàng). Vui lòng chọn Người dùng thường.',
+            });
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -208,11 +265,7 @@ export const createUser = async (req, res) => {
             status: status || 'active',
         });
 
-        // Gán 1 vai trò (mỗi user chỉ 1 role; không cho gán admin)
-        const roleName = roles[0];
-        if (roleName === 'admin') {
-            return res.status(403).json({ message: 'Không được gán vai trò quản trị viên khi tạo user' });
-        }
+        // Gán 1 vai trò (đã validate ở trên)
         await assignRoleByName(user, roleName);
 
         // Lấy lại user với roles đã populate
@@ -462,6 +515,19 @@ export const assignRoles = async (req, res) => {
             return res.status(400).json({ message: 'Vai trò không tồn tại' });
         }
 
+        // user: chỉ gán khi chưa mua hàng; customer: chỉ gán khi đã mua hàng
+        const hasPurchases = await Order.exists({ customer: user._id });
+        if (roleName === 'user' && hasPurchases) {
+            return res.status(400).json({
+                message: 'Không thể gán vai trò Người dùng thường cho tài khoản đã có đơn hàng. Vui lòng chọn Khách hàng.',
+            });
+        }
+        if (roleName === 'customer' && !hasPurchases) {
+            return res.status(400).json({
+                message: 'Không thể gán vai trò Khách hàng cho tài khoản chưa có đơn hàng. Vui lòng chọn Người dùng thường.',
+            });
+        }
+
         // Mỗi user chỉ 1 role: ghi đè thành [roleId]
         user.roles = [role._id];
         await user.save();
@@ -637,7 +703,7 @@ export const resetUserPassword = async (req, res) => {
 // Lấy danh sách tất cả roles
 export const getAllRoles = async (req, res) => {
     try {
-        const roles = await Role.find({ isActive: true }).select('name description').sort({ name: 1 });
+        const roles = await Role.find({}).select('name description').sort({ name: 1 });
 
         res.status(200).json({
             success: true,

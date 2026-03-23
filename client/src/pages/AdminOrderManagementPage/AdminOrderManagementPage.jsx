@@ -4,11 +4,11 @@ import { useBranchStore } from '@/stores/useBranchStore';
 import { getActiveLocations } from '@/services/locationService';
 import { getMyOrders, updateOrder } from '@/services/orderService';
 import { toast } from 'sonner';
+import { STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
-    confirmed: 'Đã xác nhận',
-    paid: 'Đã thanh toán',
+    completed: 'Hoàn thành',
     cancelled: 'Đã hủy',
 };
 
@@ -17,6 +17,15 @@ const PAYMENT_STATUS_LABELS = {
     paid: 'Đã thanh toán',
     failed: 'Thất bại',
     refunded: 'Đã hoàn tiền',
+};
+
+const getStatusSelectClass = (status) => {
+    const s = ['paid', 'confirmed'].includes(status) ? 'completed' : (status || 'pending');
+    return STATUS_CONFIG[s]?.className || 'bg-base-100';
+};
+
+const getPaymentSelectClass = (status) => {
+    return PAYMENT_STATUS_CONFIG[status || 'pending']?.className || 'bg-base-100';
 };
 
 export default function AdminOrderManagementPage({ type = 'invoices' }) {
@@ -85,6 +94,20 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
             toast.error(err.response?.data?.message || 'Lỗi khi cập nhật');
         } finally {
             setUpdatingId(null);
+        }
+    };
+
+    const handleSyncPayOS = async (orderId, e) => {
+        e?.stopPropagation();
+        setSyncingId(orderId);
+        try {
+            await syncPaymentStatus(orderId);
+            toast.success('Đã đồng bộ trạng thái từ PayOS');
+            fetchOrders();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không thể đồng bộ từ PayOS');
+        } finally {
+            setSyncingId(null);
         }
     };
 
@@ -199,8 +222,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         </td>
                                                         <td onClick={(e) => e.stopPropagation()}>
                                                             <select
-                                                                className="select select-bordered select-sm"
-                                                                value={order.status || 'pending'}
+                                                                className={`select select-bordered select-sm border-2 font-medium ${getStatusSelectClass(order.status)}`}
+                                                                value={['paid', 'confirmed'].includes(order.status) ? 'completed' : (order.status || 'pending')}
                                                                 onChange={(e) =>
                                                                     handleUpdateStatus(order._id, 'status', e.target.value)
                                                                 }
@@ -213,7 +236,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         </td>
                                                         <td className="py-3" onClick={(e) => e.stopPropagation()}>
                                                             <select
-                                                                className="select select-bordered select-sm"
+                                                                className={`select select-bordered select-sm border-2 font-medium ${getPaymentSelectClass(order.paymentStatus)}`}
                                                                 value={order.paymentStatus || 'pending'}
                                                                 onChange={(e) =>
                                                                     handleUpdateStatus(order._id, 'paymentStatus', e.target.value)
@@ -247,8 +270,18 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                         )}
                                                                     </div>
                                                                     <div className="space-y-2">
-                                                                        <p><span className="font-medium text-base-content/70">Trạng thái:</span> {STATUS_LABELS[order.status] || order.status}</p>
-                                                                        <p><span className="font-medium text-base-content/70">Thanh toán:</span> {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}</p>
+                                                                        <p>
+                                                                            <span className="font-medium text-base-content/70">Trạng thái:</span>{' '}
+                                                                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getStatusSelectClass(order.status)}`}>
+                                                                                {STATUS_LABELS[['paid','confirmed'].includes(order.status) ? 'completed' : order.status] || order.status}
+                                                                            </span>
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="font-medium text-base-content/70">Thanh toán:</span>{' '}
+                                                                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getPaymentSelectClass(order.paymentStatus)}`}>
+                                                                                {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
+                                                                            </span>
+                                                                        </p>
                                                                     </div>
                                                                 </div>
                                                                 <div className="mt-4 pt-4 border-t border-base-200">

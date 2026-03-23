@@ -2,9 +2,9 @@ import Role from '../models/Role.js';
 
 export const getDefaultRole = async () => {
     try {
-        const defaultRole = await Role.findOne({ name: 'Người dùng thường' });
+        const defaultRole = await Role.findOne({ name: 'user' });
         if (!defaultRole) {
-            throw new Error('Default role "Người dùng thường" not found. Please run seed:rbac first.');
+            throw new Error('Default role "user" not found. Please run seed:rbac first.');
         }
         return defaultRole;
     } catch (error) {

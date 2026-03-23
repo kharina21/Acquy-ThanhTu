@@ -68,3 +68,11 @@ export const generateVietQR = async (orderId) => {
     const res = await api.get(`/orders/${orderId}/generate-vietqr`);
     return res.data;
 };
+
+/**
+ * Đồng bộ trạng thái thanh toán từ PayOS (gọi khi quay về từ returnUrl)
+ */
+export const syncPaymentStatus = async (orderId) => {
+    const res = await api.get(`/orders/${orderId}/sync-payment`);
+    return res.data;
+};

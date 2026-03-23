@@ -5,11 +5,6 @@ export const getRolesWithPermissions = async () => {
     return res.data;
 };
 
-export const getAllPermissions = async () => {
-    const res = await api.get('/roles/permissions');
-    return res.data;
-};
-
 export const createRole = async (payload) => {
     const res = await api.post('/roles', payload);
     return res.data;

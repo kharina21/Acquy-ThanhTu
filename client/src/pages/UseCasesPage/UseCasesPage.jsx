@@ -64,15 +64,20 @@ const UseCasesPage = () => {
                                     <th className="font-medium text-neutral text-xs py-3">Module</th>
                                     <th className="font-medium text-neutral text-xs py-3">Use Case</th>
                                     <th className="font-medium text-neutral text-xs py-3">Mô tả</th>
+                                    <th className="w-20 font-medium text-neutral text-xs py-3 text-center">Ghi chú</th>
                                 </tr>
                             </thead>
                             <tbody className="text-xs">
                                 {filtered.map((uc) => (
-                                    <tr key={uc.id} className="hover:bg-base-200/60 transition-colors font-light">
+                                    <tr
+                                        key={uc.id}
+                                        className={`hover:bg-base-200/60 transition-colors font-light ${uc.highlight ? 'bg-yellow-100/80' : ''}`}
+                                    >
                                         <td className="py-3 font-mono">{uc.id}</td>
                                         <td className="py-3 font-medium">{uc.module}</td>
                                         <td className="py-3">{uc.useCase}</td>
                                         <td className="py-3 text-base-content/80">{uc.description}</td>
+                                        <td className="py-3 text-center">{uc.highlight ? '🏷️' : ''}</td>
                                     </tr>
                                 ))}
                             </tbody>

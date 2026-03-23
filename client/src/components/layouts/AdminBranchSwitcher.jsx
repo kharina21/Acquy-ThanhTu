@@ -35,7 +35,9 @@ export default function AdminBranchSwitcher() {
             >
                 <MapPin className="size-4 text-primary shrink-0" />
                 <span className="max-w-[140px] truncate">
-                    {currentLocation?.name || currentLocation?.code || 'Chọn chi nhánh'}
+                    {currentLocationId && currentLocationId !== 'all'
+                        ? (currentLocation?.name || currentLocation?.code)
+                        : 'Tất cả chi nhánh'}
                 </span>
                 <ChevronDown className="size-4 shrink-0" />
             </div>
@@ -43,12 +45,21 @@ export default function AdminBranchSwitcher() {
                 tabIndex={-1}
                 className="dropdown-content menu bg-base-100 rounded-box z-[100] w-56 p-2 border border-base-300 shadow-md"
             >
+                <li>
+                    <button
+                        type="button"
+                        onClick={() => setCurrentLocationId('all')}
+                        className={!currentLocationId || currentLocationId === 'all' ? 'active font-medium' : ''}
+                    >
+                        Tất cả chi nhánh
+                    </button>
+                </li>
                 {locations.map((loc) => (
                     <li key={loc._id}>
                         <button
                             type="button"
                             onClick={() => setCurrentLocationId(loc._id)}
-                            className={currentLocationId === loc._id ? 'active font-medium' : ''}
+                            className={currentLocationId === loc._id && currentLocationId !== 'all' ? 'active font-medium' : ''}
                         >
                             {loc.code} - {loc.name}
                         </button>

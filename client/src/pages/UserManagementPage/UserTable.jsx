@@ -1,4 +1,5 @@
 import { formatDateTime } from '@/lib/utils';
+import { getAssignableRoleOptionsForUser, ROLE_LABELS } from '@/config/roleConfig';
 import { CheckCircle2, ChevronLeft, ChevronRight, Edit, Key, Shield, Trash2, Users, XCircle } from 'lucide-react';
 import {
     deleteUser, getUsers, updateUser,
@@ -177,10 +178,12 @@ const UserTable = ({
             return;
         }
         setSelectedUser(user);
+        const allowedOptions = getAssignableRoleOptionsForUser(roles, user);
         const currentRole = user.roles?.[0]?.name;
+        const isValidRole = allowedOptions.some((r) => r.name === currentRole);
         setFormData({
             ...formData,
-            roles: currentRole ? [currentRole] : [],
+            roles: isValidRole && currentRole ? [currentRole] : [],
         });
         setShowRoleModal(true);
     };
@@ -200,11 +203,11 @@ const UserTable = ({
     const getRoleDescription = (roleName, defaultDescription) => {
         const descriptions = {
             admin: 'Quản trị viên - Toàn quyền hệ thống',
-            manager: 'Quản lý cửa hàng - Nhân viên, sản phẩm, đơn hàng',
-            seller: 'Nhân viên bán hàng - Tạo đơn, xem sản phẩm',
+            manager: 'Quản lý chi nhánh',
+            seller: 'Nhân viên bán hàng',
             warehouse_manager: 'Quản lý kho - Kiểm kho, nhập/xuất, tồn',
-            user: 'Khách hàng / người dùng web',
-            staff: 'Nhân viên (cũ) - Nên chuyển sang seller',
+            user: 'Người dùng thường',
+            customer: 'Khách hàng / người dùng web',
         };
         return descriptions[roleName] || defaultDescription || '';
     };
@@ -360,7 +363,7 @@ const UserTable = ({
                                             <div className="flex flex-wrap gap-1">
                                                 {(user.roles?.length ? [user.roles[0]] : user.roles || []).map((role) => (
                                                     <span key={role._id} className={`badge badge-sm ${getRoleBadgeColor(role.name)}`}>
-                                                        {role.name}
+                                                        {ROLE_LABELS[role.name] || role.name}
                                                     </span>
                                                 ))}
                                             </div>
@@ -502,13 +505,11 @@ const UserTable = ({
                                     onChange={(e) => setFormData({ ...formData, roles: e.target.value ? [e.target.value] : [] })}
                                 >
                                     <option value="">-- Chọn vai trò --</option>
-                                    {roles
-                                        .filter((r) => r.name !== 'admin')
-                                        .map((role) => (
-                                            <option key={role._id} value={role.name}>
-                                                {role.name}
-                                            </option>
-                                        ))}
+                                    {getAssignableRoleOptionsForUser(roles, selectedUser).map((role) => (
+                                        <option key={role.name} value={role.name}>
+                                            {role.label}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="modal-action">

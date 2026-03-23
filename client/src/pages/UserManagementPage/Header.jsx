@@ -1,5 +1,6 @@
 import { UserRoundPlus, Eye, EyeOff } from 'lucide-react';
 import { createUser } from '@/services/userService';
+import { getAssignableRoleOptionsForUser } from '@/config/roleConfig';
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -313,8 +314,10 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                                         onChange={(e) => setRoleSelected(e.target.value)}
                                     >
                                         <option value="">-- Chọn vai trò --</option>
-                                        {roles.filter((r) => !['admin'].includes(r.name)).map((role) => (
-                                            <option key={role._id} value={role.name}>{role.name}</option>
+                                        {getAssignableRoleOptionsForUser(roles, null).map((role) => (
+                                            <option key={role.name} value={role.name}>
+                                                {role.label}
+                                            </option>
                                         ))}
                                     </select>
                                 </div>
