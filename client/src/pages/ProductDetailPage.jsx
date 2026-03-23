@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { toast } from 'sonner';
 import { ShoppingCart, Check, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { useCartStore } from '@/stores/useCartStore';
@@ -33,7 +33,7 @@ const ProductDetailPage = () => {
 
     const fetchFilterOptions = async () => {
         try {
-            const res = await axios.get("http://localhost:5000/api/products/filter-options");
+            const res = await api.get("/products/filter-options");
             setCategories(res.data.data.categories);
             setBrands(res.data.data.brands);
             setUsageDevices(res.data.data.usageDevices);
@@ -57,8 +57,8 @@ const ProductDetailPage = () => {
     const fetchProductDetails = async () => {
         try {
             setLoading(true);
-            const res = await axios.get(`http://localhost:5000/api/products/${id}`);
-            const relatedRes = await axios.get(`http://localhost:5000/api/products/${id}/related?limit=4`);
+            const res = await api.get(`/products/${id}`);
+            const relatedRes = await api.get(`/products/${id}/related?limit=4`);
 
             const data = res.data?.data?.product || res.data?.product || res.data;
             setProduct(data);

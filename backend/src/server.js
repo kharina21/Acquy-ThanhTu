@@ -1,8 +1,13 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import connectDB from './libs/db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 //routes
 import authRoutes from './routes/authRoute.js';
@@ -71,6 +76,16 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+
+// Serve frontend (React SPA) khi đã build - cùng domain với backend
+const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
+if (existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api')) return next();
+        res.sendFile(path.join(clientDist, 'index.html'));
+    });
+}
 
 connectDB().then(() =>
     app.listen(PORT, () => {

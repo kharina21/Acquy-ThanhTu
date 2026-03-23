@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useCartStore } from '@/stores/useCartStore';
@@ -38,7 +38,7 @@ const ListProduct = () => {
 
     const fetchFilterOptions = async () => {
         try {
-            const res = await axios.get("http://localhost:5000/api/products/filter-options");
+            const res = await api.get("/products/filter-options");
 
             setCategories(res.data.data.categories);
             setBrands(res.data.data.brands);
@@ -73,8 +73,8 @@ const ListProduct = () => {
             params.set("page", page);
             params.set("limit", limit);
 
-            const res = await axios.get(
-                `http://localhost:5000/api/products/filter?${params.toString()}`
+            const res = await api.get(
+                `/products/filter?${params.toString()}`
             );
 
             setProducts(res.data.data.products);
