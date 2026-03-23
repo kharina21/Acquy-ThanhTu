@@ -633,11 +633,7 @@ export const generateVietQRForOrder = async (req, res) => {
             return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
         }
 
-        const order = await Order.findById(id)
-            .populate('location', 'name')
-            .populate('customerProfile', 'name phone')
-            .populate('items.product', 'name')
-            .lean();
+        const order = await Order.findById(id).populate('location', 'name').populate('customerProfile', 'name phone').populate('items.product', 'name').lean();
 
         if (!order) {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
@@ -655,7 +651,7 @@ export const generateVietQRForOrder = async (req, res) => {
 
         const amount = order.totalAmount || 0;
         const memo = (order.code || '').replace(/[^\w-]/g, '').slice(0, 25) || 'DonHang';
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = import.meta.env.NODE_ENV === 'production' ? 'https://acquy-thanhtu.onrender.com' : process.env.FRONTEND_URL || 'http://localhost:5173';
         const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;
         const cancelUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=cancelled`;
 
@@ -1091,8 +1087,14 @@ export const updateOrderByCustomer = async (req, res) => {
             return res.status(400).json({ message: 'Không thể sửa đơn đã thanh toán' });
         }
 
-        const hasStructured = provinceCode !== undefined || provinceName !== undefined || districtCode !== undefined ||
-            districtName !== undefined || wardCode !== undefined || wardName !== undefined || addressLine !== undefined;
+        const hasStructured =
+            provinceCode !== undefined ||
+            provinceName !== undefined ||
+            districtCode !== undefined ||
+            districtName !== undefined ||
+            wardCode !== undefined ||
+            wardName !== undefined ||
+            addressLine !== undefined;
         if (hasStructured) {
             order.provinceCode = String(provinceCode ?? order.provinceCode ?? '').trim();
             order.provinceName = String(provinceName ?? order.provinceName ?? '').trim();
