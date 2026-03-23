@@ -28,12 +28,14 @@ import UseCasesPage from '../pages/UseCasesPage/UseCasesPage';
 import CreateInvoicePage from '../pages/CreateInvoicePage/CreateInvoicePage';
 import AdminOrderManagementPage from '../pages/AdminOrderManagementPage/AdminOrderManagementPage';
 import AdminOrderDetailPage from '../pages/AdminOrderManagementPage/AdminOrderDetailPage';
+import AdminBatteryTradeInPage from '../pages/AdminBatteryTradeInPage';
 import CustomerReturnsPage from '../pages/AdminOrderManagementPage/CustomerReturnsPage';
 import OrderManagementPage from '../pages/OrderManagementPage/OrderManagementPage';
 import OrderReportPage from '../pages/OrderManagementPage/OrderReportPage';
 import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
+import BatteryTradeInPage from '../pages/BatteryTradeInPage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 
 // Dashboards
@@ -92,6 +94,10 @@ export const AppRoutes = () => {
             <Route
                 path='/product/:id'
                 element={<ProductDetailPage />}
+            />
+            <Route
+                path='/battery-trade-in'
+                element={<BatteryTradeInPage />}
             />
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}
@@ -181,6 +187,10 @@ export const AppRoutes = () => {
                         <Route
                             path='/admin/use-cases'
                             element={<UseCasesPage />}
+                        />
+                        <Route
+                            path='/admin/battery-trade-in'
+                            element={<AdminBatteryTradeInPage />}
                         />
                     </Route>
 

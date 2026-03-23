@@ -10,7 +10,7 @@ import { getProducts } from '@/services/productService';
 const navLinks = [
     { label: 'Trang chủ', to: '/' },
     { label: 'Sản phẩm', to: '/listproduct' },
-    { label: 'Thu mua ắc quy', to: '#' },
+    { label: 'Thu mua ắc quy', to: '/battery-trade-in' },
     { label: 'Liên hệ', to: '#' },
 ];
 

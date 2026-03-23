@@ -7,6 +7,7 @@ import { Header } from '@/components/Header';
 import { HeroSlider } from '@/components/HeroSlider';
 import { ServiceFeatures } from '@/components/ServiceFeatures';
 import { ProductSection } from '@/components/ProductSection';
+import { BatteryTradeInBanner } from '@/components/BatteryTradeInBanner';
 import { PartnersSection } from '@/components/PartnersSection';
 import { Footer } from '@/components/Footer';
 
@@ -56,11 +57,14 @@ const HomePage = () => {
                     <ProductSection />
                 </section>
                 
+                <section>
+                    <BatteryTradeInBanner />
+                </section>
+                
                 <section className="py-12 bg-white">
                     <PartnersSection />
                 </section>
             </main>
-
             <Footer />
         </div>
     );

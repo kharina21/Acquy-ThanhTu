@@ -1,0 +1,37 @@
+import express from 'express';
+import multer from 'multer';
+import { authenticate, optionalAuthenticate } from '../middlewares/authenticate.js';
+import { hasRole } from '../middlewares/rbac.js';
+import {
+    submitBatteryTradeIn,
+    getBatteryTradeInList,
+    updateBatteryTradeInStatus,
+    uploadBatteryImage,
+} from '../controllers/batteryTradeInController.js';
+
+const uploadImage = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 3 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (allowed.includes(file.mimetype)) cb(null, true);
+        else cb(new Error('Chỉ chấp nhận ảnh (JPEG, PNG, WebP, GIF)'), false);
+    },
+});
+
+const router = express.Router();
+
+// Public - Upload ảnh acquy
+router.post('/upload-image', uploadImage.array('image', 5), uploadBatteryImage);
+
+// Public - Gửi yêu cầu thu cũ (guest và customer đều dùng được, optional auth để lưu userId nếu đã đăng nhập)
+router.post('/', optionalAuthenticate, submitBatteryTradeIn);
+
+// Admin/Manager - Lấy danh sách và cập nhật trạng thái
+router.use(authenticate);
+router.use(hasRole('admin', 'manager'));
+
+router.get('/', getBatteryTradeInList);
+router.patch('/:id', updateBatteryTradeInStatus);
+
+export default router;
