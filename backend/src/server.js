@@ -1,8 +1,13 @@
 import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import connectDB from './libs/db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 //routes
 import authRoutes from './routes/authRoute.js';
@@ -67,6 +72,16 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+
+// Serve React build (production)
+const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res) => {
+        if (req.path.startsWith('/api')) return res.status(404).json({ message: 'Not found' });
+        res.sendFile(path.join(clientDist, 'index.html'));
+    });
+}
 
 connectDB().then(() =>
     app.listen(PORT, () => {

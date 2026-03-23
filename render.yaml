@@ -1,0 +1,22 @@
+# Render Blueprint - Single Web Service (Backend + Frontend)
+# https://acquy-thanhtu.onrender.com
+
+services:
+  - type: web
+    name: acquy-thanhtu
+    runtime: node
+    region: singapore
+
+    # Build: install deps + build React client
+    buildCommand: |
+      cd client && npm install && npm run build
+      cd ../backend && npm install
+
+    # Start: run backend (serves API + client/dist)
+    startCommand: cd backend && node src/server.js
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
