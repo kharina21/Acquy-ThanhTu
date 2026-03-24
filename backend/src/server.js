@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -33,8 +33,6 @@ import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
 import dashboardRoutes from './routes/dashboardRoute.js';
-import workScheduleRoutes from './routes/workScheduleRoute.js';
-import shiftRoutes from './routes/shiftRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -68,8 +66,6 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/stock-ins', stockInRoutes);
 app.use('/api/stock-returns', stockReturnRoutes);
 app.use('/api/bank-accounts', bankAccountRoutes);
-app.use('/api/work-schedules', workScheduleRoutes);
-app.use('/api/shifts', shiftRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/battery-trade-in', batteryTradeInRoutes);
 app.use('/api/orders', orderRoutes);
@@ -77,12 +73,12 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-// Serve frontend (React SPA) khi đã build - cùng domain với backend
+// Serve React build (production)
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
-if (existsSync(clientDist)) {
+if (fs.existsSync(clientDist)) {
     app.use(express.static(clientDist));
-    app.get('*', (req, res, next) => {
-        if (req.path.startsWith('/api')) return next();
+    app.get('*', (req, res) => {
+        if (req.path.startsWith('/api')) return res.status(404).json({ message: 'Not found' });
         res.sendFile(path.join(clientDist, 'index.html'));
     });
 }

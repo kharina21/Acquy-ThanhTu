@@ -1,17 +1,22 @@
+# Render Blueprint - Single Web Service (Backend + Frontend)
+# https://acquy-thanhtu.onrender.com
+
 services:
   - type: web
     name: acquy-thanhtu
-    env: node
+    runtime: node
     region: singapore
-    buildCommand: cd client && npm install && npm run build && cd ../backend && npm install
-    startCommand: cd backend && npm start
+
+    # Build: install deps + build React client
+    buildCommand: |
+      cd client && npm install && npm run build
+      cd ../backend && npm install
+
+    # Start: run backend (serves API + client/dist)
+    startCommand: cd backend && node src/server.js
+
     envVars:
       - key: NODE_ENV
         value: production
-      - key: VITE_API_URL
-        value: /api
-    # Thêm các biến sau trong Render Dashboard (Environment):
-    # - MONGODB_URI
-    # - JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
-    # - PayOS credentials (nếu dùng)
-    # - Các biến khác từ backend/.env
+      - key: PORT
+        value: 10000
