@@ -26,8 +26,8 @@
         "vitest": "^2.0.0"
     },
     "scripts": {
-        "test": "vitest",
-        "test:watch": "vitest --watch",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "start": "node src/server.js",
         "dev": "nodemon src/server.js",
         "seed:rbac": "node src/libs/seedRBAC.js",

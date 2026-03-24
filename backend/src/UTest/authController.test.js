@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 // ===== 1. DÙNG vi.hoisted() ĐỂ KHAI BÁO MOCK — CŨNG ĐƯỢC HOIST LÊN ĐẦU =====
 const {
   userModelMock,
+  customerModelMock,
   sessionModelMock,
   emailVerificationModelMock,
   passwordResetModelMock,
@@ -22,6 +23,10 @@ const {
       findOne: vi.fn(),
       findById: vi.fn(),
       findByIdAndUpdate: vi.fn(),
+      create: vi.fn(),
+    },
+    customerModelMock: {
+      findOne: vi.fn(),
       create: vi.fn(),
     },
     sessionModelMock: {
@@ -58,6 +63,7 @@ const {
 
 // ===== 2. ĐĂNG KÝ vi.mock =====
 vi.mock('../models/User.js', () => ({ default: userModelMock }));
+vi.mock('../models/Customer.js', () => ({ default: customerModelMock }));
 vi.mock('../models/Session.js', () => ({ default: sessionModelMock }));
 vi.mock('../models/EmailVerification.js', () => ({ default: emailVerificationModelMock }));
 vi.mock('../models/PasswordReset.js', () => ({ default: passwordResetModelMock }));
@@ -161,15 +167,20 @@ describe('authController', () => {
       };
       const res = createMockRes();
 
+      // username (.select), email, phoneNumber — mỗi lần findOne gọi riêng
       userModelMock.findOne
         .mockReturnValueOnce({ select: vi.fn().mockResolvedValue(null) })
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null);
 
       bcryptMock.hash.mockResolvedValue('hashed-pass');
-      const fakeUser = { _id: 'u1', username: 'newuser' };
+      const fakeUser = { _id: 'u1', username: 'newuser', save: vi.fn().mockResolvedValue(undefined) };
       userModelMock.create.mockResolvedValue(fakeUser);
       assignDefaultRoleMock.mockResolvedValue(fakeUser);
       logAuthActivityMock.mockResolvedValue({});
+
+      customerModelMock.findOne.mockResolvedValue(null);
+      customerModelMock.create.mockResolvedValue({ _id: 'newcust', name: 'A B', phone: '0123' });
 
       await registerUser(req, res);
 
