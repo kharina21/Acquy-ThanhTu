@@ -133,7 +133,7 @@ export const getLocationById = async (req, res) => {
 
 export const createLocation = async (req, res) => {
     try {
-        const { code, name, address, phone, isActive, note } = req.body;
+        const { code, name, address, phone, email, isActive, note } = req.body;
 
         if (!code || !code.trim()) {
             return res.status(400).json({ message: 'Mã chi nhánh là bắt buộc' });
@@ -153,6 +153,7 @@ export const createLocation = async (req, res) => {
             name: name.trim(),
             address: address?.trim() || '',
             phone: phone?.trim() || '',
+            email: email?.trim()?.toLowerCase() || '',
             isActive: isActive !== false,
             note: note?.trim() || '',
         });
@@ -197,14 +198,14 @@ export const createLocation = async (req, res) => {
 export const updateLocation = async (req, res) => {
     try {
         const { id } = req.params;
-        const { code, name, address, phone, isActive, note } = req.body;
+        const { code, name, address, phone, email, isActive, note } = req.body;
 
         const location = await Location.findById(id);
         if (!location) {
             return res.status(404).json({ message: 'Không tìm thấy chi nhánh' });
         }
 
-        const oldData = { code: location.code, name: location.name, address: location.address, phone: location.phone, isActive: location.isActive, note: location.note };
+        const oldData = { code: location.code, name: location.name, address: location.address, phone: location.phone, email: location.email, isActive: location.isActive, note: location.note };
 
         if (code !== undefined && code.trim()) {
             const normalizedCode = code.trim().toUpperCase();
@@ -217,6 +218,7 @@ export const updateLocation = async (req, res) => {
         if (name !== undefined && name.trim()) location.name = name.trim();
         if (address !== undefined) location.address = address?.trim() || '';
         if (phone !== undefined) location.phone = phone?.trim() || '';
+        if (email !== undefined) location.email = email?.trim()?.toLowerCase() || '';
         if (typeof isActive === 'boolean') location.isActive = isActive;
         if (note !== undefined) location.note = note?.trim() || '';
 
@@ -229,7 +231,7 @@ export const updateLocation = async (req, res) => {
             resourceId: location._id,
             description: `Cập nhật chi nhánh: ${location.name} (${location.code})`,
             oldData,
-            newData: { code: location.code, name: location.name, address: location.address, phone: location.phone, isActive: location.isActive, note: location.note },
+            newData: { code: location.code, name: location.name, address: location.address, phone: location.phone, email: location.email, isActive: location.isActive, note: location.note },
             ipAddress: getClientIp(req),
             userAgent: getUserAgent(req),
             status: 'success',

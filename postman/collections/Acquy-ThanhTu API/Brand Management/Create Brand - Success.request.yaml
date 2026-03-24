@@ -1,0 +1,18 @@
+$kind: http-request
+name: Create Brand - Success
+url: http://localhost:5000/api/brands
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"name\": \"Apple\",\r
+
+    \    \"description\": \"Thương hiệu cao cấp\"\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI5NjUwMTIsImV4cCI6MTc3Mjk3NTgxMn0.UNlH5aBu4v5YjPBWlbzvsozIK0EFJUn5SpWG7bML4aU
+order: 1772964944318

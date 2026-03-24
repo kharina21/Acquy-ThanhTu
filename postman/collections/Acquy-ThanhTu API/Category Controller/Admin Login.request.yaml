@@ -1,0 +1,20 @@
+$kind: http-request
+name: Admin Login
+url: http://localhost:5000/api/auth/login
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"username\": \"admin\",\r
+
+    \    \"password\": \"admin123\"\r
+
+    }"
+scripts:
+  - type: afterResponse
+    code: "var jsonData = pm.response.json();\r
+
+      pm.globals.set(\"accessToken\", jsonData.accessToken);"
+    language: text/javascript
+order: 1772782850560

@@ -1,0 +1,20 @@
+$kind: http-request
+name: Register - Duplicate
+url: http://localhost:5000/api/auth/register-user
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"username\": \"tester01\",\r
+
+    \    \"password\": \"password123\",\r
+
+    \    \"email\": \"tester01@gmail.com\",\r
+
+    \    \"firstName\": \"Nguyen\",\r
+
+    \    \"lastName\": \"Van A\"\r
+
+    }"
+order: 2200922062151583

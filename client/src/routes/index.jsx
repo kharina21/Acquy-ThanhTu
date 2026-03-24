@@ -130,7 +130,7 @@ export const AppRoutes = () => {
                     />
 
                     {/* Admin + Manager: trang quản lý chung */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager']} />}>
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
                         <Route
                             path='/admin'
                             element={<AdminDashboard />}
@@ -163,6 +163,10 @@ export const AppRoutes = () => {
                         <Route
                             path='/users'
                             element={<UserManagementPage />}
+                        />
+                        <Route
+                            path='/admin/staffs/schedule'
+                            element={<StaffManagementPage />}
                         />
                         <Route
                             path='/admin/staffs'
@@ -252,7 +256,7 @@ export const AppRoutes = () => {
                     </Route>
 
                     {/* Seller / Staff: dashboard nhân viên */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['seller']} />}>
+                    <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff', 'Nhân viên bán hàng']} />}>
                         <Route
                             path='/staff/dashboard'
                             element={<StaffDashboard />}

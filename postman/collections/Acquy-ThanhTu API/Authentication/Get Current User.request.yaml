@@ -1,0 +1,9 @@
+$kind: http-request
+name: Get Current User
+url: http://localhost:5000/api/auth/me
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWFjMDA1MjhmYWViY2M3MzEzZTAxYzUiLCJpYXQiOjE3NzI4ODAxNjYsImV4cCI6MTc3Mjg5MDk2Nn0.O5in5P0PsLO5lNUfo5uhMZNYbhzrnlaSQxEHBT4RgL4
+order: 4136118011002659

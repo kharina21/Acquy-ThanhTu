@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, MapPin, Plus, Pencil, Phone, Trash2, Globe } from 'lucide-react';
+import { Building2, MapPin, Plus, Pencil, Phone, Mail, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     getLocations,
@@ -163,6 +163,7 @@ const StoreProfilePage = () => {
                                         <th className="font-medium">Tên</th>
                                         <th className="font-medium">Địa chỉ</th>
                                         <th className="font-medium">Điện thoại</th>
+                                        <th className="font-medium">Email</th>
                                         <th className="font-medium">Trạng thái</th>
                                         <th className="font-medium text-right">Thao tác</th>
                                     </tr>
@@ -175,12 +176,22 @@ const StoreProfilePage = () => {
                                             <td className="max-w-[200px] truncate" title={loc.address}>
                                                 {loc.address || '—'}
                                             </td>
-                                            <td className="flex items-center gap-1">
+                                            <td>
                                                 {loc.phone ? (
-                                                    <>
-                                                        <Phone className="w-3.5 h-3.5 text-base-content/50" />
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <Phone className="w-3.5 h-3.5 text-base-content/50 shrink-0" />
                                                         {loc.phone}
-                                                    </>
+                                                    </span>
+                                                ) : (
+                                                    '—'
+                                                )}
+                                            </td>
+                                            <td>
+                                                {loc.email ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <Mail className="w-3.5 h-3.5 text-base-content/50 shrink-0" />
+                                                        {loc.email}
+                                                    </span>
                                                 ) : (
                                                     '—'
                                                 )}

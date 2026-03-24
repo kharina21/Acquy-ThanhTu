@@ -1,0 +1,10 @@
+$kind: http-request
+name: Delete Brand - Success
+url: http://localhost:5000/api/brands/69ad4cbd6ad93463b5abe268
+method: DELETE
+auth:
+  credentials:
+    - key: token
+      value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI5NjUzNjIsImV4cCI6MTc3Mjk3NjE2Mn0.1P0mfbSTFtHSjJtvdWmTg3yi_0_YAYqd6nCscggDP3I
+  type: bearer
+order: 4136941585545352

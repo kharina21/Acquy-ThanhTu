@@ -1,0 +1,9 @@
+$kind: http-request
+name: Get Category by ID
+url: http://localhost:5000/api/categories/69abefef8faebcc7313e018f
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI4NzUyNjgsImV4cCI6MTc3Mjg4NjA2OH0.CBlz8lK2hc0U1lucBZBBjWdNY3QuaphNgt6gf0BkNyE
+order: 4503470146040756

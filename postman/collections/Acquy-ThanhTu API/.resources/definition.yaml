@@ -1,0 +1,6 @@
+$kind: collection
+name: Acquy-ThanhTu API
+auth:
+  - id: 2025eb99-5dee-4380-9e07-b153bb44d0d8
+    type: apikey
+    name: API Key
