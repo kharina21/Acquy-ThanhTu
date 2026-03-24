@@ -3,6 +3,7 @@ import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
 import Product from '../models/Product.js';
 import Location from '../models/Location.js';
+import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 
 /**
@@ -105,6 +106,28 @@ export const getDashboardStats = async (req, res) => {
             ],
         };
 
+        let batteryLocationMatch = {};
+        if (locationId && locationId !== 'all' && mongoose.Types.ObjectId.isValid(locationId)) {
+            batteryLocationMatch = { locationId: new mongoose.Types.ObjectId(locationId) };
+        } else if (allowedIds !== null && allowedIds.length > 0 && allowAll) {
+            batteryLocationMatch = {
+                locationId: { $in: allowedIds.map((id) => new mongoose.Types.ObjectId(id)) },
+            };
+        }
+
+        const batteryDateCurr = {
+            status: 'completed',
+            completedAmount: { $gt: 0 },
+            completedAt: { $gte: start, $lte: end },
+            ...batteryLocationMatch,
+        };
+        const batteryDatePrev = {
+            status: 'completed',
+            completedAmount: { $gt: 0 },
+            completedAt: { $gte: startOfPrev, $lte: endOfPrev },
+            ...batteryLocationMatch,
+        };
+
         const baseAggregations = [
             Order.aggregate([
                 { $match: dateFilterPaid },
@@ -113,6 +136,14 @@ export const getDashboardStats = async (req, res) => {
             Order.aggregate([
                 { $match: prevPeriodFilter },
                 { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+            ]),
+            BatteryTradeIn.aggregate([
+                { $match: batteryDateCurr },
+                { $group: { _id: null, total: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+            ]),
+            BatteryTradeIn.aggregate([
+                { $match: batteryDatePrev },
+                { $group: { _id: null, total: { $sum: '$completedAmount' } } },
             ]),
         ];
 
@@ -132,6 +163,8 @@ export const getDashboardStats = async (req, res) => {
         const [
             revenueCurr,
             revenuePrev,
+            batteryCurr,
+            batteryPrev,
             ...revenueByChannel
         ] = await Promise.all([
             ...baseAggregations,
@@ -201,8 +234,13 @@ export const getDashboardStats = async (req, res) => {
         const revenueOnline = isOnlineBranch && revenueByChannel[0] ? (revenueByChannel[0][0]?.total ?? 0) : null;
         const revenueOffline = isOnlineBranch && revenueByChannel[1] ? (revenueByChannel[1][0]?.total ?? 0) : null;
 
-        const totalCurr = revenueCurr[0]?.total ?? 0;
-        const totalPrev = revenuePrev[0]?.total ?? 0;
+        const orderRevenueCurr = revenueCurr[0]?.total ?? 0;
+        const orderRevenuePrev = revenuePrev[0]?.total ?? 0;
+        const revenueBatteryTradeIn = batteryCurr[0]?.total ?? 0;
+        const revenueBatteryTradeInPrev = batteryPrev[0]?.total ?? 0;
+
+        const totalCurr = orderRevenueCurr + revenueBatteryTradeIn;
+        const totalPrev = orderRevenuePrev + revenueBatteryTradeInPrev;
         const paidOrderCount = revenueCurr[0]?.count ?? 0;
         let changePercent = 0;
         if (totalPrev > 0) {
@@ -241,6 +279,8 @@ export const getDashboardStats = async (req, res) => {
                     total: totalCurr,
                     period: periodLabel,
                     changePercent,
+                    revenueOrders: orderRevenueCurr,
+                    revenueBatteryTradeIn,
                     ...(isOnlineBranch && {
                         revenueOnline: revenueOnline ?? 0,
                         revenueOffline: revenueOffline ?? 0,

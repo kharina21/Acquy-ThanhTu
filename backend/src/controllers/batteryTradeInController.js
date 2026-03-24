@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import Product from '../models/Product.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
+import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
 
 /**
  * POST /api/battery-trade-in/upload-image - Upload ảnh acquy (public)
@@ -97,6 +99,12 @@ export const submitBatteryTradeIn = async (req, res) => {
             .populate('productId', 'name sku capacity')
             .lean();
 
+        try {
+            await sendBatteryTradeInConfirmationEmail(populated.email, populated.name);
+        } catch (emailErr) {
+            console.error('Gửi email xác nhận thu cũ thất bại:', emailErr.message);
+        }
+
         return res.status(201).json({
             success: true,
             message: 'Đã gửi yêu cầu thu cũ thành công. Cửa hàng sẽ liên hệ với bạn sớm.',
@@ -138,6 +146,8 @@ export const getBatteryTradeInList = async (req, res) => {
         const [requests, total] = await Promise.all([
             BatteryTradeIn.find(query)
                 .populate('productId', 'name sku capacity')
+                .populate('completedProductId', 'name sku capacity')
+                .populate('locationId', 'code name')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -173,7 +183,14 @@ export const getBatteryTradeInList = async (req, res) => {
 export const updateBatteryTradeInStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const {
+            status,
+            cancelledReason,
+            completedProductId,
+            completedAmount,
+            completedNote,
+            locationId,
+        } = req.body;
 
         if (!['pending', 'contacted', 'completed', 'cancelled'].includes(status)) {
             return res.status(400).json({
@@ -182,20 +199,108 @@ export const updateBatteryTradeInStatus = async (req, res) => {
             });
         }
 
-        const doc = await BatteryTradeIn.findByIdAndUpdate(
-            id,
-            { status },
-            { new: true }
-        )
-            .populate('productId', 'name sku capacity')
-            .lean();
-
-        if (!doc) {
+        const existing = await BatteryTradeIn.findById(id);
+        if (!existing) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy yêu cầu thu cũ.',
             });
         }
+
+        if (['completed', 'cancelled'].includes(existing.status) && status !== existing.status) {
+            return res.status(400).json({
+                success: false,
+                message: 'Không thể thay đổi trạng thái sau khi đã hoàn thành hoặc đã hủy.',
+            });
+        }
+
+        let update = {};
+
+        if (status === 'pending' || status === 'contacted') {
+            if (['completed', 'cancelled'].includes(existing.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Không thể đặt lại trạng thái này.',
+                });
+            }
+            if (status === 'contacted' && existing.status !== 'pending') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Chỉ có thể chuyển sang "Đã liên hệ" từ trạng thái đang xử lý.',
+                });
+            }
+            if (status === 'pending' && existing.status !== 'contacted') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Chỉ có thể chuyển về đang xử lý từ đã liên hệ.',
+                });
+            }
+            update = { status };
+        } else if (status === 'cancelled') {
+            if (!['pending', 'contacted'].includes(existing.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Chỉ có thể từ chối khi đơn đang xử lý hoặc đã liên hệ.',
+                });
+            }
+            update = {
+                status: 'cancelled',
+                cancelledAt: new Date(),
+                cancelledReason: cancelledReason ? String(cancelledReason).trim().slice(0, 500) : '',
+                locationId: null,
+                completedProductId: null,
+                completedAmount: null,
+                completedAt: null,
+                completedNote: '',
+            };
+        } else if (status === 'completed') {
+            if (existing.status !== 'contacted') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Chỉ có thể hoàn thành sau khi khách đã mang acquy đến (trạng thái đã liên hệ).',
+                });
+            }
+            if (!completedProductId || !mongoose.Types.ObjectId.isValid(completedProductId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Vui lòng chọn sản phẩm acquy thu được.',
+                });
+            }
+            const amt = Number(completedAmount);
+            if (!Number.isFinite(amt) || amt <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Số tiền thu mua phải lớn hơn 0.',
+                });
+            }
+            if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Vui lòng chọn chi nhánh.',
+                });
+            }
+            const product = await Product.findById(completedProductId).select('_id').lean();
+            if (!product) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Sản phẩm không tồn tại.',
+                });
+            }
+            update = {
+                status: 'completed',
+                completedProductId,
+                completedAmount: Math.round(amt),
+                completedAt: new Date(),
+                completedNote: completedNote ? String(completedNote).trim().slice(0, 500) : '',
+                locationId,
+            };
+        }
+
+        const doc = await BatteryTradeIn.findByIdAndUpdate(id, update, { new: true })
+            .populate('productId', 'name sku capacity')
+            .populate('completedProductId', 'name sku capacity')
+            .populate('locationId', 'code name')
+            .lean();
 
         return res.status(200).json({
             success: true,

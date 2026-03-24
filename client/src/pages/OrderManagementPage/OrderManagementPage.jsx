@@ -12,6 +12,11 @@ const formatVND = (num) => {
 
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—');
 
+const ORDER_TYPE_LABELS = {
+    online: 'Bán trực tuyến',
+    in_store: 'Bán cửa hàng',
+};
+
 const OrderManagementPage = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -143,6 +148,7 @@ const OrderManagementPage = () => {
                                 <thead>
                                     <tr>
                                         <th>Mã đơn</th>
+                                        <th>Loại đơn</th>
                                         <th>Khách hàng</th>
                                         <th>Ngày đặt</th>
                                         <th>Tổng tiền</th>
@@ -163,6 +169,11 @@ const OrderManagementPage = () => {
                                                     >
                                                         {order.code}
                                                     </Link>
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-ghost badge-sm">
+                                                        {ORDER_TYPE_LABELS[order.channel] || order.channel || '—'}
+                                                    </span>
                                                 </td>
                                                 <td>{getCustomerName(order)}</td>
                                                 <td>{formatDate(order.createdAt)}</td>

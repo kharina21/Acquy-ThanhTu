@@ -9,22 +9,21 @@ export const generateVerificationCode = () => {
 
 
 export const sendVerificationEmail = async (email, code) => {
-
     console.log('========================================');
     console.log('EMAIL VERIFICATION CODE');
     console.log('========================================');
     console.log(`To: ${email}`);
     console.log(`Subject: Mã xác thực email - Thanh Tú Store`);
     console.log(`Code: ${code}`);
-    console.log(`Mã xác thực của bạn là: ${code}`);
-    console.log('Mã này có hiệu lực trong 15 phút.');
     console.log('========================================');
 
-    // production
+    const smtpPort = Number(process.env.SMTP_PORT) || 465;
+    const isSecurePort = smtpPort === 465;
+
     const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 465,
-        secure: true,
+        port: smtpPort,
+        secure: isSecurePort,
         auth: {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
@@ -33,6 +32,8 @@ export const sendVerificationEmail = async (email, code) => {
             rejectUnauthorized: process.env.NODE_ENV === 'production',
         },
     });
+
+    await transporter.verify();
 
     await transporter.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
@@ -46,6 +47,8 @@ export const sendVerificationEmail = async (email, code) => {
             </div>
         `,
     });
+
+    console.log(`✅ Mã xác thực đã gửi thành công đến ${email}`);
 };
 
 
@@ -117,6 +120,42 @@ export const sendPasswordResetEmail = async (email, resetToken, resetUrl) => {
         console.error('Chi tiết lỗi:', error);
     }
 
+};
+
+
+/**
+ * Gửi email xác nhận khi khách gửi yêu cầu thu cũ đổi mới thành công.
+ */
+export const sendBatteryTradeInConfirmationEmail = async (email, name) => {
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 465,
+        secure: true,
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+        },
+        tls: {
+            rejectUnauthorized: process.env.NODE_ENV === 'production',
+        },
+    });
+
+    await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: email,
+        subject: 'Xác nhận đã nhận yêu cầu thu cũ đổi mới - Thanh Tú Store',
+        html: `
+            <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #1e40af;">Xác nhận đã nhận yêu cầu thu cũ đổi mới</h2>
+                <p>Xin chào <strong>${name || 'Quý khách'}</strong>,</p>
+                <p>Chúng tôi đã nhận được yêu cầu thu cũ đổi mới ắc quy của bạn.</p>
+                <p>Chuyên viên cửa hàng sẽ liên hệ với bạn qua số điện thoại đã đăng ký trong thời gian sớm nhất.</p>
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+                <p style="color: #666; font-size: 12px;">Mọi thắc mắc xin gọi: <strong>0386806456</strong></p>
+                <p style="color: #666; font-size: 12px;">Thanh Tú Store</p>
+            </div>
+        `,
+    });
 };
 
 

@@ -19,6 +19,12 @@ const PAYMENT_STATUS_LABELS = {
     refunded: 'Đã hoàn tiền',
 };
 
+/** Loại đơn bán hàng (Order.channel) */
+const ORDER_TYPE_LABELS = {
+    online: 'Bán trực tuyến',
+    in_store: 'Bán cửa hàng',
+};
+
 const getStatusSelectClass = (status) => {
     const s = ['paid', 'confirmed'].includes(status) ? 'completed' : (status || 'pending');
     return STATUS_CONFIG[s]?.className || 'bg-base-100';
@@ -185,6 +191,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                         <tr>
                                             <th className="w-8 py-3"></th>
                                             <th className="font-medium text-neutral text-xs py-3">Mã đơn</th>
+                                            <th className="font-medium text-neutral text-xs py-3">Loại đơn</th>
                                             <th className="font-medium text-neutral text-xs py-3">Khách hàng</th>
                                             <th className="font-medium text-neutral text-xs py-3">Chi nhánh</th>
                                             <th className="font-medium text-neutral text-xs py-3">Tổng tiền</th>
@@ -214,6 +221,11 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                             {order.isPreOrder && (
                                                                 <span className="ml-1 badge badge-sm badge-ghost">Đặt trước</span>
                                                             )}
+                                                        </td>
+                                                        <td className="py-3">
+                                                            <span className="badge badge-sm badge-ghost whitespace-nowrap">
+                                                                {ORDER_TYPE_LABELS[order.channel] || order.channel || '—'}
+                                                            </span>
                                                         </td>
                                                         <td className="py-3">{formatCustomer(order)}</td>
                                                         <td className="py-3">{order.location?.name || '—'}</td>
@@ -256,7 +268,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr key={`${order._id}-detail`} className="bg-primary/5 border-b-2 border-base-300">
-                                                            <td colSpan={8} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
+                                                            <td colSpan={9} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
                                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                     <div className="space-y-2">
                                                                         <p><span className="font-medium text-base-content/70">Khách hàng:</span> {formatCustomer(order)}</p>
