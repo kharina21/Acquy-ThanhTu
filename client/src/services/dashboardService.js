@@ -25,6 +25,8 @@ export const getDashboardStats = async (params = {}) => {
                 total: data.revenue?.total ?? 0,
                 period: data.revenue?.period ?? 'tháng này',
                 changePercent: data.revenue?.changePercent ?? 0,
+                ...(data.revenue?.revenueOrders != null && { revenueOrders: data.revenue.revenueOrders }),
+                ...(data.revenue?.revenueBatteryTradeIn != null && { revenueBatteryTradeIn: data.revenue.revenueBatteryTradeIn }),
                 ...(data.revenue?.revenueOnline != null && { revenueOnline: data.revenue.revenueOnline }),
                 ...(data.revenue?.revenueOffline != null && { revenueOffline: data.revenue.revenueOffline }),
             },

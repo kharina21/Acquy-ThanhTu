@@ -1,0 +1,9 @@
+$kind: http-request
+name: Delete Not Found
+url: http://localhost:5000/api/categories/69aab502b2fc6f274b6522eb
+method: DELETE
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI4NzUyNjgsImV4cCI6MTc3Mjg4NjA2OH0.CBlz8lK2hc0U1lucBZBBjWdNY3QuaphNgt6gf0BkNyE
+order: 4503599275516463

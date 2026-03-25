@@ -16,7 +16,13 @@ const OrderReportPage = () => {
     const { currentLocationId, locations } = useBranchStore();
     const currentLocation = locations?.find((l) => l._id === currentLocationId);
     const [orders, setOrders] = useState([]);
-    const [summary, setSummary] = useState({ totalRevenue: 0, totalOrders: 0 });
+    const [summary, setSummary] = useState({
+        totalRevenue: 0,
+        totalOrders: 0,
+        revenueOrders: 0,
+        revenueBatteryTradeIn: 0,
+        batteryTradeInCount: 0,
+    });
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
     const [loading, setLoading] = useState(true);
     const [dateFrom, setDateFrom] = useState('');
@@ -32,7 +38,15 @@ const OrderReportPage = () => {
             const res = await getOrderReport(params);
             const data = res?.data;
             setOrders(data?.orders || []);
-            setSummary(data?.summary || { totalRevenue: 0, totalOrders: 0 });
+            setSummary(
+                data?.summary || {
+                    totalRevenue: 0,
+                    totalOrders: 0,
+                    revenueOrders: 0,
+                    revenueBatteryTradeIn: 0,
+                    batteryTradeInCount: 0,
+                }
+            );
             setPagination(data?.pagination || { page: 1, totalPages: 1, total: 0 });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Lỗi khi tải báo cáo');
@@ -61,7 +75,7 @@ const OrderReportPage = () => {
                 </div>
 
                 <p className="text-base-content/70 mb-6">
-                    Thống kê doanh thu từ các đơn hàng đã được xác nhận và thanh toán thành công.
+                    Thống kê doanh thu: đơn hàng đã thanh toán + thu cũ đổi mới đã hoàn thành thu mua (trong kỳ lọc).
                     {currentLocation && (
                         <span className="block mt-1 font-medium text-primary">
                             Đang xem: {currentLocation.code} - {currentLocation.name}
@@ -70,7 +84,7 @@ const OrderReportPage = () => {
                 </p>
 
                 {/* Tổng quan */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="stats shadow bg-base-100 w-full">
                         <div className="stat">
                             <div className="stat-figure text-primary">
@@ -78,7 +92,7 @@ const OrderReportPage = () => {
                             </div>
                             <div className="stat-title">Tổng doanh thu</div>
                             <div className="stat-value text-primary">{formatVND(summary.totalRevenue)}</div>
-                            <div className="stat-desc">Đơn đã xác nhận & thanh toán</div>
+                            <div className="stat-desc">Bán hàng + thu cũ</div>
                         </div>
                     </div>
                     <div className="stats shadow bg-base-100 w-full">
@@ -86,9 +100,19 @@ const OrderReportPage = () => {
                             <div className="stat-figure text-secondary">
                                 <FileText className="w-10 h-10" />
                             </div>
-                            <div className="stat-title">Số đơn hàng</div>
+                            <div className="stat-title">Đơn hàng (đã TT)</div>
                             <div className="stat-value text-secondary">{summary.totalOrders}</div>
-                            <div className="stat-desc">Đơn đã hoàn thành</div>
+                            <div className="stat-desc">{formatVND(summary.revenueOrders ?? 0)}</div>
+                        </div>
+                    </div>
+                    <div className="stats shadow bg-base-100 w-full">
+                        <div className="stat">
+                            <div className="stat-figure text-accent">
+                                <BarChart3 className="w-10 h-10" />
+                            </div>
+                            <div className="stat-title">Thu cũ hoàn thành</div>
+                            <div className="stat-value text-accent">{summary.batteryTradeInCount ?? 0}</div>
+                            <div className="stat-desc">{formatVND(summary.revenueBatteryTradeIn ?? 0)}</div>
                         </div>
                     </div>
                 </div>

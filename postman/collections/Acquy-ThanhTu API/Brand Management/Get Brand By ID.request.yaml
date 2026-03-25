@@ -1,0 +1,9 @@
+$kind: http-request
+name: Get Brand By ID
+url: http://localhost:5000/api/brands/6984487901f1a5a859cfbff0
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI5NjUzNjIsImV4cCI6MTc3Mjk3NjE2Mn0.1P0mfbSTFtHSjJtvdWmTg3yi_0_YAYqd6nCscggDP3I
+order: 3932333829910192

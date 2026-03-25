@@ -10,6 +10,7 @@ import { getOnlineLocation } from './locationController.js';
 import ProductStock from '../models/ProductStock.js';
 import BankAccount from '../models/BankAccount.js';
 import PaymentLink from '../models/PaymentLink.js';
+import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import MemberPolicy from '../models/MemberPolicy.js';
 import { getStockAtLocation } from './productStockController.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
@@ -916,7 +917,28 @@ export const getOrderReport = async (req, res) => {
         const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
         const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
 
-        const [orders, total, revenueAgg] = await Promise.all([
+        const batteryFilter = {
+            status: 'completed',
+            completedAmount: { $gt: 0 },
+        };
+        if (effectiveLocationId && mongoose.Types.ObjectId.isValid(effectiveLocationId)) {
+            batteryFilter.locationId = new mongoose.Types.ObjectId(effectiveLocationId);
+        }
+        const batteryDate = {};
+        if (dateFrom) {
+            const from = new Date(dateFrom);
+            if (!isNaN(from.getTime())) batteryDate.$gte = from;
+        }
+        if (dateTo) {
+            const to = new Date(dateTo);
+            to.setHours(23, 59, 59, 999);
+            if (!isNaN(to.getTime())) batteryDate.$lte = to;
+        }
+        if (Object.keys(batteryDate).length > 0) {
+            batteryFilter.completedAt = batteryDate;
+        }
+
+        const [orders, total, revenueAgg, batteryAgg] = await Promise.all([
             Order.find(filter)
                 .sort({ createdAt: -1 })
                 .skip(skip)
@@ -927,17 +949,26 @@ export const getOrderReport = async (req, res) => {
                 .lean(),
             Order.countDocuments(filter),
             Order.aggregate([{ $match: filter }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
+            BatteryTradeIn.aggregate([
+                { $match: batteryFilter },
+                { $group: { _id: null, totalRevenue: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+            ]),
         ]);
 
-        const summary = revenueAgg[0] || { totalRevenue: 0, count: 0 };
+        const orderSummary = revenueAgg[0] || { totalRevenue: 0, count: 0 };
+        const batterySummary = batteryAgg[0] || { totalRevenue: 0, count: 0 };
+        const revenueBattery = batterySummary.totalRevenue ?? 0;
 
         return res.status(200).json({
             success: true,
             data: {
                 orders,
                 summary: {
-                    totalRevenue: summary.totalRevenue,
-                    totalOrders: summary.count,
+                    totalRevenue: (orderSummary.totalRevenue ?? 0) + revenueBattery,
+                    totalOrders: orderSummary.count,
+                    revenueOrders: orderSummary.totalRevenue ?? 0,
+                    revenueBatteryTradeIn: revenueBattery,
+                    batteryTradeInCount: batterySummary.count ?? 0,
                 },
                 pagination: {
                     page: Math.max(1, parseInt(page)),

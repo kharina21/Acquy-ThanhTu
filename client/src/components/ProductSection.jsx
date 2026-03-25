@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Navigation, Autoplay } from 'swiper/modules';
 import { ChevronLeft, ChevronRight, ShoppingCart } from 'lucide-react';
@@ -30,8 +30,8 @@ export function ProductSection() {
   const fetchProducts = async () => {
     try {
       const [carRes, motorRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/products/car-batteries'),
-        axios.get('http://localhost:5000/api/products/motorcycle-batteries'),
+        api.get('/products/car-batteries'),
+        api.get('/products/motorcycle-batteries'),
       ]);
 
       if (carRes.data.success) {

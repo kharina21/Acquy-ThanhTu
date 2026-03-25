@@ -461,17 +461,22 @@ export const logout = async (req, res) => {
         if (!session) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
+        // Ghi log trước khi xóa session (dùng session.userId vì route logout không có authenticate middleware)
+        try {
+            await logAuthActivity({
+                userId: session.userId,
+                action: 'logout',
+                description: 'User đã đăng xuất thành công',
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'success',
+            });
+        } catch (logError) {
+            console.log('Lỗi khi log activity: ' + logError.message);
+        }
         await Session.findOneAndDelete({ refreshToken });
         res.clearCookie('refreshToken');
         res.status(200).json({ message: 'Đăng xuất thành công' });
-        await logAuthActivity({
-            userId: req.user._id,
-            action: 'logout',
-            description: `User ${req.user.username} đã đăng xuất thành công`,
-            ipAddress: getClientIp(req),
-            userAgent: getUserAgent(req),
-            status: 'success',
-        });
     } catch (error) {
         console.log('Lỗi khi gọi logout: ' + error.message);
         res.status(500).json({ message: 'Lỗi khi gọi logout', error: error.message });

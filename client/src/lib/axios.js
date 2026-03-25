@@ -2,7 +2,8 @@ import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL,
+    baseURL: import.meta.env.VITE_API_URL || '/api',
+    withCredentials: true,
 });
 
 //tự động thêm access token vào header

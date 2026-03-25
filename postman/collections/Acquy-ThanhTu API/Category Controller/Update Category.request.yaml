@@ -1,0 +1,18 @@
+$kind: http-request
+name: Update Category
+url: http://localhost:5000/api/categories/69abefef8faebcc7313e018f
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \    \"name\": \"Ắc quy GS (Đã sửa đổi)\",\r
+
+    \    \"description\": \"Cập nhật thông tin mới\"\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI4NzUyNjgsImV4cCI6MTc3Mjg4NjA2OH0.CBlz8lK2hc0U1lucBZBBjWdNY3QuaphNgt6gf0BkNyE
+order: 4503582539828725

@@ -1,0 +1,18 @@
+$kind: http-request
+name: Update Brand
+url: http://localhost:5000/api/brands/6984487901f1a5a859cfbff0
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \    \"name\": \"Apple (Đã update)\",\r
+
+    \    \"description\": \"Cập nhật lại mô tả\"\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTcxODkzNjg4ZjNmMmMwMzkwYzY0NzMiLCJpYXQiOjE3NzI5NjUzNjIsImV4cCI6MTc3Mjk3NjE2Mn0.1P0mfbSTFtHSjJtvdWmTg3yi_0_YAYqd6nCscggDP3I
+order: 4028518832947461
