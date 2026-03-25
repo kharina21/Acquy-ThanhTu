@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useSearchParams, useNavigate } from 'react-router';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { lookupBatteryTradeIn } from '@/services/batteryTradeInService';
+import { lookupBatteryTradeIn, deleteBatteryTradeInByLookup } from '@/services/batteryTradeInService';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { Search, Package, Calendar, User, ArrowLeft, Clock, MapPin, Phone } from 'lucide-react';
+import { Search, Package, Calendar, User, ArrowLeft, Clock, MapPin, Phone, Pencil, Trash2 } from 'lucide-react';
 
 const STATUS_BADGE = {
     pending: 'bg-amber-100 text-amber-900 border-amber-200',
@@ -20,10 +20,12 @@ const STATUS_BADGE = {
 
 export default function BatteryTradeInLookupPage() {
     const { user, logout } = useAuthStore();
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [code, setCode] = useState('');
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [result, setResult] = useState(null);
 
     useEffect(() => {
@@ -75,6 +77,42 @@ export default function BatteryTradeInLookupPage() {
     const formatDateTime = (d) => {
         if (!d) return '—';
         return new Date(d).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
+    };
+
+    const handleDelete = async () => {
+        const c = code.trim().toUpperCase();
+        const em = email.trim().toLowerCase();
+        if (!c || !em) {
+            toast.error('Vui lòng nhập mã và email trước khi xóa.');
+            return;
+        }
+        if (!window.confirm('Bạn có chắc muốn xóa vĩnh viễn yêu cầu này? Thao tác không thể hoàn tác.')) {
+            return;
+        }
+        setDeleting(true);
+        try {
+            const res = await deleteBatteryTradeInByLookup({ code: c, email: em });
+            if (res?.success) {
+                toast.success(res.message || 'Đã xóa yêu cầu.');
+                setResult(null);
+            } else {
+                toast.error(res?.message || 'Không xóa được.');
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Lỗi khi xóa.');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const goEdit = () => {
+        const c = code.trim().toUpperCase();
+        const em = email.trim().toLowerCase();
+        if (!c || !em) {
+            toast.error('Vui lòng nhập mã và email.');
+            return;
+        }
+        navigate(`/battery-trade-in?edit=1&code=${encodeURIComponent(c)}&email=${encodeURIComponent(em)}`);
     };
 
     return (
@@ -160,6 +198,14 @@ export default function BatteryTradeInLookupPage() {
                                         <span className="text-gray-500">Người gửi:</span> {result.name}
                                     </span>
                                 </p>
+                                {result.phone && (
+                                    <p className="flex items-start gap-2">
+                                        <Phone className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+                                        <span>
+                                            <span className="text-gray-500">Điện thoại:</span> {result.phone}
+                                        </span>
+                                    </p>
+                                )}
                                 <p className="flex items-start gap-2">
                                     <Package className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
                                     <span>
@@ -204,6 +250,29 @@ export default function BatteryTradeInLookupPage() {
                                 <p className="text-xs text-gray-500 mt-2">
                                     Cập nhật gần nhất: {formatDate(result.updatedAt)}
                                 </p>
+                                {result.canEdit && result.canDelete && (
+                                    <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="gap-2 border-blue-300 text-blue-900 hover:bg-blue-50"
+                                            onClick={goEdit}
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                            Sửa yêu cầu
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="gap-2 border-red-300 text-red-800 hover:bg-red-50"
+                                            disabled={deleting}
+                                            onClick={handleDelete}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            {deleting ? 'Đang xóa...' : 'Xóa yêu cầu'}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

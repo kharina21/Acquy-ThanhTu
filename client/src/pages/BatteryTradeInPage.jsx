@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -9,7 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { submitBatteryTradeIn, uploadBatteryImage } from '@/services/batteryTradeInService';
+import {
+    submitBatteryTradeIn,
+    uploadBatteryImage,
+    getBatteryTradeInPrefill,
+    updateBatteryTradeInByLookup,
+} from '@/services/batteryTradeInService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { FileText, ImagePlus, X, CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -60,6 +65,13 @@ const parseMetric = (str) => {
     const n = parseFloat(String(str || '').replace(',', '.').trim());
     if (!Number.isFinite(n)) return null;
     return n;
+};
+
+const toDateInput = (d) => {
+    if (!d) return '';
+    const x = new Date(d);
+    if (Number.isNaN(x.getTime())) return '';
+    return x.toISOString().slice(0, 10);
 };
 
 /** Chỉ cho phép chữ số và tối đa một dấu phân thập phân (`,` hoặc `.`) */
@@ -172,7 +184,12 @@ const emptyForm = () => ({
 
 export default function BatteryTradeInPage() {
     const { user, accessToken, logout } = useAuthStore();
+    const [searchParams] = useSearchParams();
+    /** Bỏ qua reset quận/xã khi điền prefill (2 bước: province + district effect) */
+    const skipAddrCascadeRef = useRef(0);
     const [submitting, setSubmitting] = useState(false);
+    const [prefillLoading, setPrefillLoading] = useState(false);
+    const [editLookup, setEditLookup] = useState({ code: '', email: '' });
     const [agreedToPolicy, setAgreedToPolicy] = useState(false);
     const [hasFilledFromUser, setHasFilledFromUser] = useState(false);
 
@@ -180,6 +197,9 @@ export default function BatteryTradeInPage() {
     const [uploadingImages, setUploadingImages] = useState(false);
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [lastRequestCode, setLastRequestCode] = useState('');
+    const [successIsEdit, setSuccessIsEdit] = useState(false);
+
+    const isEditMode = Boolean(editLookup.code && editLookup.email);
 
     const [provinces, setProvinces] = useState([]);
     const [districts, setDistricts] = useState([]);
@@ -206,6 +226,10 @@ export default function BatteryTradeInPage() {
     }, []);
 
     useEffect(() => {
+        if (skipAddrCascadeRef.current > 0) {
+            skipAddrCascadeRef.current -= 1;
+            return;
+        }
         if (!form.provinceCode) {
             setDistricts([]);
             setWards([]);
@@ -216,6 +240,10 @@ export default function BatteryTradeInPage() {
     }, [form.provinceCode]);
 
     useEffect(() => {
+        if (skipAddrCascadeRef.current > 0) {
+            skipAddrCascadeRef.current -= 1;
+            return;
+        }
         if (!form.districtCode) {
             setWards([]);
             return;
@@ -223,6 +251,77 @@ export default function BatteryTradeInPage() {
         getWards(form.districtCode).then(setWards).catch(() => setWards([]));
         setForm((f) => ({ ...f, wardCode: '', wardName: '' }));
     }, [form.districtCode]);
+
+    useEffect(() => {
+        const edit = searchParams.get('edit');
+        const code = searchParams.get('code')?.trim().toUpperCase();
+        const email = searchParams.get('email')?.trim().toLowerCase();
+        if (edit !== '1' || !code || !email) {
+            setEditLookup({ code: '', email: '' });
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            setPrefillLoading(true);
+            try {
+                const res = await getBatteryTradeInPrefill({ code, email });
+                const d = res?.data;
+                if (cancelled) return;
+                if (!res?.success || !d) {
+                    toast.error(res?.message || 'Không tải được dữ liệu để sửa.');
+                    setEditLookup({ code: '', email: '' });
+                    return;
+                }
+                const pc = d.provinceCode || '';
+                const dc = d.districtCode || '';
+                const dList = pc ? await getDistricts(pc).catch(() => []) : [];
+                const wList = dc ? await getWards(dc).catch(() => []) : [];
+                if (cancelled) return;
+                if (pc && dc) skipAddrCascadeRef.current = 2;
+                else if (pc) skipAddrCascadeRef.current = 1;
+                else skipAddrCascadeRef.current = 0;
+                setDistricts(dList);
+                setWards(wList);
+                setForm({
+                    name: d.name || '',
+                    phone: d.phone || '',
+                    email: d.email || '',
+                    provinceCode: pc,
+                    provinceName: d.provinceName || '',
+                    districtCode: dc,
+                    districtName: d.districtName || '',
+                    wardCode: d.wardCode || '',
+                    wardName: d.wardName || '',
+                    addressLine: d.addressLine || '',
+                    note: d.note || '',
+                    batteryName: d.batteryName || '',
+                    images: Array.isArray(d.images) ? d.images : [],
+                    quantity: d.quantity ?? 1,
+                    manufacturingDate: toDateInput(d.manufacturingDate),
+                    expiryDate: toDateInput(d.expiryDate),
+                    condition: d.condition || '',
+                    usageDuration: d.usageDuration || '',
+                    isWorkingWell: d.isWorkingWell === true ? true : d.isWorkingWell === false ? false : null,
+                    pricingType: d.pricingType === 'weight' ? 'weight' : 'ampe',
+                    remainingAmps: d.remainingAmps != null ? String(d.remainingAmps) : '',
+                    weightKg: d.weightKg != null ? String(d.weightKg) : '',
+                });
+                setEditLookup({ code, email });
+                setAgreedToPolicy(true);
+                setHasFilledFromUser(true);
+            } catch (err) {
+                if (!cancelled) {
+                    toast.error(err?.response?.data?.message || 'Không tải được dữ liệu để sửa.');
+                    setEditLookup({ code: '', email: '' });
+                }
+            } finally {
+                if (!cancelled) setPrefillLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [searchParams]);
 
     const buildShippingAddress = () => {
         const parts = [
@@ -317,42 +416,55 @@ export default function BatteryTradeInPage() {
             return;
         }
 
-        const fullAddress = buildShippingAddress();
+        const payload = {
+            name: form.name.trim(),
+            phone: form.phone.trim().replace(/\s/g, ''),
+            email: form.email.trim().toLowerCase(),
+            provinceCode: form.provinceCode,
+            provinceName: form.provinceName,
+            districtCode: form.districtCode,
+            districtName: form.districtName,
+            wardCode: form.wardCode,
+            wardName: form.wardName,
+            addressLine: form.addressLine?.trim() || '',
+            note: form.note?.trim() || '',
+            batteryName: bn,
+            images: imgs,
+            quantity: qty,
+            manufacturingDate: form.manufacturingDate || undefined,
+            expiryDate: form.expiryDate || undefined,
+            condition: form.condition?.trim() || '',
+            usageDuration: form.usageDuration?.trim() || '',
+            isWorkingWell: form.isWorkingWell === true ? true : form.isWorkingWell === false ? false : undefined,
+            pricingType: form.pricingType || 'ampe',
+            remainingAmps: form.pricingType === 'ampe' ? String(parseMetric(form.remainingAmps)) : '',
+            weightKg: form.pricingType === 'weight' ? String(parseMetric(form.weightKg)) : '',
+        };
 
         setSubmitting(true);
         try {
-            const submitRes = await submitBatteryTradeIn({
-                name: form.name.trim(),
-                phone: form.phone.trim().replace(/\s/g, ''),
-                email: form.email.trim().toLowerCase(),
-                address: fullAddress,
-                provinceCode: form.provinceCode,
-                provinceName: form.provinceName,
-                districtCode: form.districtCode,
-                districtName: form.districtName,
-                wardCode: form.wardCode,
-                wardName: form.wardName,
-                addressLine: form.addressLine?.trim() || '',
-                note: form.note?.trim() || '',
-                batteryName: bn,
-                images: imgs,
-                quantity: qty,
-                manufacturingDate: form.manufacturingDate || undefined,
-                expiryDate: form.expiryDate || undefined,
-                condition: form.condition?.trim() || '',
-                usageDuration: form.usageDuration?.trim() || '',
-                isWorkingWell: form.isWorkingWell === true ? true : form.isWorkingWell === false ? false : undefined,
-                pricingType: form.pricingType || 'ampe',
-                remainingAmps: form.pricingType === 'ampe' ? String(parseMetric(form.remainingAmps)) : '',
-                weightKg: form.pricingType === 'weight' ? String(parseMetric(form.weightKg)) : '',
-            });
-            const reqCode = submitRes?.data?.request?.requestCode;
-            setLastRequestCode(typeof reqCode === 'string' ? reqCode : '');
-            setShowSuccessDialog(true);
-            setForm(emptyForm());
-            setAgreedToPolicy(false);
-            setHasFilledFromUser(false);
-            setErrors({});
+            if (isEditMode) {
+                const submitRes = await updateBatteryTradeInByLookup({
+                    code: editLookup.code,
+                    email: editLookup.email,
+                    ...payload,
+                });
+                const reqCode = submitRes?.data?.request?.requestCode;
+                setLastRequestCode(typeof reqCode === 'string' ? reqCode : editLookup.code);
+                setSuccessIsEdit(true);
+                setShowSuccessDialog(true);
+                setErrors({});
+            } else {
+                const submitRes = await submitBatteryTradeIn(payload);
+                const reqCode = submitRes?.data?.request?.requestCode;
+                setLastRequestCode(typeof reqCode === 'string' ? reqCode : '');
+                setSuccessIsEdit(false);
+                setShowSuccessDialog(true);
+                setForm(emptyForm());
+                setAgreedToPolicy(false);
+                setHasFilledFromUser(false);
+                setErrors({});
+            }
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Lỗi khi gửi yêu cầu. Vui lòng thử lại.');
         } finally {
@@ -413,16 +525,30 @@ export default function BatteryTradeInPage() {
             <Header user={user} onLogout={handleLogout} />
 
             <main className="flex-1 container mx-auto px-4 py-8">
-                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2 text-center">Chương trình thu cũ ắc quy</h1>
+                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2 text-center">
+                    {isEditMode ? 'Sửa yêu cầu thu cũ' : 'Chương trình thu cũ ắc quy'}
+                </h1>
                 <p className="text-center text-sm text-gray-600 mb-8">
-                    <Link to="/battery-trade-in/tra-cuu" className="text-blue-700 hover:underline font-medium">
-                        Tra cứu yêu cầu đã gửi (mã + Gmail)
-                    </Link>
+                    {isEditMode ? (
+                        <>
+                            Mã <span className="font-mono font-semibold text-blue-900">{editLookup.code}</span> —{' '}
+                            <Link to="/battery-trade-in/tra-cuu" className="text-blue-700 hover:underline font-medium">
+                                Quay lại tra cứu
+                            </Link>
+                        </>
+                    ) : (
+                        <Link to="/battery-trade-in/tra-cuu" className="text-blue-700 hover:underline font-medium">
+                            Tra cứu yêu cầu đã gửi (mã + Gmail)
+                        </Link>
+                    )}
                 </p>
+                {prefillLoading && (
+                    <p className="text-center text-sm text-blue-800 mb-4">Đang tải dữ liệu đơn...</p>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
                     <div className="order-2 lg:order-1">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handleSubmit} className={`space-y-6 ${prefillLoading ? 'opacity-60 pointer-events-none' : ''}`}>
                             <Card className="border-0 shadow-lg bg-white rounded-xl overflow-hidden">
                                 <CardHeader className="bg-blue-900 text-white py-4">
                                     <CardTitle className="text-lg font-semibold">Thông tin liên hệ</CardTitle>
@@ -469,7 +595,8 @@ export default function BatteryTradeInPage() {
                                             value={form.email}
                                             onChange={handleChange}
                                             placeholder="ten@gmail.com"
-                                            className={`mt-1 h-10 rounded-lg ${inputError('email')}`}
+                                            readOnly={isEditMode}
+                                            className={`mt-1 h-10 rounded-lg ${inputError('email')} ${isEditMode ? 'bg-gray-100' : ''}`}
                                         />
                                         {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email}</p>}
                                     </div>
@@ -823,10 +950,16 @@ export default function BatteryTradeInPage() {
                                 </div>
                                 <Button
                                     type="submit"
-                                    disabled={submitting}
+                                    disabled={submitting || prefillLoading}
                                     className="bg-blue-600 hover:bg-blue-700 px-8 py-6 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition"
                                 >
-                                    {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+                                    {submitting
+                                        ? isEditMode
+                                            ? 'Đang lưu...'
+                                            : 'Đang gửi...'
+                                        : isEditMode
+                                          ? 'Lưu thay đổi'
+                                          : 'Gửi yêu cầu'}
                                 </Button>
                             </div>
                         </form>
@@ -862,7 +995,9 @@ export default function BatteryTradeInPage() {
                             <div className="p-3 bg-green-100 rounded-full">
                                 <CheckCircle className="w-12 h-12 text-green-600" />
                             </div>
-                            <DialogTitle className="text-xl">Đã gửi yêu cầu thành công</DialogTitle>
+                            <DialogTitle className="text-xl">
+                                {successIsEdit ? 'Đã lưu thay đổi' : 'Đã gửi yêu cầu thành công'}
+                            </DialogTitle>
                         </div>
                     </DialogHeader>
                     <div className="space-y-4 text-gray-600">
@@ -879,7 +1014,10 @@ export default function BatteryTradeInPage() {
                                 </p>
                             </div>
                         )}
-                        <p>Chuyên viên cửa hàng sẽ liên hệ để xác nhận và xử lý.</p>
+                        {!successIsEdit && <p>Chuyên viên cửa hàng sẽ liên hệ để xác nhận và xử lý.</p>}
+                        {successIsEdit && (
+                            <p>Thông tin yêu cầu đã được cập nhật. Bạn có thể tra cứu lại bằng mã và Gmail.</p>
+                        )}
                         <p>
                             Mọi thắc mắc hay yêu cầu xin gọi về{' '}
                             <a href="tel:0386806456" className="font-semibold text-blue-600 hover:underline">

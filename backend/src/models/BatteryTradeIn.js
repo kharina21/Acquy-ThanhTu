@@ -10,6 +10,14 @@ const batteryTradeInSchema = new mongoose.Schema(
         phone: { type: String, required: true, trim: true },
         email: { type: String, required: true, trim: true },
         address: { type: String, default: '' },
+        /** Địa chỉ tách (để prefill form sửa đơn) */
+        provinceCode: { type: String, default: '' },
+        provinceName: { type: String, default: '' },
+        districtCode: { type: String, default: '' },
+        districtName: { type: String, default: '' },
+        wardCode: { type: String, default: '' },
+        wardName: { type: String, default: '' },
+        addressLine: { type: String, default: '' },
         note: { type: String, default: '' },
 
         // Liên kết user (nếu đã đăng nhập)

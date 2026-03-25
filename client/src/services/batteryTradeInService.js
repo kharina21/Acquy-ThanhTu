@@ -21,6 +21,32 @@ export const lookupBatteryTradeIn = async ({ code, email }) => {
     return data;
 };
 
+/** Prefill form sửa (chỉ khi đơn đang xử lý) */
+export const getBatteryTradeInPrefill = async ({ code, email }) => {
+    const { data } = await api.get('/battery-trade-in/lookup/prefill', {
+        params: { code, email },
+    });
+    return data;
+};
+
+/** Khách cập nhật đơn (mã + Gmail, chỉ pending) */
+export const updateBatteryTradeInByLookup = async (payload) => {
+    const { data } = await api.patch('/battery-trade-in/lookup', payload);
+    return data;
+};
+
+/** Khách xóa đơn (mã + Gmail, chỉ pending) */
+export const deleteBatteryTradeInByLookup = async ({ code, email }) => {
+    const { data } = await api.post('/battery-trade-in/lookup/delete', { code, email });
+    return data;
+};
+
+/** Admin sửa chi tiết đơn */
+export const updateBatteryTradeInDetails = async (id, payload) => {
+    const { data } = await api.patch(`/battery-trade-in/${id}/details`, payload);
+    return data;
+};
+
 export const getBatteryTradeInList = async (params = {}) => {
     const { data } = await api.get('/battery-trade-in', { params });
     return data;

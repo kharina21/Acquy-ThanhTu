@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router';
-import { getBatteryTradeInList, updateBatteryTradeInStatus } from '@/services/batteryTradeInService';
+import { getBatteryTradeInList, updateBatteryTradeInStatus, updateBatteryTradeInDetails } from '@/services/batteryTradeInService';
+import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { getProducts } from '@/services/productService';
 import { getActiveLocations } from '@/services/locationService';
 import { toast } from 'sonner';
@@ -16,6 +17,7 @@ import {
     LayoutDashboard,
     X,
     Clock,
+    Pencil,
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -38,6 +40,27 @@ const formatDateTime = (d) => {
 const formatVND = (n) => {
     if (n == null || n === '' || Number.isNaN(Number(n))) return '—';
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(n));
+};
+
+const formatDateOnly = (d) => {
+    if (!d) return '';
+    const x = new Date(d);
+    if (Number.isNaN(x.getTime())) return '';
+    return x.toISOString().slice(0, 10);
+};
+
+const formatDatetimeLocal = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+};
+
+const parseMetricAdmin = (str) => {
+    const n = parseFloat(String(str || '').replace(',', '.').trim());
+    if (!Number.isFinite(n)) return null;
+    return n;
 };
 
 /** Thanh tiến trình 3 bước (hoặc nhánh hủy) */
@@ -125,6 +148,15 @@ export default function AdminBatteryTradeInPage() {
     const [contactForId, setContactForId] = useState(null);
     const [contactForm, setContactForm] = useState({ appointmentAt: '', appointmentLocationId: '' });
 
+    const [detailsOpen, setDetailsOpen] = useState(false);
+    const [detailsFor, setDetailsFor] = useState(null);
+    const [detailsForm, setDetailsForm] = useState(null);
+    const [detailsSaving, setDetailsSaving] = useState(false);
+    const detailsSkipAddrRef = useRef(0);
+    const [detailsProvinces, setDetailsProvinces] = useState([]);
+    const [detailsDistricts, setDetailsDistricts] = useState([]);
+    const [detailsWards, setDetailsWards] = useState([]);
+
     useEffect(() => {
         getProducts({ limit: 500, page: 1 })
             .then((res) => setProducts(res?.data?.products || []))
@@ -132,7 +164,43 @@ export default function AdminBatteryTradeInPage() {
         getActiveLocations()
             .then((res) => setLocations(res?.data?.locations || []))
             .catch(() => setLocations([]));
+        getProvinces().then(setDetailsProvinces).catch(() => setDetailsProvinces([]));
     }, []);
+
+    useEffect(() => {
+        if (!detailsOpen || !detailsForm) return;
+        if (detailsSkipAddrRef.current > 0) {
+            detailsSkipAddrRef.current -= 1;
+            return;
+        }
+        if (!detailsForm.provinceCode) {
+            setDetailsDistricts([]);
+            setDetailsWards([]);
+            return;
+        }
+        getDistricts(detailsForm.provinceCode)
+            .then(setDetailsDistricts)
+            .catch(() => setDetailsDistricts([]));
+        setDetailsForm((f) =>
+            f
+                ? { ...f, districtCode: '', districtName: '', wardCode: '', wardName: '' }
+                : f,
+        );
+    }, [detailsForm?.provinceCode, detailsOpen]);
+
+    useEffect(() => {
+        if (!detailsOpen || !detailsForm) return;
+        if (detailsSkipAddrRef.current > 0) {
+            detailsSkipAddrRef.current -= 1;
+            return;
+        }
+        if (!detailsForm.districtCode) {
+            setDetailsWards([]);
+            return;
+        }
+        getWards(detailsForm.districtCode).then(setDetailsWards).catch(() => setDetailsWards([]));
+        setDetailsForm((f) => (f ? { ...f, wardCode: '', wardName: '' } : f));
+    }, [detailsForm?.districtCode, detailsOpen]);
 
     const fetchRequests = async () => {
         setLoading(true);
@@ -282,6 +350,158 @@ export default function AdminBatteryTradeInPage() {
             toast.error(err?.response?.data?.message || 'Lỗi khi cập nhật');
         } finally {
             setUpdatingId(null);
+        }
+    };
+
+    const openDetails = (req) => {
+        setDetailsFor(req);
+        const pc = req.provinceCode || '';
+        const dc = req.districtCode || '';
+        Promise.all([pc ? getDistricts(pc) : Promise.resolve([]), dc ? getWards(dc) : Promise.resolve([])]).then(
+            ([dList, wList]) => {
+                if (pc && dc) detailsSkipAddrRef.current = 2;
+                else if (pc) detailsSkipAddrRef.current = 1;
+                else detailsSkipAddrRef.current = 0;
+                setDetailsDistricts(dList);
+                setDetailsWards(wList);
+                setDetailsForm({
+                    name: req.name || '',
+                    phone: req.phone || '',
+                    email: req.email || '',
+                    note: req.note || '',
+                    provinceCode: pc,
+                    provinceName: req.provinceName || '',
+                    districtCode: dc,
+                    districtName: req.districtName || '',
+                    wardCode: req.wardCode || '',
+                    wardName: req.wardName || '',
+                    addressLine: req.addressLine || '',
+                    batteryName: req.batteryName || '',
+                    imagesText: (req.images || []).join('\n'),
+                    quantity: req.quantity ?? 1,
+                    manufacturingDate: formatDateOnly(req.manufacturingDate),
+                    expiryDate: formatDateOnly(req.expiryDate),
+                    condition: req.condition || '',
+                    usageDuration: req.usageDuration || '',
+                    isWorkingWell: req.isWorkingWell === true ? true : req.isWorkingWell === false ? false : null,
+                    pricingType: req.pricingType === 'weight' ? 'weight' : 'ampe',
+                    remainingAmps: req.remainingAmps != null ? String(req.remainingAmps) : '',
+                    weightKg: req.weightKg != null ? String(req.weightKg) : '',
+                    appointmentAt: formatDatetimeLocal(req.appointmentAt),
+                    appointmentLocationId: req.appointmentLocationId?._id || '',
+                    completedAmount: req.completedAmount ?? '',
+                    completedProductId: req.completedProductId?._id || '',
+                    locationId: req.locationId?._id || '',
+                    completedNote: req.completedNote || '',
+                });
+                setDetailsOpen(true);
+            },
+        );
+    };
+
+    const submitDetails = async () => {
+        if (!detailsFor || !detailsForm) return;
+        const images = detailsForm.imagesText
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const bn = (detailsForm.batteryName || '').trim();
+        if (!bn) {
+            toast.error('Vui lòng nhập tên ắc quy');
+            return;
+        }
+        if (images.length < 2) {
+            toast.error('Ít nhất 2 URL ảnh (mỗi dòng một link)');
+            return;
+        }
+        const qty = parseInt(detailsForm.quantity, 10);
+        if (!Number.isInteger(qty) || qty < 1) {
+            toast.error('Số lượng không hợp lệ');
+            return;
+        }
+        if (!detailsForm.manufacturingDate || !detailsForm.expiryDate) {
+            toast.error('Chọn đủ ngày sản xuất và hạn sử dụng');
+            return;
+        }
+        if (detailsForm.pricingType === 'ampe') {
+            const v = parseMetricAdmin(detailsForm.remainingAmps);
+            if (v == null || v <= 0 || v >= 200) {
+                toast.error('Ampe (Ah) không hợp lệ');
+                return;
+            }
+        } else {
+            const v = parseMetricAdmin(detailsForm.weightKg);
+            if (v == null || v <= 0 || v >= 200) {
+                toast.error('Cân nặng (kg) không hợp lệ');
+                return;
+            }
+        }
+
+        const payload = {
+            name: detailsForm.name.trim(),
+            phone: detailsForm.phone.trim().replace(/\s/g, ''),
+            email: detailsForm.email.trim().toLowerCase(),
+            note: detailsForm.note?.trim() || '',
+            provinceCode: detailsForm.provinceCode,
+            provinceName: detailsForm.provinceName,
+            districtCode: detailsForm.districtCode,
+            districtName: detailsForm.districtName,
+            wardCode: detailsForm.wardCode,
+            wardName: detailsForm.wardName,
+            addressLine: detailsForm.addressLine?.trim() || '',
+            batteryName: bn,
+            images,
+            quantity: qty,
+            manufacturingDate: detailsForm.manufacturingDate,
+            expiryDate: detailsForm.expiryDate,
+            condition: detailsForm.condition?.trim() || '',
+            usageDuration: detailsForm.usageDuration?.trim() || '',
+            isWorkingWell:
+                detailsForm.isWorkingWell === true ? true : detailsForm.isWorkingWell === false ? false : undefined,
+            pricingType: detailsForm.pricingType === 'weight' ? 'weight' : 'ampe',
+            remainingAmps: detailsForm.pricingType === 'ampe' ? String(parseMetricAdmin(detailsForm.remainingAmps)) : '',
+            weightKg: detailsForm.pricingType === 'weight' ? String(parseMetricAdmin(detailsForm.weightKg)) : '',
+        };
+
+        if (['contacted', 'completed'].includes(detailsFor.status)) {
+            if (detailsForm.appointmentAt?.trim()) {
+                if (!detailsForm.appointmentLocationId) {
+                    toast.error('Chọn cơ sở / chi nhánh khi điền thời gian hẹn');
+                    return;
+                }
+                payload.appointmentAt = new Date(detailsForm.appointmentAt).toISOString();
+                payload.appointmentLocationId = detailsForm.appointmentLocationId;
+            }
+        }
+
+        if (detailsFor.status === 'completed') {
+            const amt = Number(String(detailsForm.completedAmount).replace(/\D/g, ''));
+            if (!Number.isFinite(amt) || amt <= 0) {
+                toast.error('Số tiền thu mua không hợp lệ');
+                return;
+            }
+            if (!detailsForm.completedProductId || !detailsForm.locationId) {
+                toast.error('Chọn sản phẩm acquy thu được và chi nhánh hoàn tất');
+                return;
+            }
+            payload.completedAmount = amt;
+            payload.completedProductId = detailsForm.completedProductId;
+            payload.locationId = detailsForm.locationId;
+            payload.completedNote = detailsForm.completedNote?.trim() || '';
+        }
+
+        setDetailsSaving(true);
+        try {
+            await updateBatteryTradeInDetails(detailsFor._id, payload);
+            toast.success('Đã cập nhật thông tin đơn');
+            setDetailsOpen(false);
+            setDetailsFor(null);
+            setDetailsForm(null);
+            fetchRequests();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Lỗi khi lưu');
+        } finally {
+            setDetailsSaving(false);
         }
     };
 
@@ -584,6 +804,20 @@ export default function AdminBatteryTradeInPage() {
                                                 )}
 
                                                 <div className="flex flex-wrap gap-2 pt-1">
+                                                    {req.status !== 'cancelled' && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-outline gap-1 border-primary/40"
+                                                            disabled={updatingId === req._id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openDetails(req);
+                                                            }}
+                                                        >
+                                                            <Pencil className="w-4 h-4" />
+                                                            Sửa thông tin đơn
+                                                        </button>
+                                                    )}
                                                     {req.status === 'pending' && (
                                                         <>
                                                             <button
@@ -853,6 +1087,432 @@ export default function AdminBatteryTradeInPage() {
                                 <button type="button" className="btn btn-primary" disabled={!!updatingId} onClick={submitComplete}>
                                     {updatingId ? <span className="loading loading-spinner loading-sm" /> : null}
                                     Xác nhận hoàn thành
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {detailsOpen && detailsForm && detailsFor && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+                        aria-label="Đóng"
+                        onClick={() => !detailsSaving && setDetailsOpen(false)}
+                    />
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-300 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-base-100 rounded-t-2xl z-10">
+                            <div>
+                                <h3 className="font-bold text-lg">Sửa thông tin đơn</h3>
+                                <p className="text-xs text-base-content/60 font-mono mt-0.5">{detailsFor.requestCode}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost btn-circle"
+                                onClick={() => !detailsSaving && setDetailsOpen(false)}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Họ tên *</span>
+                                    </label>
+                                    <input
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.name}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, name: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">SĐT *</span>
+                                    </label>
+                                    <input
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.phone}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, phone: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control sm:col-span-2">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Gmail *</span>
+                                    </label>
+                                    <input
+                                        type="email"
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.email}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, email: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control sm:col-span-2">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Ghi chú</span>
+                                    </label>
+                                    <input
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.note}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, note: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="divider my-1 text-xs">Địa chỉ</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={detailsForm.provinceCode}
+                                    onChange={(e) => {
+                                        const code = e.target.value;
+                                        const p = detailsProvinces.find((x) => String(x.code) === code);
+                                        setDetailsForm((f) => ({
+                                            ...f,
+                                            provinceCode: code,
+                                            provinceName: p?.name || '',
+                                        }));
+                                    }}
+                                >
+                                    <option value="">Tỉnh/TP</option>
+                                    {detailsProvinces.map((p) => (
+                                        <option key={p.code} value={p.code}>
+                                            {p.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={detailsForm.districtCode}
+                                    onChange={(e) => {
+                                        const code = e.target.value;
+                                        const d = detailsDistricts.find((x) => String(x.code) === code);
+                                        setDetailsForm((f) => ({
+                                            ...f,
+                                            districtCode: code,
+                                            districtName: d?.name || '',
+                                        }));
+                                    }}
+                                    disabled={!detailsForm.provinceCode}
+                                >
+                                    <option value="">Quận/Huyện</option>
+                                    {detailsDistricts.map((d) => (
+                                        <option key={d.code} value={d.code}>
+                                            {d.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={detailsForm.wardCode}
+                                    onChange={(e) => {
+                                        const code = e.target.value;
+                                        const w = detailsWards.find((x) => String(x.code) === code);
+                                        setDetailsForm((f) => ({
+                                            ...f,
+                                            wardCode: code,
+                                            wardName: w?.name || '',
+                                        }));
+                                    }}
+                                    disabled={!detailsForm.districtCode}
+                                >
+                                    <option value="">Phường/Xã</option>
+                                    {detailsWards.map((w) => (
+                                        <option key={w.code} value={w.code}>
+                                            {w.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Địa chỉ cụ thể *</span>
+                                </label>
+                                <input
+                                    className="input input-bordered input-sm w-full"
+                                    value={detailsForm.addressLine}
+                                    onChange={(e) => setDetailsForm((f) => ({ ...f, addressLine: e.target.value }))}
+                                />
+                            </div>
+
+                            <div className="divider my-1 text-xs">Ắc quy</div>
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Tên ắc quy *</span>
+                                </label>
+                                <input
+                                    className="input input-bordered input-sm w-full"
+                                    value={detailsForm.batteryName}
+                                    onChange={(e) => setDetailsForm((f) => ({ ...f, batteryName: e.target.value }))}
+                                />
+                            </div>
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">URL ảnh (mỗi dòng một link, ít nhất 2) *</span>
+                                </label>
+                                <textarea
+                                    className="textarea textarea-bordered textarea-sm w-full min-h-[88px] font-mono text-xs"
+                                    value={detailsForm.imagesText}
+                                    onChange={(e) => setDetailsForm((f) => ({ ...f, imagesText: e.target.value }))}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Số lượng *</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.quantity}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, quantity: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Định giá</span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered select-sm w-full"
+                                        value={detailsForm.pricingType}
+                                        onChange={(e) =>
+                                            setDetailsForm((f) => ({
+                                                ...f,
+                                                pricingType: e.target.value,
+                                                remainingAmps: e.target.value === 'weight' ? '' : f.remainingAmps,
+                                                weightKg: e.target.value === 'ampe' ? '' : f.weightKg,
+                                            }))
+                                        }
+                                    >
+                                        <option value="ampe">Theo Ampe (Ah)</option>
+                                        <option value="weight">Theo cân (kg)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Ngày SX *</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.manufacturingDate}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, manufacturingDate: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Hạn SD *</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.expiryDate}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, expiryDate: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Tình trạng</span>
+                                </label>
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={detailsForm.condition}
+                                    onChange={(e) => setDetailsForm((f) => ({ ...f, condition: e.target.value }))}
+                                >
+                                    <option value="">—</option>
+                                    <option value="tốt">Tốt</option>
+                                    <option value="trung bình">Trung bình</option>
+                                    <option value="kém">Kém</option>
+                                </select>
+                            </div>
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Đã dùng bao lâu</span>
+                                </label>
+                                <input
+                                    className="input input-bordered input-sm w-full"
+                                    value={detailsForm.usageDuration}
+                                    onChange={(e) => setDetailsForm((f) => ({ ...f, usageDuration: e.target.value }))}
+                                />
+                            </div>
+                            <div className="flex gap-4 flex-wrap">
+                                <label className="label cursor-pointer gap-2">
+                                    <input
+                                        type="radio"
+                                        name="d-well"
+                                        className="radio radio-xs"
+                                        checked={detailsForm.isWorkingWell === true}
+                                        onChange={() => setDetailsForm((f) => ({ ...f, isWorkingWell: true }))}
+                                    />
+                                    <span className="label-text">Còn tốt</span>
+                                </label>
+                                <label className="label cursor-pointer gap-2">
+                                    <input
+                                        type="radio"
+                                        name="d-well"
+                                        className="radio radio-xs"
+                                        checked={detailsForm.isWorkingWell === false}
+                                        onChange={() => setDetailsForm((f) => ({ ...f, isWorkingWell: false }))}
+                                    />
+                                    <span className="label-text">Không</span>
+                                </label>
+                            </div>
+                            {detailsForm.pricingType === 'ampe' ? (
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Ampe (Ah) *</span>
+                                    </label>
+                                    <input
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.remainingAmps}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, remainingAmps: e.target.value }))}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Cân nặng (kg) *</span>
+                                    </label>
+                                    <input
+                                        className="input input-bordered input-sm w-full"
+                                        value={detailsForm.weightKg}
+                                        onChange={(e) => setDetailsForm((f) => ({ ...f, weightKg: e.target.value }))}
+                                    />
+                                </div>
+                            )}
+
+                            {(detailsFor.status === 'contacted' || detailsFor.status === 'completed') && (
+                                <>
+                                    <div className="divider my-1 text-xs">Lịch hẹn (sửa nếu nhập nhầm)</div>
+                                    <div className="form-control">
+                                        <label className="label py-1">
+                                            <span className="label-text font-medium">Thời gian đã xác nhận</span>
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            className="input input-bordered input-sm w-full"
+                                            value={detailsForm.appointmentAt}
+                                            onChange={(e) =>
+                                                setDetailsForm((f) => ({ ...f, appointmentAt: e.target.value }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="form-control">
+                                        <label className="label py-1">
+                                            <span className="label-text font-medium">Cơ sở hẹn</span>
+                                        </label>
+                                        <select
+                                            className="select select-bordered select-sm w-full"
+                                            value={detailsForm.appointmentLocationId}
+                                            onChange={(e) =>
+                                                setDetailsForm((f) => ({ ...f, appointmentLocationId: e.target.value }))
+                                            }
+                                        >
+                                            <option value="">Chọn chi nhánh</option>
+                                            {locations.map((loc) => (
+                                                <option key={loc._id} value={loc._id}>
+                                                    {loc.name || loc.code}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+
+                            {detailsFor.status === 'completed' && (
+                                <>
+                                    <div className="divider my-1 text-xs">Hoàn tất thu mua</div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div className="form-control">
+                                            <label className="label py-1">
+                                                <span className="label-text font-medium">Số tiền (VNĐ) *</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                className="input input-bordered input-sm w-full"
+                                                value={detailsForm.completedAmount}
+                                                onChange={(e) =>
+                                                    setDetailsForm((f) => ({ ...f, completedAmount: e.target.value }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="form-control">
+                                            <label className="label py-1">
+                                                <span className="label-text font-medium">Chi nhánh *</span>
+                                            </label>
+                                            <select
+                                                className="select select-bordered select-sm w-full"
+                                                value={detailsForm.locationId}
+                                                onChange={(e) =>
+                                                    setDetailsForm((f) => ({ ...f, locationId: e.target.value }))
+                                                }
+                                            >
+                                                <option value="">Chọn</option>
+                                                {locations.map((loc) => (
+                                                    <option key={loc._id} value={loc._id}>
+                                                        {loc.name || loc.code}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="form-control sm:col-span-2">
+                                            <label className="label py-1">
+                                                <span className="label-text font-medium">Sản phẩm acquy thu được *</span>
+                                            </label>
+                                            <select
+                                                className="select select-bordered select-sm w-full"
+                                                value={detailsForm.completedProductId}
+                                                onChange={(e) =>
+                                                    setDetailsForm((f) => ({
+                                                        ...f,
+                                                        completedProductId: e.target.value,
+                                                    }))
+                                                }
+                                            >
+                                                <option value="">Chọn sản phẩm</option>
+                                                {products.map((p) => (
+                                                    <option key={p._id} value={p._id}>
+                                                        {p.name}
+                                                        {p.sku ? ` (${p.sku})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="form-control sm:col-span-2">
+                                            <label className="label py-1">
+                                                <span className="label-text font-medium">Ghi chú hoàn tất</span>
+                                            </label>
+                                            <textarea
+                                                className="textarea textarea-bordered textarea-sm w-full min-h-[64px]"
+                                                value={detailsForm.completedNote}
+                                                onChange={(e) =>
+                                                    setDetailsForm((f) => ({ ...f, completedNote: e.target.value }))
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="flex justify-end gap-2 pt-2 sticky bottom-0 bg-base-100 pb-1">
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={detailsSaving}
+                                    onClick={() => setDetailsOpen(false)}
+                                >
+                                    Đóng
+                                </button>
+                                <button type="button" className="btn btn-primary btn-sm" disabled={detailsSaving} onClick={submitDetails}>
+                                    {detailsSaving ? <span className="loading loading-spinner loading-xs" /> : null}
+                                    Lưu
                                 </button>
                             </div>
                         </div>
