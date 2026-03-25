@@ -4,6 +4,44 @@ import Product from '../models/Product.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
 
+function validateTradeInName(name) {
+    const s = String(name || '').trim();
+    if (!s) return 'Vui lòng nhập họ tên';
+    if (s.length < 2 || s.length > 30) return 'Họ tên phải từ 2–30 ký tự';
+    if (!/^[\p{L}\s.'-]+$/u.test(s)) return 'Họ tên chỉ được chứa chữ cái, dấu cách hoặc dấu chấm';
+    return null;
+}
+
+function validatePhoneVN(phone) {
+    const s = String(phone || '').trim().replace(/\s/g, '');
+    if (!s) return 'Vui lòng nhập số điện thoại';
+    if (!/^0[2-9][0-9]{8,9}$/.test(s)) return 'Số điện thoại không hợp lệ (ví dụ: 0901234567)';
+    return null;
+}
+
+function validateGmail(email) {
+    const s = String(email || '').trim().toLowerCase();
+    if (!s) return 'Vui lòng nhập email';
+    if (!/^[a-z0-9]([a-z0-9._+-]*[a-z0-9])?@gmail\.com$/.test(s)) {
+        return 'Vui lòng nhập đúng định dạng Gmail (ví dụ: ten@gmail.com)';
+    }
+    return null;
+}
+
+function validateAddressLine(addr) {
+    const s = String(addr || '').trim();
+    if (!s) return 'Vui lòng nhập địa chỉ cụ thể (số nhà, tên đường...)';
+    if (s.length < 10) return 'Địa chỉ phải có ít nhất 10 ký tự';
+    if (s.length > 200) return 'Địa chỉ không quá 200 ký tự';
+    return null;
+}
+
+function parseMetricValue(str) {
+    const n = parseFloat(String(str || '').replace(',', '.').trim());
+    if (!Number.isFinite(n)) return null;
+    return n;
+}
+
 /**
  * POST /api/battery-trade-in/upload-image - Upload ảnh acquy (public)
  */
@@ -43,9 +81,7 @@ export const submitBatteryTradeIn = async (req, res) => {
             name,
             phone,
             email,
-            address,
             note,
-            productId,
             batteryName,
             images,
             quantity,
@@ -57,12 +93,72 @@ export const submitBatteryTradeIn = async (req, res) => {
             pricingType,
             remainingAmps,
             weightKg,
+            provinceCode = '',
+            provinceName = '',
+            districtCode = '',
+            districtName = '',
+            wardCode = '',
+            wardName = '',
+            addressLine = '',
         } = req.body;
 
-        if (!name || !phone || !email) {
+        const errName = validateTradeInName(name);
+        const errPhone = validatePhoneVN(phone);
+        const errEmail = validateGmail(email);
+        if (errName || errPhone || errEmail) {
             return res.status(400).json({
                 success: false,
-                message: 'Vui lòng điền đầy đủ họ tên, số điện thoại và email.',
+                message: errName || errPhone || errEmail,
+            });
+        }
+
+        const addrLineStr = String(addressLine || '').trim();
+        const errAddrLine = validateAddressLine(addrLineStr);
+        const errProvince = !String(provinceCode || '').trim() ? 'Vui lòng chọn Tỉnh/Thành phố' : null;
+        const errDistrict = !String(districtCode || '').trim() ? 'Vui lòng chọn Quận/Huyện' : null;
+        const errWard = !String(wardCode || '').trim() ? 'Vui lòng chọn Phường/Xã' : null;
+        if (errAddrLine || errProvince || errDistrict || errWard) {
+            return res.status(400).json({
+                success: false,
+                message: errAddrLine || errProvince || errDistrict || errWard,
+            });
+        }
+
+        const shippingAddress = [
+            addrLineStr,
+            String(wardName || '').trim(),
+            String(districtName || '').trim(),
+            String(provinceName || '').trim(),
+        ]
+            .filter(Boolean)
+            .join(', ');
+
+        if (!shippingAddress || shippingAddress.length < 10) {
+            return res.status(400).json({
+                success: false,
+                message: 'Địa chỉ đầy đủ phải có ít nhất 10 ký tự',
+            });
+        }
+        if (shippingAddress.length > 300) {
+            return res.status(400).json({
+                success: false,
+                message: 'Địa chỉ không quá 300 ký tự',
+            });
+        }
+
+        const noteStr = String(note || '').trim();
+        if (noteStr.length > 500) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ghi chú không quá 500 ký tự',
+            });
+        }
+
+        const batteryNameStr = String(batteryName || '').trim();
+        if (!batteryNameStr) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng nhập tên ắc quy',
             });
         }
 
@@ -73,26 +169,97 @@ export const submitBatteryTradeIn = async (req, res) => {
         else if (typeof images === 'string') {
             try { parsedImages = JSON.parse(images || '[]'); } catch { parsedImages = []; }
         }
+        parsedImages = parsedImages.filter(Boolean);
+        if (parsedImages.length < 2) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ',
+            });
+        }
+
+        const qty = parseInt(quantity, 10);
+        if (!Number.isInteger(qty) || qty < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Số lượng phải là số nguyên dương (tối thiểu 1)',
+            });
+        }
+
+        if (!manufacturingDate || !expiryDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng chọn đầy đủ ngày sản xuất và hạn sử dụng',
+            });
+        }
+        const mfg = new Date(manufacturingDate);
+        const exp = new Date(expiryDate);
+        if (Number.isNaN(mfg.getTime()) || Number.isNaN(exp.getTime())) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ngày sản xuất hoặc hạn sử dụng không hợp lệ',
+            });
+        }
+        if (exp <= mfg) {
+            return res.status(400).json({
+                success: false,
+                message: 'Hạn sử dụng phải sau ngày sản xuất',
+            });
+        }
+
+        const pricing = pricingType === 'weight' ? 'weight' : 'ampe';
+        let remainingAmpsStr = '';
+        let weightKgStr = '';
+        if (pricing === 'ampe') {
+            const v = parseMetricValue(remainingAmps);
+            if (v == null) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Vui lòng nhập số Ampe (Ah)',
+                });
+            }
+            if (v <= 0 || v >= 200) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Số Ampe phải lớn hơn 0 và nhỏ hơn 200',
+                });
+            }
+            remainingAmpsStr = String(v);
+        } else {
+            const v = parseMetricValue(weightKg);
+            if (v == null) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Vui lòng nhập cân nặng (kg)',
+                });
+            }
+            if (v <= 0 || v >= 200) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Cân nặng phải lớn hơn 0 và nhỏ hơn 200 (kg)',
+                });
+            }
+            weightKgStr = String(v);
+        }
 
         const doc = await BatteryTradeIn.create({
             name: String(name).trim(),
-            phone: String(phone).trim(),
-            email: String(email).trim(),
-            address: address ? String(address).trim() : '',
-            note: note ? String(note).trim() : '',
+            phone: String(phone).trim().replace(/\s/g, ''),
+            email: String(email).trim().toLowerCase(),
+            address: shippingAddress,
+            note: noteStr,
             userId,
-            productId: productId && productId !== 'other' ? productId : null,
-            batteryName: batteryName ? String(batteryName).trim() : '',
-            images: parsedImages.filter(Boolean),
-            quantity: Math.max(1, parseInt(quantity, 10) || 1),
-            manufacturingDate: manufacturingDate || null,
-            expiryDate: expiryDate || null,
+            productId: null,
+            batteryName: batteryNameStr,
+            images: parsedImages,
+            quantity: qty,
+            manufacturingDate: mfg,
+            expiryDate: exp,
             condition: condition ? String(condition).trim() : '',
             usageDuration: usageDuration ? String(usageDuration).trim() : '',
             isWorkingWell: typeof isWorkingWell === 'boolean' ? isWorkingWell : undefined,
-            pricingType: pricingType === 'weight' ? 'weight' : 'ampe',
-            remainingAmps: remainingAmps ? String(remainingAmps).trim() : '',
-            weightKg: weightKg ? String(weightKg).trim() : '',
+            pricingType: pricing,
+            remainingAmps: remainingAmpsStr,
+            weightKg: weightKgStr,
         });
 
         const populated = await BatteryTradeIn.findById(doc._id)

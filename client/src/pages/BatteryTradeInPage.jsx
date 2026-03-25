@@ -9,9 +9,72 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { submitBatteryTradeIn, uploadBatteryImage } from '@/services/batteryTradeInService';
-import { getProducts } from '@/services/productService';
+import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { FileText, ImagePlus, X, CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+// Họ tên: 2–30 ký tự, chữ (Unicode), dấu cách, dấu chấm
+const validateTradeInName = (name) => {
+    const s = (name || '').trim();
+    if (!s) return 'Vui lòng nhập họ tên';
+    if (s.length < 2) return 'Họ tên phải có ít nhất 2 ký tự';
+    if (s.length > 30) return 'Họ tên không quá 30 ký tự';
+    if (!/^[\p{L}\s.'-]+$/u.test(s)) return 'Họ tên chỉ được chứa chữ cái, dấu cách hoặc dấu chấm';
+    return null;
+};
+
+// SĐT Việt Nam: 10–11 số, bắt đầu 03/05/07/08/09/02
+const validatePhone = (phone) => {
+    const s = (phone || '').trim().replace(/\s/g, '');
+    if (!s) return 'Vui lòng nhập số điện thoại';
+    if (!/^0[2-9][0-9]{8,9}$/.test(s)) return 'Số điện thoại không hợp lệ (ví dụ: 0901234567)';
+    return null;
+};
+
+// Gmail đúng định dạng @gmail.com
+const validateGmail = (email) => {
+    const s = (email || '').trim().toLowerCase();
+    if (!s) return 'Vui lòng nhập email';
+    if (!/^[a-z0-9]([a-z0-9._+-]*[a-z0-9])?@gmail\.com$/.test(s)) {
+        return 'Vui lòng nhập đúng định dạng Gmail (ví dụ: ten@gmail.com)';
+    }
+    return null;
+};
+
+const validateAddressLine = (addr) => {
+    const s = (addr || '').trim();
+    if (!s) return 'Vui lòng nhập địa chỉ cụ thể (số nhà, tên đường...)';
+    if (s.length < 10) return 'Địa chỉ phải có ít nhất 10 ký tự';
+    if (s.length > 200) return 'Địa chỉ không quá 200 ký tự';
+    return null;
+};
+
+const validateNote = (note) => {
+    const s = (note || '').trim();
+    if (s.length > 500) return 'Ghi chú không quá 500 ký tự';
+    return null;
+};
+
+const parseMetric = (str) => {
+    const n = parseFloat(String(str || '').replace(',', '.').trim());
+    if (!Number.isFinite(n)) return null;
+    return n;
+};
+
+/** Chỉ cho phép chữ số và tối đa một dấu phân thập phân (`,` hoặc `.`) */
+const filterMetricInput = (value) => {
+    let out = '';
+    let hasSep = false;
+    for (const c of String(value)) {
+        if (c >= '0' && c <= '9') {
+            out += c;
+        } else if ((c === '.' || c === ',') && !hasSep) {
+            hasSep = true;
+            out += c;
+        }
+    }
+    return out;
+};
 
 const POLICY_SECTIONS = [
     {
@@ -81,35 +144,45 @@ const POLICY_SECTIONS = [
     },
 ];
 
+const emptyForm = () => ({
+    name: '',
+    phone: '',
+    email: '',
+    provinceCode: '',
+    provinceName: '',
+    districtCode: '',
+    districtName: '',
+    wardCode: '',
+    wardName: '',
+    addressLine: '',
+    note: '',
+    batteryName: '',
+    images: [],
+    quantity: 1,
+    manufacturingDate: '',
+    expiryDate: '',
+    condition: '',
+    usageDuration: '',
+    isWorkingWell: null,
+    pricingType: 'ampe',
+    remainingAmps: '',
+    weightKg: '',
+});
+
 export default function BatteryTradeInPage() {
     const { user, accessToken, logout } = useAuthStore();
-    const [products, setProducts] = useState([]);
-    const [loadingProducts, setLoadingProducts] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [agreedToPolicy, setAgreedToPolicy] = useState(false);
     const [hasFilledFromUser, setHasFilledFromUser] = useState(false);
 
-    const [form, setForm] = useState({
-        name: '',
-        phone: '',
-        email: '',
-        address: '',
-        note: '',
-        productId: '',
-        batteryName: '',
-        images: [],
-        quantity: 1,
-        manufacturingDate: '',
-        expiryDate: '',
-        condition: '',
-        usageDuration: '',
-        isWorkingWell: null,
-        pricingType: 'ampe',
-        remainingAmps: '',
-        weightKg: '',
-    });
+    const [form, setForm] = useState(emptyForm);
     const [uploadingImages, setUploadingImages] = useState(false);
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+
+    const [provinces, setProvinces] = useState([]);
+    const [districts, setDistricts] = useState([]);
+    const [wards, setWards] = useState([]);
+    const [errors, setErrors] = useState({});
 
     // Tự động điền thông tin từ profile khi đã đăng nhập
     useEffect(() => {
@@ -120,31 +193,55 @@ export default function BatteryTradeInPage() {
                 name: fullName || prev.name,
                 phone: user.phoneNumber || prev.phone,
                 email: user.email || prev.email,
-                address: user.address || prev.address,
+                addressLine: user.address ? String(user.address).trim() : prev.addressLine,
             }));
             setHasFilledFromUser(true);
         }
     }, [accessToken, user, hasFilledFromUser]);
 
     useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const res = await getProducts({ limit: 500 });
-                if (res?.success && res?.data?.products) {
-                    setProducts(res.data.products);
-                }
-            } catch (err) {
-                console.error('Lỗi tải sản phẩm:', err);
-            } finally {
-                setLoadingProducts(false);
-            }
-        };
-        fetchProducts();
+        getProvinces().then(setProvinces).catch(() => setProvinces([]));
     }, []);
+
+    useEffect(() => {
+        if (!form.provinceCode) {
+            setDistricts([]);
+            setWards([]);
+            return;
+        }
+        getDistricts(form.provinceCode).then(setDistricts).catch(() => setDistricts([]));
+        setForm((f) => ({ ...f, districtCode: '', districtName: '', wardCode: '', wardName: '' }));
+    }, [form.provinceCode]);
+
+    useEffect(() => {
+        if (!form.districtCode) {
+            setWards([]);
+            return;
+        }
+        getWards(form.districtCode).then(setWards).catch(() => setWards([]));
+        setForm((f) => ({ ...f, wardCode: '', wardName: '' }));
+    }, [form.districtCode]);
+
+    const buildShippingAddress = () => {
+        const parts = [
+            form.addressLine?.trim(),
+            form.wardName,
+            form.districtName,
+            form.provinceName,
+        ].filter(Boolean);
+        return parts.join(', ');
+    };
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setForm((prev) => ({ ...prev, [name]: value }));
+        if (errors[name]) setErrors((er) => ({ ...er, [name]: null }));
+    };
+
+    const handleMetricChange = (field) => (e) => {
+        const v = filterMetricInput(e.target.value);
+        setForm((prev) => ({ ...prev, [field]: v }));
+        if (errors.metric) setErrors((er) => ({ ...er, metric: null }));
     };
 
     const handleSubmit = async (e) => {
@@ -153,68 +250,105 @@ export default function BatteryTradeInPage() {
             toast.error('Vui lòng xác nhận đồng ý với chính sách của cửa hàng.');
             return;
         }
-        if (!form.name?.trim() || !form.phone?.trim() || !form.email?.trim()) {
-            toast.error('Vui lòng điền đầy đủ họ tên, số điện thoại và email.');
+
+        const errName = validateTradeInName(form.name);
+        const errPhone = validatePhone(form.phone);
+        const errEmail = validateGmail(form.email);
+        const errProvince = !form.provinceCode ? 'Vui lòng chọn Tỉnh/Thành phố' : null;
+        const errDistrict = !form.districtCode ? 'Vui lòng chọn Quận/Huyện' : null;
+        const errWard = !form.wardCode ? 'Vui lòng chọn Phường/Xã' : null;
+        const errAddressLine = validateAddressLine(form.addressLine);
+        const errNote = validateNote(form.note);
+
+        const bn = (form.batteryName || '').trim();
+        const errBatteryName = !bn ? 'Vui lòng nhập tên ắc quy' : null;
+
+        const imgs = form.images || [];
+        const errImages = imgs.length < 2 ? 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ' : null;
+
+        const qty = parseInt(form.quantity, 10);
+        const errQuantity =
+            !Number.isInteger(qty) || qty < 1 ? 'Số lượng phải là số nguyên dương (tối thiểu 1)' : null;
+
+        const errMfg = !form.manufacturingDate ? 'Vui lòng chọn ngày sản xuất' : null;
+        const errExp = !form.expiryDate ? 'Vui lòng chọn hạn sử dụng' : null;
+        let errDateOrder = null;
+        if (form.manufacturingDate && form.expiryDate) {
+            const m = new Date(`${form.manufacturingDate}T00:00:00`);
+            const ex = new Date(`${form.expiryDate}T00:00:00`);
+            if (ex <= m) errDateOrder = 'Hạn sử dụng phải sau ngày sản xuất';
+        }
+
+        let errMetric = null;
+        if (form.pricingType === 'ampe') {
+            const v = parseMetric(form.remainingAmps);
+            if (v == null) errMetric = 'Vui lòng nhập số Ampe (Ah)';
+            else if (v <= 0 || v >= 200) errMetric = 'Số Ampe phải lớn hơn 0 và nhỏ hơn 200';
+        } else {
+            const v = parseMetric(form.weightKg);
+            if (v == null) errMetric = 'Vui lòng nhập cân nặng (kg)';
+            else if (v <= 0 || v >= 200) errMetric = 'Cân nặng phải lớn hơn 0 và nhỏ hơn 200 (kg)';
+        }
+
+        const newErrors = {
+            name: errName,
+            phone: errPhone,
+            email: errEmail,
+            provinceCode: errProvince,
+            districtCode: errDistrict,
+            wardCode: errWard,
+            addressLine: errAddressLine,
+            note: errNote,
+            batteryName: errBatteryName,
+            images: errImages,
+            quantity: errQuantity,
+            manufacturingDate: errMfg,
+            expiryDate: errExp,
+            dateOrder: errDateOrder,
+            metric: errMetric,
+        };
+        setErrors(newErrors);
+
+        const hasError = Object.values(newErrors).some(Boolean);
+        if (hasError) {
+            toast.error('Vui lòng kiểm tra và sửa thông tin chưa hợp lệ');
             return;
         }
-        const batteryName = form.productId === 'other' ? form.batteryName : '';
-        const productId = form.productId && form.productId !== 'other' ? form.productId : null;
-        if (!productId && !batteryName?.trim()) {
-            toast.error('Vui lòng chọn loại ắc quy hoặc nhập tên ắc quy (khi chọn Khác).');
-            return;
-        }
-        if (form.pricingType === 'ampe' && !form.remainingAmps?.trim()) {
-            toast.error('Vui lòng nhập còn bao nhiêu Ampe (Ah).');
-            return;
-        }
-        if (form.pricingType === 'weight' && !form.weightKg?.trim()) {
-            toast.error('Vui lòng nhập cân nặng acquy (kg).');
-            return;
-        }
+
+        const fullAddress = buildShippingAddress();
 
         setSubmitting(true);
         try {
             await submitBatteryTradeIn({
                 name: form.name.trim(),
-                phone: form.phone.trim(),
-                email: form.email.trim(),
-                address: form.address?.trim() || '',
+                phone: form.phone.trim().replace(/\s/g, ''),
+                email: form.email.trim().toLowerCase(),
+                address: fullAddress,
+                provinceCode: form.provinceCode,
+                provinceName: form.provinceName,
+                districtCode: form.districtCode,
+                districtName: form.districtName,
+                wardCode: form.wardCode,
+                wardName: form.wardName,
+                addressLine: form.addressLine?.trim() || '',
                 note: form.note?.trim() || '',
-                productId: productId || undefined,
-                batteryName: batteryName?.trim() || '',
-                images: form.images || [],
-                quantity: Math.max(1, parseInt(form.quantity, 10) || 1),
+                batteryName: bn,
+                images: imgs,
+                quantity: qty,
                 manufacturingDate: form.manufacturingDate || undefined,
                 expiryDate: form.expiryDate || undefined,
                 condition: form.condition?.trim() || '',
                 usageDuration: form.usageDuration?.trim() || '',
                 isWorkingWell: form.isWorkingWell === true ? true : form.isWorkingWell === false ? false : undefined,
                 pricingType: form.pricingType || 'ampe',
-                remainingAmps: form.pricingType === 'ampe' ? form.remainingAmps?.trim() || '' : '',
-                weightKg: form.pricingType === 'weight' ? form.weightKg?.trim() || '' : '',
+                remainingAmps: form.pricingType === 'ampe' ? String(parseMetric(form.remainingAmps)) : '',
+                weightKg: form.pricingType === 'weight' ? String(parseMetric(form.weightKg)) : '',
             });
             setShowSuccessDialog(true);
-            setForm({
-                name: '',
-                phone: '',
-                email: '',
-                address: '',
-                note: '',
-                productId: '',
-                batteryName: '',
-                images: [],
-                quantity: 1,
-                manufacturingDate: '',
-                expiryDate: '',
-                condition: '',
-                usageDuration: '',
-                isWorkingWell: null,
-                pricingType: 'ampe',
-                remainingAmps: '',
-                weightKg: '',
-            });
+            setForm(emptyForm());
             setAgreedToPolicy(false);
             setHasFilledFromUser(false);
+            setErrors({});
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Lỗi khi gửi yêu cầu. Vui lòng thử lại.');
         } finally {
@@ -231,7 +365,6 @@ export default function BatteryTradeInPage() {
         }
     };
 
-    const isOtherBattery = form.productId === 'other';
     const isAmpePricing = form.pricingType === 'ampe';
 
     const handleImageUpload = async (e) => {
@@ -247,6 +380,7 @@ export default function BatteryTradeInPage() {
             const res = await uploadBatteryImage(Array.from(files));
             if (res?.success && res?.data?.urls) {
                 setForm((prev) => ({ ...prev, images: [...(prev.images || []), ...res.data.urls] }));
+                if (errors.images) setErrors((er) => ({ ...er, images: null }));
                 toast.success('Đã tải ảnh lên.');
             } else {
                 toast.error('Lỗi khi tải ảnh.');
@@ -265,7 +399,10 @@ export default function BatteryTradeInPage() {
         }));
     };
 
-    const selectClassName = "mt-1 flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition";
+    const selectClassName =
+        'mt-1 flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition';
+
+    const inputError = (key) => (errors[key] ? 'border-red-500 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200');
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -275,7 +412,6 @@ export default function BatteryTradeInPage() {
                 <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-8 text-center">Chương trình thu cũ ắc quy</h1>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
-                    {/* Bên trái: Form điền thông tin */}
                     <div className="order-2 lg:order-1">
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <Card className="border-0 shadow-lg bg-white rounded-xl overflow-hidden">
@@ -284,19 +420,23 @@ export default function BatteryTradeInPage() {
                                 </CardHeader>
                                 <CardContent className="p-6 space-y-4">
                                     <div>
-                                        <Label htmlFor="name" className="text-gray-700 font-medium">Họ tên *</Label>
+                                        <Label htmlFor="name" className="text-gray-700 font-medium">
+                                            Họ tên *
+                                        </Label>
                                         <Input
                                             id="name"
                                             name="name"
                                             value={form.name}
                                             onChange={handleChange}
                                             placeholder="Nguyễn Văn A"
-                                            required
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('name')}`}
                                         />
+                                        {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
                                     </div>
                                     <div>
-                                        <Label htmlFor="phone" className="text-gray-700 font-medium">Số điện thoại *</Label>
+                                        <Label htmlFor="phone" className="text-gray-700 font-medium">
+                                            Số điện thoại *
+                                        </Label>
                                         <Input
                                             id="phone"
                                             name="phone"
@@ -304,44 +444,136 @@ export default function BatteryTradeInPage() {
                                             value={form.phone}
                                             onChange={handleChange}
                                             placeholder="0901234567"
-                                            required
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('phone')}`}
                                         />
+                                        {errors.phone && <p className="text-xs text-red-600 mt-1">{errors.phone}</p>}
                                     </div>
                                     <div>
-                                        <Label htmlFor="email" className="text-gray-700 font-medium">Email *</Label>
+                                        <Label htmlFor="email" className="text-gray-700 font-medium">
+                                            Gmail *
+                                        </Label>
                                         <Input
                                             id="email"
                                             name="email"
                                             type="email"
+                                            autoComplete="email"
                                             value={form.email}
                                             onChange={handleChange}
-                                            placeholder="email@example.com"
-                                            required
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            placeholder="ten@gmail.com"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('email')}`}
                                         />
+                                        {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email}</p>}
                                     </div>
-                                    <div>
-                                        <Label htmlFor="address" className="text-gray-700 font-medium">Địa chỉ</Label>
-                                        <Input
-                                            id="address"
-                                            name="address"
-                                            value={form.address}
-                                            onChange={handleChange}
-                                            placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                                        />
+
+                                    <div className="pt-2 border-t border-gray-100 space-y-3">
+                                        <p className="text-sm font-medium text-gray-800">Địa chỉ (giống đặt hàng)</p>
+                                        <div>
+                                            <label className="text-xs text-gray-600">Tỉnh / Thành phố *</label>
+                                            <select
+                                                className={`select select-bordered select-sm w-full mt-1 ${errors.provinceCode ? 'select-error' : ''}`}
+                                                value={form.provinceCode}
+                                                onChange={(e) => {
+                                                    const code = e.target.value;
+                                                    const p = provinces.find((x) => String(x.code) === code);
+                                                    setForm((f) => ({
+                                                        ...f,
+                                                        provinceCode: code,
+                                                        provinceName: p?.name || '',
+                                                    }));
+                                                    if (errors.provinceCode) setErrors((er) => ({ ...er, provinceCode: null }));
+                                                }}
+                                            >
+                                                <option value="">— Chọn Tỉnh/Thành phố —</option>
+                                                {provinces.map((p) => (
+                                                    <option key={p.code} value={p.code}>
+                                                        {p.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.provinceCode && <p className="text-xs text-red-600 mt-1">{errors.provinceCode}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-600">Quận / Huyện *</label>
+                                            <select
+                                                className={`select select-bordered select-sm w-full mt-1 ${errors.districtCode ? 'select-error' : ''}`}
+                                                value={form.districtCode}
+                                                onChange={(e) => {
+                                                    const code = e.target.value;
+                                                    const d = districts.find((x) => String(x.code) === code);
+                                                    setForm((f) => ({
+                                                        ...f,
+                                                        districtCode: code,
+                                                        districtName: d?.name || '',
+                                                    }));
+                                                    if (errors.districtCode) setErrors((er) => ({ ...er, districtCode: null }));
+                                                }}
+                                                disabled={!form.provinceCode}
+                                            >
+                                                <option value="">— Chọn Quận/Huyện —</option>
+                                                {districts.map((d) => (
+                                                    <option key={d.code} value={d.code}>
+                                                        {d.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.districtCode && <p className="text-xs text-red-600 mt-1">{errors.districtCode}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-600">Phường / Xã / Thị trấn *</label>
+                                            <select
+                                                className={`select select-bordered select-sm w-full mt-1 ${errors.wardCode ? 'select-error' : ''}`}
+                                                value={form.wardCode}
+                                                onChange={(e) => {
+                                                    const code = e.target.value;
+                                                    const w = wards.find((x) => String(x.code) === code);
+                                                    setForm((f) => ({
+                                                        ...f,
+                                                        wardCode: code,
+                                                        wardName: w?.name || '',
+                                                    }));
+                                                    if (errors.wardCode) setErrors((er) => ({ ...er, wardCode: null }));
+                                                }}
+                                                disabled={!form.districtCode}
+                                            >
+                                                <option value="">— Chọn Phường/Xã/Thị trấn —</option>
+                                                {wards.map((w) => (
+                                                    <option key={w.code} value={w.code}>
+                                                        {w.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.wardCode && <p className="text-xs text-red-600 mt-1">{errors.wardCode}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-600">Địa chỉ cụ thể (số nhà, tên đường...) *</label>
+                                            <input
+                                                type="text"
+                                                name="addressLine"
+                                                className={`input input-bordered input-sm w-full mt-1 ${errors.addressLine ? 'input-error' : ''}`}
+                                                placeholder="Ví dụ: Số 123, đường ABC"
+                                                value={form.addressLine}
+                                                onChange={(e) => {
+                                                    setForm((f) => ({ ...f, addressLine: e.target.value }));
+                                                    if (errors.addressLine) setErrors((er) => ({ ...er, addressLine: null }));
+                                                }}
+                                            />
+                                            {errors.addressLine && <p className="text-xs text-red-600 mt-1">{errors.addressLine}</p>}
+                                        </div>
                                     </div>
+
                                     <div>
-                                        <Label htmlFor="note" className="text-gray-700 font-medium">Ghi chú</Label>
+                                        <Label htmlFor="note" className="text-gray-700 font-medium">
+                                            Ghi chú
+                                        </Label>
                                         <Input
                                             id="note"
                                             name="note"
                                             value={form.note}
                                             onChange={handleChange}
                                             placeholder="Thông tin bổ sung..."
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('note')}`}
                                         />
+                                        {errors.note && <p className="text-xs text-red-600 mt-1">{errors.note}</p>}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -352,45 +584,26 @@ export default function BatteryTradeInPage() {
                                 </CardHeader>
                                 <CardContent className="p-6 space-y-4">
                                     <div>
-                                        <Label className="text-gray-700 font-medium">Loại ắc quy *</Label>
-                                        <select
-                                            name="productId"
-                                            value={form.productId}
+                                        <Label htmlFor="batteryName" className="text-gray-700 font-medium">
+                                            Tên ắc quy *
+                                        </Label>
+                                        <Input
+                                            id="batteryName"
+                                            name="batteryName"
+                                            value={form.batteryName}
                                             onChange={handleChange}
-                                            className={selectClassName}
-                                            required
-                                        >
-                                            <option value="">-- Chọn ắc quy --</option>
-                                            {loadingProducts ? (
-                                                <option disabled>Đang tải...</option>
-                                            ) : (
-                                                products.map((p) => (
-                                                    <option key={p._id} value={p._id}>
-                                                        {p.name} {p.capacity ? `(${p.capacity})` : ''}
-                                                    </option>
-                                                ))
-                                            )}
-                                            <option value="other">Khác (nhập tên bên dưới)</option>
-                                        </select>
+                                            placeholder="VD: Ắc quy ABC 60Ah"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('batteryName')}`}
+                                        />
+                                        {errors.batteryName && <p className="text-xs text-red-600 mt-1">{errors.batteryName}</p>}
                                     </div>
 
-                                    {isOtherBattery && (
-                                        <div>
-                                            <Label htmlFor="batteryName" className="text-gray-700 font-medium">Tên ắc quy *</Label>
-                                            <Input
-                                                id="batteryName"
-                                                name="batteryName"
-                                                value={form.batteryName}
-                                                onChange={handleChange}
-                                                placeholder="VD: Ắc quy ABC 60Ah"
-                                                className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                                            />
-                                        </div>
-                                    )}
-
                                     <div>
-                                        <Label className="text-gray-700 font-medium">Ảnh thực tế sản phẩm</Label>
-                                        <p className="text-xs text-gray-500 mt-0.5">Tối đa 5 ảnh (JPEG, PNG, WebP, GIF - 3MB/ảnh)</p>
+                                        <Label className="text-gray-700 font-medium">Ảnh thực tế sản phẩm *</Label>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            Ít nhất 2 ảnh, tối đa 5 ảnh (JPEG, PNG, WebP, GIF - 3MB/ảnh)
+                                        </p>
+                                        {errors.images && <p className="text-xs text-red-600 mt-1">{errors.images}</p>}
                                         <div className="mt-2 flex flex-wrap gap-2">
                                             {form.images?.map((url, i) => (
                                                 <div key={i} className="relative group">
@@ -418,42 +631,55 @@ export default function BatteryTradeInPage() {
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="quantity" className="text-gray-700 font-medium">Số lượng acquy thu cũ</Label>
+                                        <Label htmlFor="quantity" className="text-gray-700 font-medium">
+                                            Số lượng acquy thu cũ *
+                                        </Label>
                                         <Input
                                             id="quantity"
                                             name="quantity"
                                             type="number"
                                             min={1}
+                                            step={1}
                                             value={form.quantity}
                                             onChange={handleChange}
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 w-24"
+                                            className={`mt-1 h-10 rounded-lg w-24 ${inputError('quantity')}`}
                                         />
+                                        {errors.quantity && <p className="text-xs text-red-600 mt-1">{errors.quantity}</p>}
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="manufacturingDate" className="text-gray-700 font-medium">Ngày tháng sản xuất</Label>
+                                        <Label htmlFor="manufacturingDate" className="text-gray-700 font-medium">
+                                            Ngày sản xuất *
+                                        </Label>
                                         <Input
                                             id="manufacturingDate"
                                             name="manufacturingDate"
                                             type="date"
                                             value={form.manufacturingDate}
                                             onChange={handleChange}
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('manufacturingDate')}`}
                                         />
+                                        {errors.manufacturingDate && <p className="text-xs text-red-600 mt-1">{errors.manufacturingDate}</p>}
                                     </div>
                                     <div>
-                                        <Label htmlFor="expiryDate" className="text-gray-700 font-medium">Hạn sử dụng</Label>
+                                        <Label htmlFor="expiryDate" className="text-gray-700 font-medium">
+                                            Hạn sử dụng *
+                                        </Label>
                                         <Input
                                             id="expiryDate"
                                             name="expiryDate"
                                             type="date"
                                             value={form.expiryDate}
                                             onChange={handleChange}
-                                            className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                            className={`mt-1 h-10 rounded-lg ${inputError('expiryDate')}`}
                                         />
+                                        {errors.expiryDate && <p className="text-xs text-red-600 mt-1">{errors.expiryDate}</p>}
+                                        {errors.dateOrder && <p className="text-xs text-red-600 mt-1">{errors.dateOrder}</p>}
                                     </div>
                                     <div>
-                                        <Label htmlFor="condition" className="text-gray-700 font-medium">Tình trạng</Label>
+                                        <Label htmlFor="condition" className="text-gray-700 font-medium">
+                                            Tình trạng
+                                        </Label>
                                         <select
                                             id="condition"
                                             name="condition"
@@ -468,7 +694,9 @@ export default function BatteryTradeInPage() {
                                         </select>
                                     </div>
                                     <div>
-                                        <Label htmlFor="usageDuration" className="text-gray-700 font-medium">Đã sử dụng bao lâu</Label>
+                                        <Label htmlFor="usageDuration" className="text-gray-700 font-medium">
+                                            Đã sử dụng bao lâu
+                                        </Label>
                                         <Input
                                             id="usageDuration"
                                             name="usageDuration"
@@ -530,33 +758,48 @@ export default function BatteryTradeInPage() {
                                     </div>
                                     {isAmpePricing ? (
                                         <div>
-                                            <Label htmlFor="remainingAmps" className="text-gray-700 font-medium">Còn bao nhiêu Ampe (Ah) *</Label>
+                                            <Label htmlFor="remainingAmps" className="text-gray-700 font-medium">
+                                                Còn bao nhiêu Ampe (Ah) * (0 &lt; Ah &lt; 200)
+                                            </Label>
                                             <Input
                                                 id="remainingAmps"
                                                 name="remainingAmps"
+                                                type="text"
+                                                inputMode="decimal"
+                                                autoComplete="off"
                                                 value={form.remainingAmps}
-                                                onChange={handleChange}
+                                                onChange={handleMetricChange('remainingAmps')}
                                                 placeholder="VD: 45, 60..."
-                                                className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                                className={`mt-1 h-10 rounded-lg ${inputError('metric')}`}
                                             />
+                                            {errors.metric && isAmpePricing && (
+                                                <p className="text-xs text-red-600 mt-1">{errors.metric}</p>
+                                            )}
                                         </div>
                                     ) : (
                                         <div>
-                                            <Label htmlFor="weightKg" className="text-gray-700 font-medium">Cân nặng acquy (kg) *</Label>
+                                            <Label htmlFor="weightKg" className="text-gray-700 font-medium">
+                                                Cân nặng acquy (kg) * (0 &lt; kg &lt; 200)
+                                            </Label>
                                             <Input
                                                 id="weightKg"
                                                 name="weightKg"
+                                                type="text"
+                                                inputMode="decimal"
+                                                autoComplete="off"
                                                 value={form.weightKg}
-                                                onChange={handleChange}
+                                                onChange={handleMetricChange('weightKg')}
                                                 placeholder="VD: 12, 15..."
-                                                className="mt-1 h-10 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                                className={`mt-1 h-10 rounded-lg ${inputError('metric')}`}
                                             />
+                                            {errors.metric && !isAmpePricing && (
+                                                <p className="text-xs text-red-600 mt-1">{errors.metric}</p>
+                                            )}
                                         </div>
                                     )}
                                 </CardContent>
                             </Card>
 
-                            {/* Nút gửi + checkbox đồng ý */}
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-white rounded-xl shadow-lg border border-gray-100">
                                 <div className="flex items-center gap-3 flex-1">
                                     <Checkbox
@@ -565,7 +808,9 @@ export default function BatteryTradeInPage() {
                                         onCheckedChange={(checked) => setAgreedToPolicy(!!checked)}
                                         className="border-gray-400 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
-                                    <label htmlFor="policy" className="text-sm text-gray-700 cursor-pointer">Tôi đồng ý với chính sách của cửa hàng</label>
+                                    <label htmlFor="policy" className="text-sm text-gray-700 cursor-pointer">
+                                        Tôi đồng ý với chính sách của cửa hàng
+                                    </label>
                                 </div>
                                 <Button
                                     type="submit"
@@ -578,7 +823,6 @@ export default function BatteryTradeInPage() {
                         </form>
                     </div>
 
-                    {/* Bên phải: Chính sách hiện full */}
                     <div className="order-1 lg:order-2">
                         <Card className="border-0 shadow-lg bg-white rounded-xl overflow-hidden sticky top-4">
                             <CardHeader className="bg-blue-900 text-white py-4 flex flex-row items-center gap-2">
@@ -602,7 +846,6 @@ export default function BatteryTradeInPage() {
 
             <Footer />
 
-            {/* Popup thông báo gửi yêu cầu thành công */}
             <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -615,10 +858,18 @@ export default function BatteryTradeInPage() {
                     </DialogHeader>
                     <div className="space-y-4 text-gray-600">
                         <p>Chuyên viên cửa hàng sẽ liên hệ để xác nhận và xử lý.</p>
-                        <p>Mọi thắc mắc hay yêu cầu xin gọi về <a href="tel:0386806456" className="font-semibold text-blue-600 hover:underline">0386806456</a> để được hỗ trợ sớm nhất.</p>
+                        <p>
+                            Mọi thắc mắc hay yêu cầu xin gọi về{' '}
+                            <a href="tel:0386806456" className="font-semibold text-blue-600 hover:underline">
+                                0386806456
+                            </a>{' '}
+                            để được hỗ trợ sớm nhất.
+                        </p>
                     </div>
                     <div className="flex justify-center pt-2">
-                        <Button onClick={() => setShowSuccessDialog(false)} className="bg-blue-600 hover:bg-blue-700">Đóng</Button>
+                        <Button onClick={() => setShowSuccessDialog(false)} className="bg-blue-600 hover:bg-blue-700">
+                            Đóng
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
