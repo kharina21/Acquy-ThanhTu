@@ -17,6 +17,7 @@ import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 import { createPayOSPaymentLink, getPayOSPaymentStatus } from '../libs/payosHelper.js';
 import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
+import 'dotenv/config';
 
 const GUEST_USERNAME = '__guest_pos__';
 
