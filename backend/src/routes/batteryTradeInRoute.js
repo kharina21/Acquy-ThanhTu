@@ -7,6 +7,7 @@ import {
     getBatteryTradeInList,
     updateBatteryTradeInStatus,
     uploadBatteryImage,
+    lookupBatteryTradeIn,
 } from '../controllers/batteryTradeInController.js';
 
 const uploadImage = multer({
@@ -23,6 +24,9 @@ const router = express.Router();
 
 // Public - Upload ảnh acquy
 router.post('/upload-image', uploadImage.array('image', 5), uploadBatteryImage);
+
+// Public - Tra cứu yêu cầu theo mã + email
+router.post('/lookup', lookupBatteryTradeIn);
 
 // Public - Gửi yêu cầu thu cũ (guest và customer đều dùng được, optional auth để lưu userId nếu đã đăng nhập)
 router.post('/', optionalAuthenticate, submitBatteryTradeIn);

@@ -15,6 +15,12 @@ export const submitBatteryTradeIn = async (payload) => {
     return data;
 };
 
+/** Tra cứu yêu cầu thu cũ (public, không cần đăng nhập) */
+export const lookupBatteryTradeIn = async ({ code, email }) => {
+    const { data } = await api.post('/battery-trade-in/lookup', { code, email });
+    return data;
+};
+
 export const getBatteryTradeInList = async (params = {}) => {
     const { data } = await api.get('/battery-trade-in', { params });
     return data;

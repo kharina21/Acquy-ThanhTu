@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -178,6 +179,7 @@ export default function BatteryTradeInPage() {
     const [form, setForm] = useState(emptyForm);
     const [uploadingImages, setUploadingImages] = useState(false);
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+    const [lastRequestCode, setLastRequestCode] = useState('');
 
     const [provinces, setProvinces] = useState([]);
     const [districts, setDistricts] = useState([]);
@@ -319,7 +321,7 @@ export default function BatteryTradeInPage() {
 
         setSubmitting(true);
         try {
-            await submitBatteryTradeIn({
+            const submitRes = await submitBatteryTradeIn({
                 name: form.name.trim(),
                 phone: form.phone.trim().replace(/\s/g, ''),
                 email: form.email.trim().toLowerCase(),
@@ -344,6 +346,8 @@ export default function BatteryTradeInPage() {
                 remainingAmps: form.pricingType === 'ampe' ? String(parseMetric(form.remainingAmps)) : '',
                 weightKg: form.pricingType === 'weight' ? String(parseMetric(form.weightKg)) : '',
             });
+            const reqCode = submitRes?.data?.request?.requestCode;
+            setLastRequestCode(typeof reqCode === 'string' ? reqCode : '');
             setShowSuccessDialog(true);
             setForm(emptyForm());
             setAgreedToPolicy(false);
@@ -409,7 +413,12 @@ export default function BatteryTradeInPage() {
             <Header user={user} onLogout={handleLogout} />
 
             <main className="flex-1 container mx-auto px-4 py-8">
-                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-8 text-center">Chương trình thu cũ ắc quy</h1>
+                <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2 text-center">Chương trình thu cũ ắc quy</h1>
+                <p className="text-center text-sm text-gray-600 mb-8">
+                    <Link to="/battery-trade-in/tra-cuu" className="text-blue-700 hover:underline font-medium">
+                        Tra cứu yêu cầu đã gửi (mã + Gmail)
+                    </Link>
+                </p>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
                     <div className="order-2 lg:order-1">
@@ -857,6 +866,19 @@ export default function BatteryTradeInPage() {
                         </div>
                     </DialogHeader>
                     <div className="space-y-4 text-gray-600">
+                        {lastRequestCode && (
+                            <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-left">
+                                <p className="text-xs text-blue-800 font-medium mb-1">Mã yêu cầu của bạn</p>
+                                <p className="font-mono text-lg font-bold text-blue-900 tracking-wide">{lastRequestCode}</p>
+                                <p className="text-xs text-blue-700 mt-2">
+                                    Đã gửi kèm email. Bạn có thể{' '}
+                                    <Link to="/battery-trade-in/tra-cuu" className="underline font-medium">
+                                        tra cứu trạng thái
+                                    </Link>{' '}
+                                    bằng mã và Gmail.
+                                </p>
+                            </div>
+                        )}
                         <p>Chuyên viên cửa hàng sẽ liên hệ để xác nhận và xử lý.</p>
                         <p>
                             Mọi thắc mắc hay yêu cầu xin gọi về{' '}

@@ -1,8 +1,33 @@
+import crypto from 'crypto';
 import mongoose from 'mongoose';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import Product from '../models/Product.js';
+import Location from '../models/Location.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
+
+function getFrontendBaseUrl() {
+    return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+}
+
+/** Mã dạng TC-YYYY-8HEX (khó đoán, tra cứu kèm email) */
+async function generateUniqueRequestCode() {
+    for (let i = 0; i < 10; i++) {
+        const y = new Date().getFullYear();
+        const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const code = `TC-${y}-${rand}`;
+        const exists = await BatteryTradeIn.findOne({ requestCode: code }).select('_id').lean();
+        if (!exists) return code;
+    }
+    throw new Error('Không tạo được mã yêu cầu');
+}
+
+const LOOKUP_STATUS_LABEL = {
+    pending: 'Đang xử lý',
+    contacted: 'Đã liên hệ',
+    completed: 'Hoàn tất',
+    cancelled: 'Đã hủy',
+};
 
 function validateTradeInName(name) {
     const s = String(name || '').trim();
@@ -69,6 +94,75 @@ export const uploadBatteryImage = async (req, res) => {
     } catch (error) {
         console.error('uploadBatteryImage error:', error.message);
         res.status(500).json({ message: 'Lỗi khi tải ảnh lên.', error: error.message });
+    }
+};
+
+/**
+ * POST /api/battery-trade-in/lookup - Tra cứu yêu cầu thu cũ theo mã + email Gmail (public)
+ */
+export const lookupBatteryTradeIn = async (req, res) => {
+    try {
+        const rawCode = String(req.body.code ?? req.body.requestCode ?? '').trim();
+        const email = String(req.body.email ?? '').trim().toLowerCase();
+        const code = rawCode.toUpperCase();
+
+        if (!code || !email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng nhập mã yêu cầu và email Gmail.',
+            });
+        }
+        if (!/^TC-\d{4}-[0-9A-F]{8}$/.test(code)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Mã yêu cầu không đúng định dạng (ví dụ: TC-2025-AB12CD34).',
+            });
+        }
+        const errEmail = validateGmail(email);
+        if (errEmail) {
+            return res.status(400).json({ success: false, message: errEmail });
+        }
+
+        const doc = await BatteryTradeIn.findOne({ requestCode: code, email })
+            .populate('appointmentLocationId', 'code name address phone')
+            .lean();
+        if (!doc) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy yêu cầu. Kiểm tra lại mã và email đã dùng khi gửi đơn.',
+            });
+        }
+
+        const aptLoc = doc.appointmentLocationId;
+        return res.status(200).json({
+            success: true,
+            data: {
+                requestCode: doc.requestCode,
+                status: doc.status,
+                statusLabel: LOOKUP_STATUS_LABEL[doc.status] || doc.status,
+                batteryName: doc.batteryName,
+                quantity: doc.quantity,
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                name: doc.name,
+                appointmentAt: doc.appointmentAt,
+                appointmentLocation: aptLoc
+                    ? {
+                          code: aptLoc.code,
+                          name: aptLoc.name,
+                          address: aptLoc.address,
+                          phone: aptLoc.phone,
+                      }
+                    : null,
+            },
+        });
+    } catch (error) {
+        console.error('lookupBatteryTradeIn error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi tra cứu yêu cầu.',
+            error: error.message,
+        });
     }
 };
 
@@ -241,7 +335,10 @@ export const submitBatteryTradeIn = async (req, res) => {
             weightKgStr = String(v);
         }
 
+        const requestCode = await generateUniqueRequestCode();
+
         const doc = await BatteryTradeIn.create({
+            requestCode,
             name: String(name).trim(),
             phone: String(phone).trim().replace(/\s/g, ''),
             email: String(email).trim().toLowerCase(),
@@ -267,7 +364,13 @@ export const submitBatteryTradeIn = async (req, res) => {
             .lean();
 
         try {
-            await sendBatteryTradeInConfirmationEmail(populated.email, populated.name);
+            const lookupPageUrl = `${getFrontendBaseUrl()}/battery-trade-in/tra-cuu`;
+            await sendBatteryTradeInConfirmationEmail(
+                populated.email,
+                populated.name,
+                populated.requestCode,
+                lookupPageUrl,
+            );
         } catch (emailErr) {
             console.error('Gửi email xác nhận thu cũ thất bại:', emailErr.message);
         }
@@ -302,6 +405,7 @@ export const getBatteryTradeInList = async (req, res) => {
         if (status) query.status = status;
         if (search) {
             query.$or = [
+                { requestCode: { $regex: search, $options: 'i' } },
                 { name: { $regex: search, $options: 'i' } },
                 { phone: { $regex: search, $options: 'i' } },
                 { email: { $regex: search, $options: 'i' } },
@@ -314,7 +418,8 @@ export const getBatteryTradeInList = async (req, res) => {
             BatteryTradeIn.find(query)
                 .populate('productId', 'name sku capacity')
                 .populate('completedProductId', 'name sku capacity')
-                .populate('locationId', 'code name')
+                .populate('locationId', 'code name address phone')
+                .populate('appointmentLocationId', 'code name address phone')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -357,6 +462,8 @@ export const updateBatteryTradeInStatus = async (req, res) => {
             completedAmount,
             completedNote,
             locationId,
+            appointmentAt,
+            appointmentLocationId,
         } = req.body;
 
         if (!['pending', 'contacted', 'completed', 'cancelled'].includes(status)) {
@@ -402,7 +509,46 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                     message: 'Chỉ có thể chuyển về đang xử lý từ đã liên hệ.',
                 });
             }
-            update = { status };
+
+            if (status === 'contacted') {
+                if (!appointmentAt) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Vui lòng chọn thời gian đã xác nhận với khách.',
+                    });
+                }
+                const apt = new Date(appointmentAt);
+                if (Number.isNaN(apt.getTime())) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Thời gian hẹn không hợp lệ.',
+                    });
+                }
+                if (!appointmentLocationId || !mongoose.Types.ObjectId.isValid(appointmentLocationId)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Vui lòng chọn cơ sở / chi nhánh đã xác nhận với khách.',
+                    });
+                }
+                const loc = await Location.findById(appointmentLocationId).select('_id isActive').lean();
+                if (!loc || !loc.isActive) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Chi nhánh không tồn tại hoặc đã ngừng hoạt động.',
+                    });
+                }
+                update = {
+                    status: 'contacted',
+                    appointmentAt: apt,
+                    appointmentLocationId,
+                };
+            } else {
+                update = {
+                    status: 'pending',
+                    appointmentAt: null,
+                    appointmentLocationId: null,
+                };
+            }
         } else if (status === 'cancelled') {
             if (!['pending', 'contacted'].includes(existing.status)) {
                 return res.status(400).json({
@@ -419,6 +565,8 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 completedAmount: null,
                 completedAt: null,
                 completedNote: '',
+                appointmentAt: null,
+                appointmentLocationId: null,
             };
         } else if (status === 'completed') {
             if (existing.status !== 'contacted') {
@@ -466,7 +614,8 @@ export const updateBatteryTradeInStatus = async (req, res) => {
         const doc = await BatteryTradeIn.findByIdAndUpdate(id, update, { new: true })
             .populate('productId', 'name sku capacity')
             .populate('completedProductId', 'name sku capacity')
-            .populate('locationId', 'code name')
+            .populate('locationId', 'code name address phone')
+            .populate('appointmentLocationId', 'code name address phone')
             .lean();
 
         return res.status(200).json({

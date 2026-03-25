@@ -15,6 +15,7 @@ import {
     Calendar,
     LayoutDashboard,
     X,
+    Clock,
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -27,6 +28,11 @@ const STATUS_META = {
 const formatDate = (d) => {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('vi-VN');
+};
+
+const formatDateTime = (d) => {
+    if (!d) return '—';
+    return new Date(d).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
 const formatVND = (n) => {
@@ -115,6 +121,10 @@ export default function AdminBatteryTradeInPage() {
     const [cancelForId, setCancelForId] = useState(null);
     const [cancelReason, setCancelReason] = useState('');
 
+    const [contactOpen, setContactOpen] = useState(false);
+    const [contactForId, setContactForId] = useState(null);
+    const [contactForm, setContactForm] = useState({ appointmentAt: '', appointmentLocationId: '' });
+
     useEffect(() => {
         getProducts({ limit: 500, page: 1 })
             .then((res) => setProducts(res?.data?.products || []))
@@ -167,12 +177,55 @@ export default function AdminBatteryTradeInPage() {
     const openComplete = (req) => {
         setCompleteForId(req._id);
         setCompleteForm({
-            locationId: locations[0]?._id || '',
+            locationId: req.appointmentLocationId?._id || locations[0]?._id || '',
             completedProductId: '',
             completedAmount: '',
             completedNote: '',
         });
         setCompleteOpen(true);
+    };
+
+    const openContact = (req) => {
+        setContactForId(req._id);
+        setContactForm({
+            appointmentAt: '',
+            appointmentLocationId: locations[0]?._id || '',
+        });
+        setContactOpen(true);
+    };
+
+    const submitContact = async () => {
+        if (!contactForId) return;
+        const { appointmentAt, appointmentLocationId } = contactForm;
+        if (!appointmentAt?.trim()) {
+            toast.error('Vui lòng chọn thời gian đã xác nhận với khách');
+            return;
+        }
+        if (!appointmentLocationId) {
+            toast.error('Vui lòng chọn cơ sở / chi nhánh');
+            return;
+        }
+        const dt = new Date(appointmentAt);
+        if (Number.isNaN(dt.getTime())) {
+            toast.error('Thời gian không hợp lệ');
+            return;
+        }
+        setUpdatingId(contactForId);
+        try {
+            await updateBatteryTradeInStatus(contactForId, {
+                status: 'contacted',
+                appointmentAt: dt.toISOString(),
+                appointmentLocationId,
+            });
+            toast.success('Đã cập nhật: đã liên hệ & lịch hẹn');
+            setContactOpen(false);
+            setContactForId(null);
+            fetchRequests();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Lỗi khi cập nhật');
+        } finally {
+            setUpdatingId(null);
+        }
     };
 
     const submitComplete = async () => {
@@ -284,7 +337,7 @@ export default function AdminBatteryTradeInPage() {
                             <div className="join w-full">
                                 <input
                                     type="text"
-                                    placeholder="Tên, SĐT, email..."
+                                    placeholder="Mã TC-..., tên, SĐT, email..."
                                     className="input input-bordered input-sm join-item flex-1 min-w-0"
                                     value={filters.search}
                                     onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
@@ -347,6 +400,11 @@ export default function AdminBatteryTradeInPage() {
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <p className="font-semibold text-base truncate">{req.name}</p>
+                                                    {req.requestCode && (
+                                                        <p className="text-xs font-mono text-primary font-medium mt-0.5">
+                                                            {req.requestCode}
+                                                        </p>
+                                                    )}
                                                     <p className="text-sm text-base-content/60 truncate">
                                                         {req.phone} · {req.email}
                                                     </p>
@@ -426,6 +484,43 @@ export default function AdminBatteryTradeInPage() {
                                                     </div>
                                                 </div>
 
+                                                {(req.status === 'contacted' || req.status === 'completed') &&
+                                                    req.appointmentAt &&
+                                                    req.appointmentLocationId && (
+                                                        <div className="rounded-xl border border-info/30 bg-info/5 p-4 text-sm">
+                                                            <p className="font-semibold text-info mb-2 flex items-center gap-2">
+                                                                <Clock className="w-4 h-4" />
+                                                                Lịch hẹn đã xác nhận với khách
+                                                            </p>
+                                                            <div className="space-y-1 text-base-content/90">
+                                                                <p>
+                                                                    <span className="text-base-content/60">Thời gian:</span>{' '}
+                                                                    <strong>{formatDateTime(req.appointmentAt)}</strong>
+                                                                </p>
+                                                                <p>
+                                                                    <span className="text-base-content/60">Cơ sở:</span>{' '}
+                                                                    <strong>
+                                                                        {req.appointmentLocationId?.name ||
+                                                                            req.appointmentLocationId?.code ||
+                                                                            '—'}
+                                                                    </strong>
+                                                                </p>
+                                                                {req.appointmentLocationId?.address && (
+                                                                    <p className="flex items-start gap-2">
+                                                                        <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-base-content/50" />
+                                                                        {req.appointmentLocationId.address}
+                                                                    </p>
+                                                                )}
+                                                                {req.appointmentLocationId?.phone && (
+                                                                    <p className="flex items-center gap-2">
+                                                                        <Phone className="w-4 h-4 text-base-content/50" />
+                                                                        {req.appointmentLocationId.phone}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                 {req.status === 'completed' && req.completedAmount != null && (
                                                     <div className="rounded-xl border border-success/30 bg-success/5 p-4 text-sm">
                                                         <p className="font-semibold text-success mb-2 flex items-center gap-2">
@@ -497,12 +592,9 @@ export default function AdminBatteryTradeInPage() {
                                                                 disabled={updatingId === req._id}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    handleSimpleStatus(req._id, { status: 'contacted' });
+                                                                    openContact(req);
                                                                 }}
                                                             >
-                                                                {updatingId === req._id ? (
-                                                                    <span className="loading loading-spinner loading-xs" />
-                                                                ) : null}
                                                                 Đã liên hệ khách
                                                             </button>
                                                             <button
@@ -589,6 +681,85 @@ export default function AdminBatteryTradeInPage() {
                     </div>
                 )}
             </div>
+
+            {/* Modal đã liên hệ — thời gian + cơ sở */}
+            {contactOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+                        aria-label="Đóng"
+                        onClick={() => !updatingId && setContactOpen(false)}
+                    />
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-300 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-base-100 rounded-t-2xl">
+                            <h3 className="font-bold text-lg">Xác nhận đã liên hệ</h3>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost btn-circle"
+                                onClick={() => !updatingId && setContactOpen(false)}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <p className="text-sm text-base-content/70">
+                                Nhập thời gian và địa chỉ cơ sở đã thống nhất với khách (mang acquy đến / hẹn gặp).
+                            </p>
+                            <div className="form-control w-full">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Thời gian đã xác nhận *</span>
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    className="input input-bordered input-sm w-full"
+                                    value={contactForm.appointmentAt}
+                                    onChange={(e) => setContactForm((f) => ({ ...f, appointmentAt: e.target.value }))}
+                                />
+                            </div>
+                            <div className="form-control w-full">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Cơ sở / chi nhánh *</span>
+                                </label>
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={contactForm.appointmentLocationId}
+                                    onChange={(e) =>
+                                        setContactForm((f) => ({ ...f, appointmentLocationId: e.target.value }))
+                                    }
+                                >
+                                    <option value="">Chọn chi nhánh</option>
+                                    {locations.map((loc) => (
+                                        <option key={loc._id} value={loc._id}>
+                                            {loc.name || loc.code}
+                                            {loc.address ? ` — ${loc.address}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-2 justify-end pt-2">
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={!!updatingId}
+                                    onClick={() => setContactOpen(false)}
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary btn-sm"
+                                    disabled={!!updatingId}
+                                    onClick={submitContact}
+                                >
+                                    {updatingId ? <span className="loading loading-spinner loading-xs" /> : null}
+                                    Xác nhận
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal hoàn thành — overlay Daisy-friendly */}
             {completeOpen && (
