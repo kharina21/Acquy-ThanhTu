@@ -31,6 +31,8 @@ export default function BatteryTradeInLookupPage() {
     useEffect(() => {
         const c = searchParams.get('code');
         if (c) setCode(c.trim().toUpperCase());
+        const em = searchParams.get('email');
+        if (em) setEmail(em.trim().toLowerCase());
     }, [searchParams]);
 
     const handleLogout = async () => {

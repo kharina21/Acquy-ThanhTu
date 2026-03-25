@@ -1,4 +1,4 @@
-import { Search, User, LogOut, ShoppingCart, Package, Menu, ChevronDown, Send, FileSearch } from 'lucide-react';
+import { Search, User, LogOut, ShoppingCart, Package, Menu, ChevronDown, Send, FileSearch, ClipboardList } from 'lucide-react';
 import { getDisplayName } from '@/lib/utils';
 import { useNavigate, Link } from 'react-router';
 import { useState } from 'react';
@@ -221,6 +221,12 @@ export function Header({ user, onLogout }) {
                                         Tra cứu đơn thu cũ
                                     </Link>
                                 </DropdownMenuItem>
+                                <DropdownMenuItem asChild className="rounded-lg cursor-pointer gap-2 py-2.5">
+                                    <Link to="/battery-trade-in/don-cua-toi" className="flex items-center gap-2 w-full">
+                                        <ClipboardList className="w-4 h-4 text-primary shrink-0" />
+                                        Đơn thu cũ của bạn
+                                    </Link>
+                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -275,6 +281,14 @@ export function Header({ user, onLogout }) {
                             >
                                 <FileSearch className="w-4 h-4 text-primary shrink-0" />
                                 Tra cứu đơn thu cũ
+                            </Link>
+                            <Link
+                                to="/battery-trade-in/don-cua-toi"
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2.5 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <ClipboardList className="w-4 h-4 text-primary shrink-0" />
+                                Đơn thu cũ của bạn
                             </Link>
                         </div>
                     </div>

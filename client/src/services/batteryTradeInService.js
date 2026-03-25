@@ -52,6 +52,12 @@ export const getBatteryTradeInList = async (params = {}) => {
     return data;
 };
 
+/** Đơn thu cũ của tài khoản đang đăng nhập (cần Bearer token) */
+export const getMyBatteryTradeIns = async (params = {}) => {
+    const { data } = await api.get('/battery-trade-in/mine', { params });
+    return data;
+};
+
 /**
  * @param {string} id
  * @param {Record<string, unknown>} payload - { status } hoặc thêm cancelledReason / completedProductId, completedAmount, completedNote, locationId

@@ -5,6 +5,7 @@ import { hasRole } from '../middlewares/rbac.js';
 import {
     submitBatteryTradeIn,
     getBatteryTradeInList,
+    getMyBatteryTradeIns,
     updateBatteryTradeInStatus,
     uploadBatteryImage,
     lookupBatteryTradeIn,
@@ -37,6 +38,9 @@ router.post('/lookup/delete', deleteBatteryTradeInByLookup);
 
 // Public - Gửi yêu cầu thu cũ (guest và customer đều dùng được, optional auth để lưu userId nếu đã đăng nhập)
 router.post('/', optionalAuthenticate, submitBatteryTradeIn);
+
+// Đã đăng nhập — đơn thu cũ của chính user (không cần admin)
+router.get('/mine', authenticate, getMyBatteryTradeIns);
 
 // Admin/Manager - Lấy danh sách và cập nhật trạng thái
 router.use(authenticate);

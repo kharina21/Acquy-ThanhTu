@@ -453,6 +453,50 @@ export const getBatteryTradeInList = async (req, res) => {
 };
 
 /**
+ * GET /api/battery-trade-in/mine - Đơn thu cũ của tài khoản đang đăng nhập (userId)
+ */
+export const getMyBatteryTradeIns = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+        const skip = (page - 1) * limit;
+
+        const [requests, total] = await Promise.all([
+            BatteryTradeIn.find({ userId })
+                .populate('appointmentLocationId', 'code name address phone')
+                .populate('completedProductId', 'name sku capacity')
+                .populate('locationId', 'code name address phone')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            BatteryTradeIn.countDocuments({ userId }),
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                requests,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            },
+        });
+    } catch (error) {
+        console.error('getMyBatteryTradeIns error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi tải đơn thu cũ của bạn.',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * PATCH /api/battery-trade-in/:id - Cập nhật trạng thái (admin/manager)
  */
 export const updateBatteryTradeInStatus = async (req, res) => {
