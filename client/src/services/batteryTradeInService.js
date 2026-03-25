@@ -52,6 +52,12 @@ export const getBatteryTradeInList = async (params = {}) => {
     return data;
 };
 
+/** Chi tiết một đơn (admin/manager) — dùng cho deep link từ báo cáo */
+export const getBatteryTradeInById = async (id) => {
+    const { data } = await api.get(`/battery-trade-in/${id}`);
+    return data;
+};
+
 /** Đơn thu cũ của tài khoản đang đăng nhập (cần Bearer token) */
 export const getMyBatteryTradeIns = async (params = {}) => {
     const { data } = await api.get('/battery-trade-in/mine', { params });

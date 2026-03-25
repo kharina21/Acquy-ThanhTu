@@ -880,7 +880,10 @@ export const getOrderReport = async (req, res) => {
 
         const { dateFrom, dateTo, page = 1, limit = 20, locationId } = req.query;
 
-        let effectiveLocationId = locationId || '';
+        /** Giống dashboard: 'all' / rỗng = không lọc theo chi nhánh (admin). */
+        let effectiveLocationId = String(locationId || '').trim();
+        if (effectiveLocationId === 'all') effectiveLocationId = '';
+
         const allowedIds = await getManagerAllowedLocationIds(userId);
         if (allowedIds !== null) {
             if (allowedIds.length === 0) {
@@ -900,8 +903,9 @@ export const getOrderReport = async (req, res) => {
         const filter = {
             paymentStatus: 'paid',
         };
+        /** Aggregate không cast schema như find/count — bắt buộc ObjectId để $match khớp field location. */
         if (effectiveLocationId && mongoose.Types.ObjectId.isValid(effectiveLocationId)) {
-            filter.location = effectiveLocationId;
+            filter.location = new mongoose.Types.ObjectId(effectiveLocationId);
         }
 
         if (dateFrom) {
@@ -914,8 +918,9 @@ export const getOrderReport = async (req, res) => {
             if (!isNaN(to.getTime())) filter.createdAt = { ...filter.createdAt, $lte: to };
         }
 
-        const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
-        const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+        const pageNum = Math.max(1, parseInt(page, 10) || 1);
+        const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+        const skip = (pageNum - 1) * limitNum;
 
         const batteryFilter = {
             status: 'completed',
@@ -938,20 +943,38 @@ export const getOrderReport = async (req, res) => {
             batteryFilter.completedAt = batteryDate;
         }
 
-        const [orders, total, revenueAgg, batteryAgg] = await Promise.all([
-            Order.find(filter)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limitNum)
-                .populate('items.product', 'sku name')
-                .populate('location', 'code name')
-                .populate('customer', 'username email firstName lastName')
-                .lean(),
+        const batteryColl = BatteryTradeIn.collection.name;
+
+        const [orderCount, batteryCount, revenueAgg, batteryAgg, idRows] = await Promise.all([
             Order.countDocuments(filter),
+            BatteryTradeIn.countDocuments(batteryFilter),
             Order.aggregate([{ $match: filter }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
             BatteryTradeIn.aggregate([
                 { $match: batteryFilter },
                 { $group: { _id: null, totalRevenue: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+            ]),
+            Order.aggregate([
+                { $match: filter },
+                { $addFields: { type: 'order', sortAt: '$createdAt' } },
+                { $project: { _id: 1, type: 1, sortAt: 1 } },
+                {
+                    $unionWith: {
+                        coll: batteryColl,
+                        pipeline: [
+                            { $match: batteryFilter },
+                            {
+                                $addFields: {
+                                    type: 'battery_trade_in',
+                                    sortAt: { $ifNull: ['$completedAt', '$createdAt'] },
+                                },
+                            },
+                            { $project: { _id: 1, type: 1, sortAt: 1 } },
+                        ],
+                    },
+                },
+                { $sort: { sortAt: -1 } },
+                { $skip: skip },
+                { $limit: limitNum },
             ]),
         ]);
 
@@ -959,10 +982,44 @@ export const getOrderReport = async (req, res) => {
         const batterySummary = batteryAgg[0] || { totalRevenue: 0, count: 0 };
         const revenueBattery = batterySummary.totalRevenue ?? 0;
 
+        const orderIds = idRows.filter((r) => r.type === 'order').map((r) => r._id);
+        const batteryIds = idRows.filter((r) => r.type === 'battery_trade_in').map((r) => r._id);
+
+        const [orderDocs, batteryDocs] = await Promise.all([
+            orderIds.length
+                ? Order.find({ _id: { $in: orderIds } })
+                      .populate('items.product', 'sku name')
+                      .populate('location', 'code name')
+                      .populate('customer', 'username email firstName lastName')
+                      .lean()
+                : [],
+            batteryIds.length
+                ? BatteryTradeIn.find({ _id: { $in: batteryIds } })
+                      .populate('locationId', 'code name')
+                      .lean()
+                : [],
+        ]);
+
+        const orderMap = Object.fromEntries(orderDocs.map((o) => [o._id.toString(), o]));
+        const batteryMap = Object.fromEntries(batteryDocs.map((b) => [b._id.toString(), b]));
+
+        const items = idRows
+            .map((row) => {
+                if (row.type === 'order') {
+                    const o = orderMap[row._id.toString()];
+                    return o ? { type: 'order', ...o } : null;
+                }
+                const b = batteryMap[row._id.toString()];
+                return b ? { type: 'battery_trade_in', ...b } : null;
+            })
+            .filter(Boolean);
+
+        const totalRows = orderCount + batteryCount;
+
         return res.status(200).json({
             success: true,
             data: {
-                orders,
+                items,
                 summary: {
                     totalRevenue: (orderSummary.totalRevenue ?? 0) + revenueBattery,
                     totalOrders: orderSummary.count,
@@ -971,10 +1028,10 @@ export const getOrderReport = async (req, res) => {
                     batteryTradeInCount: batterySummary.count ?? 0,
                 },
                 pagination: {
-                    page: Math.max(1, parseInt(page)),
+                    page: pageNum,
                     limit: limitNum,
-                    total,
-                    totalPages: Math.ceil(total / limitNum),
+                    total: totalRows,
+                    totalPages: Math.max(1, Math.ceil(totalRows / limitNum)),
                 },
             },
         });

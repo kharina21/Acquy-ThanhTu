@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router';
-import { getBatteryTradeInList, updateBatteryTradeInStatus, updateBatteryTradeInDetails } from '@/services/batteryTradeInService';
+import { Link, useSearchParams } from 'react-router';
+import {
+    getBatteryTradeInList,
+    getBatteryTradeInById,
+    updateBatteryTradeInStatus,
+    updateBatteryTradeInDetails,
+} from '@/services/batteryTradeInService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { getActiveLocations } from '@/services/locationService';
 import { toast } from 'sonner';
@@ -18,6 +23,7 @@ import {
     Clock,
     Pencil,
     Recycle,
+    Eye,
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -119,7 +125,163 @@ function StatusProgress({ status }) {
     );
 }
 
+/** Nội dung chi tiết chỉ đọc (dùng trong modal từ báo cáo / deep link ?detail=) */
+function BatteryTradeInReadonlySections({ req }) {
+    const batteryDisplay = req.productId?.name || req.batteryName || '—';
+    const pricingDisplay =
+        req.pricingType === 'weight' ? `${req.weightKg || '—'} kg` : `${req.remainingAmps || '—'} Ah`;
+    const meta = STATUS_META[req.status] || STATUS_META.pending;
+
+    return (
+        <div className="space-y-5">
+            <div className="flex flex-wrap items-center gap-3 justify-between">
+                <span className={`badge ${meta.badge} border-0 font-medium`}>{meta.short}</span>
+                <StatusProgress status={req.status} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-base-content/50">Khách hàng</h4>
+                    <div className="rounded-xl bg-base-100 border border-base-200 p-4 space-y-2 text-sm">
+                        <p className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-base-content/40 shrink-0" />
+                            {req.phone}
+                        </p>
+                        <p className="flex items-center gap-2 break-all">
+                            <Mail className="w-4 h-4 text-base-content/40 shrink-0" />
+                            {req.email}
+                        </p>
+                        {req.name && (
+                            <p>
+                                <span className="text-base-content/60">Họ tên:</span> <strong>{req.name}</strong>
+                            </p>
+                        )}
+                        {req.address && (
+                            <p className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 text-base-content/40 shrink-0 mt-0.5" />
+                                {req.address}
+                            </p>
+                        )}
+                        {req.note && (
+                            <p className="text-base-content/70 pt-1 border-t border-base-200">Ghi chú: {req.note}</p>
+                        )}
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-base-content/50">Ắc quy (đăng ký)</h4>
+                    <div className="rounded-xl bg-base-100 border border-base-200 p-4 space-y-2 text-sm">
+                        <p className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-base-content/40 shrink-0" />
+                            {batteryDisplay}
+                        </p>
+                        <p>
+                            SL: <strong>{req.quantity ?? 1}</strong> · Định giá:{' '}
+                            {req.pricingType === 'weight' ? 'Theo cân' : 'Theo Ampe'} — {pricingDisplay}
+                        </p>
+                        <p className="flex items-center gap-2 text-base-content/80">
+                            <Calendar className="w-4 h-4 shrink-0" />
+                            SX: {formatDate(req.manufacturingDate)} · HSD: {formatDate(req.expiryDate)}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {(req.status === 'contacted' || req.status === 'completed') && req.appointmentAt && req.appointmentLocationId && (
+                <div className="rounded-xl border border-info/30 bg-info/5 p-4 text-sm">
+                    <p className="font-semibold text-info mb-2 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Lịch hẹn đã xác nhận với khách
+                    </p>
+                    <div className="space-y-1 text-base-content/90">
+                        <p>
+                            <span className="text-base-content/60">Thời gian:</span>{' '}
+                            <strong>{formatDateTime(req.appointmentAt)}</strong>
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Cơ sở:</span>{' '}
+                            <strong>{req.appointmentLocationId?.name || req.appointmentLocationId?.code || '—'}</strong>
+                        </p>
+                        {req.appointmentLocationId?.address && (
+                            <p className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-base-content/50" />
+                                {req.appointmentLocationId.address}
+                            </p>
+                        )}
+                        {req.appointmentLocationId?.phone && (
+                            <p className="flex items-center gap-2">
+                                <Phone className="w-4 h-4 text-base-content/50" />
+                                {req.appointmentLocationId.phone}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {req.status === 'completed' && req.completedAmount != null && (
+                <div className="rounded-xl border border-success/30 bg-success/5 p-4 text-sm">
+                    <p className="font-semibold text-success mb-2 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-success" />
+                        Phiên thu mua đã hoàn tất
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <p>
+                            <span className="text-base-content/60">Số tiền:</span>{' '}
+                            <strong className="text-success">{formatVND(req.completedAmount)}</strong>
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Sản phẩm thu:</span>{' '}
+                            {req.completedProductName?.trim() || req.completedProductId?.name || '—'}
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Chi nhánh:</span>{' '}
+                            {req.locationId?.name || req.locationId?.code || '—'}
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Ngày:</span> {formatDate(req.completedAt)}
+                        </p>
+                    </div>
+                    {req.completedNote && (
+                        <p className="mt-2 pt-2 border-t border-success/20 text-base-content/80">{req.completedNote}</p>
+                    )}
+                </div>
+            )}
+
+            {req.status === 'cancelled' && (req.cancelledReason || req.cancelledAt) && (
+                <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm">
+                    <p className="font-medium text-error mb-1">Đã từ chối</p>
+                    {req.cancelledAt && (
+                        <p className="text-base-content/70">Thời điểm: {formatDate(req.cancelledAt)}</p>
+                    )}
+                    {req.cancelledReason && <p className="mt-1">Lý do: {req.cancelledReason}</p>}
+                </div>
+            )}
+
+            {req.images?.length > 0 && (
+                <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2">Ảnh đính kèm</h4>
+                    <div className="flex flex-wrap gap-2">
+                        {req.images.map((url, i) => (
+                            <a
+                                key={i}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block rounded-lg overflow-hidden border border-base-200 hover:ring-2 hover:ring-primary/30 transition-all"
+                            >
+                                <img src={url} alt="" className="w-20 h-20 object-cover" />
+                            </a>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function AdminBatteryTradeInPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const detailFromQueryRef = useRef(null);
+
     const [requests, setRequests] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
@@ -146,6 +308,9 @@ export default function AdminBatteryTradeInPage() {
     const [contactOpen, setContactOpen] = useState(false);
     const [contactForId, setContactForId] = useState(null);
     const [contactForm, setContactForm] = useState({ appointmentAt: '', appointmentLocationId: '' });
+
+    /** Modal chỉ xem (từ báo cáo / ?detail=) — không phải form sửa */
+    const [viewDetailReq, setViewDetailReq] = useState(null);
 
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [detailsFor, setDetailsFor] = useState(null);
@@ -401,6 +566,34 @@ export default function AdminBatteryTradeInPage() {
             },
         );
     };
+
+    useEffect(() => {
+        const detailId = searchParams.get('detail');
+        if (!detailId || !/^[a-f\d]{24}$/i.test(detailId)) {
+            detailFromQueryRef.current = null;
+            return;
+        }
+        if (detailFromQueryRef.current === detailId) return;
+        detailFromQueryRef.current = detailId;
+
+        getBatteryTradeInById(detailId)
+            .then((res) => {
+                const req = res?.data?.request;
+                if (req) setViewDetailReq(req);
+                setSearchParams(
+                    (prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.delete('detail');
+                        return next;
+                    },
+                    { replace: true },
+                );
+            })
+            .catch(() => {
+                toast.error('Không tải được chi tiết đơn thu cũ');
+                detailFromQueryRef.current = null;
+            });
+    }, [searchParams, setSearchParams]);
 
     const submitDetails = async () => {
         if (!detailsFor || !detailsForm) return;
@@ -1518,6 +1711,47 @@ export default function AdminBatteryTradeInPage() {
                                     Lưu
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {viewDetailReq && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+                        aria-label="Đóng"
+                        onClick={() => setViewDetailReq(null)}
+                    />
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-200 w-full max-w-3xl max-h-[90vh] flex flex-col">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-gradient-to-r from-accent/10 to-base-100 rounded-t-2xl z-10 shrink-0">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent ring-1 ring-accent/20">
+                                    <Eye className="w-5 h-5" />
+                                </span>
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-lg">Chi tiết đơn thu cũ</h3>
+                                    <p className="text-xs text-base-content/60 font-mono mt-0.5 truncate">
+                                        {viewDetailReq.requestCode || viewDetailReq._id}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost btn-circle"
+                                onClick={() => setViewDetailReq(null)}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 text-sm">
+                            <BatteryTradeInReadonlySections req={viewDetailReq} />
+                        </div>
+                        <div className="px-5 py-4 border-t border-base-200 flex justify-end shrink-0 bg-base-100 rounded-b-2xl">
+                            <button type="button" className="btn btn-primary" onClick={() => setViewDetailReq(null)}>
+                                Đóng
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -5,6 +5,7 @@ import { hasRole } from '../middlewares/rbac.js';
 import {
     submitBatteryTradeIn,
     getBatteryTradeInList,
+    getBatteryTradeInById,
     getMyBatteryTradeIns,
     updateBatteryTradeInStatus,
     uploadBatteryImage,
@@ -47,6 +48,7 @@ router.use(authenticate);
 router.use(hasRole('admin', 'manager'));
 
 router.get('/', getBatteryTradeInList);
+router.get('/:id', getBatteryTradeInById);
 router.patch('/:id/details', updateBatteryTradeInDetailsByAdmin);
 router.patch('/:id', updateBatteryTradeInStatus);
 

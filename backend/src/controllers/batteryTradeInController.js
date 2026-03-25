@@ -406,6 +406,38 @@ export const submitBatteryTradeIn = async (req, res) => {
 };
 
 /**
+ * GET /api/battery-trade-in/:id - Chi tiết một yêu cầu (admin/manager)
+ */
+export const getBatteryTradeInById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
+        }
+        const doc = await BatteryTradeIn.findById(id)
+            .populate('productId', 'name sku capacity')
+            .populate('completedProductId', 'name sku capacity')
+            .populate('locationId', 'code name address phone')
+            .populate('appointmentLocationId', 'code name address phone')
+            .lean();
+        if (!doc) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+        }
+        return res.status(200).json({
+            success: true,
+            data: { request: doc },
+        });
+    } catch (error) {
+        console.error('getBatteryTradeInById error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy chi tiết yêu cầu thu cũ.',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * GET /api/battery-trade-in - Lấy danh sách yêu cầu (admin/manager)
  */
 export const getBatteryTradeInList = async (req, res) => {
