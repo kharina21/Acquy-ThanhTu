@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
-import Product from '../models/Product.js';
 import Location from '../models/Location.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
@@ -69,9 +68,11 @@ function parseMetricValue(str) {
 
 /**
  * Validate body gửi / sửa yêu cầu thu cũ (dùng chung create, update-by-lookup, admin sửa chi tiết).
+ * @param {{ skipImages?: boolean }} [options] — admin chỉ sửa thông tin, không đụng ảnh
  * @returns {{ ok: true, data: object } | { ok: false, message: string }}
  */
-function parseBatteryTradeInBody(body) {
+function parseBatteryTradeInBody(body, options = {}) {
+    const { skipImages = false } = options;
     const {
         name,
         phone,
@@ -140,17 +141,19 @@ function parseBatteryTradeInBody(body) {
     }
 
     let parsedImages = [];
-    if (Array.isArray(images)) parsedImages = images;
-    else if (typeof images === 'string') {
-        try {
-            parsedImages = JSON.parse(images || '[]');
-        } catch {
-            parsedImages = [];
+    if (!skipImages) {
+        if (Array.isArray(images)) parsedImages = images;
+        else if (typeof images === 'string') {
+            try {
+                parsedImages = JSON.parse(images || '[]');
+            } catch {
+                parsedImages = [];
+            }
         }
-    }
-    parsedImages = parsedImages.filter(Boolean);
-    if (parsedImages.length < 2) {
-        return { ok: false, message: 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ' };
+        parsedImages = parsedImages.filter(Boolean);
+        if (parsedImages.length < 2) {
+            return { ok: false, message: 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ' };
+        }
     }
 
     const qty = parseInt(quantity, 10);
@@ -207,7 +210,6 @@ function parseBatteryTradeInBody(body) {
         addressLine: addrLineStr,
         note: noteStr,
         batteryName: batteryNameStr,
-        images: parsedImages,
         quantity: qty,
         manufacturingDate: mfg,
         expiryDate: exp,
@@ -218,8 +220,18 @@ function parseBatteryTradeInBody(body) {
         remainingAmps: remainingAmpsStr,
         weightKg: weightKgStr,
     };
+    if (!skipImages) {
+        data.images = parsedImages;
+    }
 
     return { ok: true, data };
+}
+
+function validateCompletedProductName(nameStr) {
+    const s = String(nameStr || '').trim();
+    if (s.length < 2) return 'Tên sản phẩm thu được phải có ít nhất 2 ký tự';
+    if (s.length > 200) return 'Tên sản phẩm không quá 200 ký tự';
+    return null;
 }
 
 function assertLookupCodeEmail(code, email) {
@@ -505,7 +517,7 @@ export const updateBatteryTradeInStatus = async (req, res) => {
         const {
             status,
             cancelledReason,
-            completedProductId,
+            completedProductName,
             completedAmount,
             completedNote,
             locationId,
@@ -609,6 +621,7 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 cancelledReason: cancelledReason ? String(cancelledReason).trim().slice(0, 500) : '',
                 locationId: null,
                 completedProductId: null,
+                completedProductName: '',
                 completedAmount: null,
                 completedAt: null,
                 completedNote: '',
@@ -622,10 +635,11 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                     message: 'Chỉ có thể hoàn thành sau khi khách đã mang acquy đến (trạng thái đã liên hệ).',
                 });
             }
-            if (!completedProductId || !mongoose.Types.ObjectId.isValid(completedProductId)) {
+            const nameErr = validateCompletedProductName(completedProductName);
+            if (nameErr) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Vui lòng chọn sản phẩm acquy thu được.',
+                    message: nameErr,
                 });
             }
             const amt = Number(completedAmount);
@@ -641,16 +655,18 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                     message: 'Vui lòng chọn chi nhánh.',
                 });
             }
-            const product = await Product.findById(completedProductId).select('_id').lean();
-            if (!product) {
+            const loc = await Location.findById(locationId).select('_id isActive').lean();
+            if (!loc || !loc.isActive) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Sản phẩm không tồn tại.',
+                    message: 'Chi nhánh không tồn tại hoặc đã ngừng hoạt động.',
                 });
             }
+            const productLabel = String(completedProductName || '').trim();
             update = {
                 status: 'completed',
-                completedProductId,
+                completedProductId: null,
+                completedProductName: productLabel,
                 completedAmount: Math.round(amt),
                 completedAt: new Date(),
                 completedNote: completedNote ? String(completedNote).trim().slice(0, 500) : '',
@@ -839,7 +855,7 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
             });
         }
 
-        const parsed = parseBatteryTradeInBody(req.body);
+        const parsed = parseBatteryTradeInBody(req.body, { skipImages: true });
         if (!parsed.ok) {
             return res.status(400).json({ success: false, message: parsed.message });
         }
@@ -872,7 +888,7 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
         }
 
         if (existing.status === 'completed') {
-            const { completedAmount, completedProductId, locationId, completedNote } = req.body;
+            const { completedAmount, completedProductName, locationId, completedNote } = req.body;
             const amt = Number(completedAmount);
             if (!Number.isFinite(amt) || amt <= 0) {
                 return res.status(400).json({
@@ -880,21 +896,15 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
                     message: 'Số tiền thu mua phải lớn hơn 0.',
                 });
             }
-            if (!completedProductId || !mongoose.Types.ObjectId.isValid(completedProductId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Vui lòng chọn sản phẩm acquy thu được.',
-                });
+            const nameErr = validateCompletedProductName(completedProductName);
+            if (nameErr) {
+                return res.status(400).json({ success: false, message: nameErr });
             }
             if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Vui lòng chọn chi nhánh (hoàn tất).',
                 });
-            }
-            const product = await Product.findById(completedProductId).select('_id').lean();
-            if (!product) {
-                return res.status(400).json({ success: false, message: 'Sản phẩm không tồn tại.' });
             }
             const loc = await Location.findById(locationId).select('_id isActive').lean();
             if (!loc || !loc.isActive) {
@@ -904,7 +914,8 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
                 });
             }
             setDoc.completedAmount = Math.round(amt);
-            setDoc.completedProductId = completedProductId;
+            setDoc.completedProductId = null;
+            setDoc.completedProductName = String(completedProductName || '').trim();
             setDoc.locationId = locationId;
             setDoc.completedNote = completedNote != null ? String(completedNote).trim().slice(0, 500) : '';
         }

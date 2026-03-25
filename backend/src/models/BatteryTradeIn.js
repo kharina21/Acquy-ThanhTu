@@ -54,8 +54,10 @@ const batteryTradeInSchema = new mongoose.Schema(
         /** Chi nhánh khi hoàn thành thu mua (báo cáo doanh thu theo cơ sở) */
         locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', default: null },
 
-        /** Khi hoàn thành: sản phẩm acquy thu được */
+        /** Khi hoàn thành: sản phẩm acquy thu được (danh mục) — tuỳ chọn nếu dùng tên tự ghi */
         completedProductId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
+        /** Tên sản phẩm acquy thu được (ghi tay khi hoàn tất) */
+        completedProductName: { type: String, default: '', trim: true, maxlength: 200 },
         /** Số tiền thu mua (VNĐ) — cộng vào doanh thu thu cũ */
         completedAmount: { type: Number, default: null, min: 0 },
         completedAt: { type: Date, default: null },

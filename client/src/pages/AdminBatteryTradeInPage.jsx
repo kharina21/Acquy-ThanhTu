@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router';
 import { getBatteryTradeInList, updateBatteryTradeInStatus, updateBatteryTradeInDetails } from '@/services/batteryTradeInService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
-import { getProducts } from '@/services/productService';
 import { getActiveLocations } from '@/services/locationService';
 import { toast } from 'sonner';
 import {
@@ -18,6 +17,7 @@ import {
     X,
     Clock,
     Pencil,
+    Recycle,
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -128,14 +128,13 @@ export default function AdminBatteryTradeInPage() {
     const [expandedId, setExpandedId] = useState(null);
     const [updatingId, setUpdatingId] = useState(null);
 
-    const [products, setProducts] = useState([]);
     const [locations, setLocations] = useState([]);
 
     const [completeOpen, setCompleteOpen] = useState(false);
     const [completeForId, setCompleteForId] = useState(null);
     const [completeForm, setCompleteForm] = useState({
         locationId: '',
-        completedProductId: '',
+        completedProductName: '',
         completedAmount: '',
         completedNote: '',
     });
@@ -158,9 +157,6 @@ export default function AdminBatteryTradeInPage() {
     const [detailsWards, setDetailsWards] = useState([]);
 
     useEffect(() => {
-        getProducts({ limit: 500, page: 1 })
-            .then((res) => setProducts(res?.data?.products || []))
-            .catch(() => setProducts([]));
         getActiveLocations()
             .then((res) => setLocations(res?.data?.locations || []))
             .catch(() => setLocations([]));
@@ -246,7 +242,7 @@ export default function AdminBatteryTradeInPage() {
         setCompleteForId(req._id);
         setCompleteForm({
             locationId: req.appointmentLocationId?._id || locations[0]?._id || '',
-            completedProductId: '',
+            completedProductName: '',
             completedAmount: '',
             completedNote: '',
         });
@@ -298,9 +294,14 @@ export default function AdminBatteryTradeInPage() {
 
     const submitComplete = async () => {
         if (!completeForId) return;
-        const { locationId, completedProductId, completedAmount, completedNote } = completeForm;
-        if (!locationId || !completedProductId || !completedAmount) {
-            toast.error('Vui lòng chọn chi nhánh, sản phẩm và nhập số tiền thu mua');
+        const { locationId, completedProductName, completedAmount, completedNote } = completeForm;
+        const nameStr = String(completedProductName || '').trim();
+        if (!locationId || !nameStr || !completedAmount) {
+            toast.error('Vui lòng chọn chi nhánh, nhập tên sản phẩm thu được và số tiền');
+            return;
+        }
+        if (nameStr.length < 2 || nameStr.length > 200) {
+            toast.error('Tên sản phẩm thu được: 2–200 ký tự');
             return;
         }
         const amt = Number(String(completedAmount).replace(/\D/g, ''));
@@ -313,7 +314,7 @@ export default function AdminBatteryTradeInPage() {
             await updateBatteryTradeInStatus(completeForId, {
                 status: 'completed',
                 locationId,
-                completedProductId,
+                completedProductName: nameStr,
                 completedAmount: amt,
                 completedNote: completedNote?.trim() || '',
             });
@@ -377,7 +378,6 @@ export default function AdminBatteryTradeInPage() {
                     wardName: req.wardName || '',
                     addressLine: req.addressLine || '',
                     batteryName: req.batteryName || '',
-                    imagesText: (req.images || []).join('\n'),
                     quantity: req.quantity ?? 1,
                     manufacturingDate: formatDateOnly(req.manufacturingDate),
                     expiryDate: formatDateOnly(req.expiryDate),
@@ -390,7 +390,10 @@ export default function AdminBatteryTradeInPage() {
                     appointmentAt: formatDatetimeLocal(req.appointmentAt),
                     appointmentLocationId: req.appointmentLocationId?._id || '',
                     completedAmount: req.completedAmount ?? '',
-                    completedProductId: req.completedProductId?._id || '',
+                    completedProductName:
+                        (req.completedProductName && String(req.completedProductName).trim()) ||
+                        req.completedProductId?.name ||
+                        '',
                     locationId: req.locationId?._id || '',
                     completedNote: req.completedNote || '',
                 });
@@ -401,17 +404,9 @@ export default function AdminBatteryTradeInPage() {
 
     const submitDetails = async () => {
         if (!detailsFor || !detailsForm) return;
-        const images = detailsForm.imagesText
-            .split('\n')
-            .map((s) => s.trim())
-            .filter(Boolean);
         const bn = (detailsForm.batteryName || '').trim();
         if (!bn) {
             toast.error('Vui lòng nhập tên ắc quy');
-            return;
-        }
-        if (images.length < 2) {
-            toast.error('Ít nhất 2 URL ảnh (mỗi dòng một link)');
             return;
         }
         const qty = parseInt(detailsForm.quantity, 10);
@@ -450,7 +445,6 @@ export default function AdminBatteryTradeInPage() {
             wardName: detailsForm.wardName,
             addressLine: detailsForm.addressLine?.trim() || '',
             batteryName: bn,
-            images,
             quantity: qty,
             manufacturingDate: detailsForm.manufacturingDate,
             expiryDate: detailsForm.expiryDate,
@@ -480,12 +474,17 @@ export default function AdminBatteryTradeInPage() {
                 toast.error('Số tiền thu mua không hợp lệ');
                 return;
             }
-            if (!detailsForm.completedProductId || !detailsForm.locationId) {
-                toast.error('Chọn sản phẩm acquy thu được và chi nhánh hoàn tất');
+            const pn = String(detailsForm.completedProductName || '').trim();
+            if (pn.length < 2 || pn.length > 200) {
+                toast.error('Tên sản phẩm thu được: 2–200 ký tự');
+                return;
+            }
+            if (!detailsForm.locationId) {
+                toast.error('Chọn chi nhánh hoàn tất');
                 return;
             }
             payload.completedAmount = amt;
-            payload.completedProductId = detailsForm.completedProductId;
+            payload.completedProductName = pn;
             payload.locationId = detailsForm.locationId;
             payload.completedNote = detailsForm.completedNote?.trim() || '';
         }
@@ -613,10 +612,8 @@ export default function AdminBatteryTradeInPage() {
                                                 <span className="mt-1 text-base-content/50 shrink-0">
                                                     {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                 </span>
-                                                <div className="avatar placeholder shrink-0">
-                                                    <div className="bg-primary/15 text-primary rounded-xl w-11 h-11 text-sm font-bold">
-                                                        {(req.name || '?')[0].toUpperCase()}
-                                                    </div>
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary ring-1 ring-primary/25 shadow-sm">
+                                                    <Recycle className="w-5 h-5" aria-hidden />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <p className="font-semibold text-base truncate">{req.name}</p>
@@ -753,8 +750,10 @@ export default function AdminBatteryTradeInPage() {
                                                                 <strong className="text-success">{formatVND(req.completedAmount)}</strong>
                                                             </p>
                                                             <p>
-                                                                <span className="text-base-content/60">Sản phẩm:</span>{' '}
-                                                                {req.completedProductId?.name || '—'}
+                                                                <span className="text-base-content/60">Sản phẩm thu:</span>{' '}
+                                                                {req.completedProductName?.trim() ||
+                                                                    req.completedProductId?.name ||
+                                                                    '—'}
                                                             </p>
                                                             <p>
                                                                 <span className="text-base-content/60">Chi nhánh:</span>{' '}
@@ -1004,9 +1003,14 @@ export default function AdminBatteryTradeInPage() {
                         aria-label="Đóng"
                         onClick={() => !updatingId && setCompleteOpen(false)}
                     />
-                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-300 w-full max-w-md max-h-[90vh] overflow-y-auto">
-                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-base-100 rounded-t-2xl">
-                            <h3 className="font-bold text-lg">Hoàn thành thu mua</h3>
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-gradient-to-r from-success/10 to-base-100 rounded-t-2xl">
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15 text-success">
+                                    <Recycle className="w-4 h-4" />
+                                </span>
+                                <h3 className="font-bold text-lg">Hoàn thành thu mua</h3>
+                            </div>
                             <button
                                 type="button"
                                 className="btn btn-sm btn-ghost btn-circle"
@@ -1016,6 +1020,9 @@ export default function AdminBatteryTradeInPage() {
                             </button>
                         </div>
                         <div className="p-5 space-y-4">
+                            <p className="text-sm text-base-content/70 -mt-1">
+                                Ghi tên ắc quy thực tế đã thu, số tiền và chi nhánh giao dịch.
+                            </p>
                             <div className="form-control w-full">
                                 <label className="label py-1">
                                     <span className="label-text font-medium">Chi nhánh *</span>
@@ -1035,21 +1042,21 @@ export default function AdminBatteryTradeInPage() {
                             </div>
                             <div className="form-control w-full">
                                 <label className="label py-1">
-                                    <span className="label-text font-medium">Sản phẩm acquy thu được *</span>
+                                    <span className="label-text font-medium">Tên sản phẩm acquy thu được *</span>
                                 </label>
-                                <select
-                                    className="select select-bordered select-sm w-full"
-                                    value={completeForm.completedProductId}
-                                    onChange={(e) => setCompleteForm((f) => ({ ...f, completedProductId: e.target.value }))}
-                                >
-                                    <option value="">Chọn sản phẩm</option>
-                                    {products.map((p) => (
-                                        <option key={p._id} value={p._id}>
-                                            {p.name}
-                                            {p.sku ? ` (${p.sku})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-sm w-full"
+                                    placeholder="Ví dụ: Ắc quy GS 60Ah, Atlas MF..."
+                                    value={completeForm.completedProductName}
+                                    onChange={(e) =>
+                                        setCompleteForm((f) => ({ ...f, completedProductName: e.target.value }))
+                                    }
+                                    maxLength={200}
+                                />
+                                <label className="label py-0">
+                                    <span className="label-text-alt text-base-content/50">2–200 ký tự</span>
+                                </label>
                             </div>
                             <div className="form-control w-full">
                                 <label className="label py-1">
@@ -1102,11 +1109,16 @@ export default function AdminBatteryTradeInPage() {
                         aria-label="Đóng"
                         onClick={() => !detailsSaving && setDetailsOpen(false)}
                     />
-                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-300 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-base-100 rounded-t-2xl z-10">
-                            <div>
-                                <h3 className="font-bold text-lg">Sửa thông tin đơn</h3>
-                                <p className="text-xs text-base-content/60 font-mono mt-0.5">{detailsFor.requestCode}</p>
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-gradient-to-r from-primary/10 to-base-100 rounded-t-2xl z-10">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
+                                    <Pencil className="w-5 h-5" />
+                                </span>
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-lg">Sửa thông tin đơn</h3>
+                                    <p className="text-xs text-base-content/60 font-mono mt-0.5 truncate">{detailsFor.requestCode}</p>
+                                </div>
                             </div>
                             <button
                                 type="button"
@@ -1117,6 +1129,9 @@ export default function AdminBatteryTradeInPage() {
                             </button>
                         </div>
                         <div className="p-5 space-y-4 text-sm">
+                            <p className="text-xs text-base-content/60 -mt-1 pb-1 border-b border-base-200">
+                                Chỉnh thông tin liên hệ và ắc quy. Ảnh khách gửi không sửa tại đây.
+                            </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="form-control">
                                     <label className="label py-1">
@@ -1240,22 +1255,12 @@ export default function AdminBatteryTradeInPage() {
                             <div className="divider my-1 text-xs">Ắc quy</div>
                             <div className="form-control">
                                 <label className="label py-1">
-                                    <span className="label-text font-medium">Tên ắc quy *</span>
+                                    <span className="label-text font-medium">Tên ắc quy (đăng ký) *</span>
                                 </label>
                                 <input
                                     className="input input-bordered input-sm w-full"
                                     value={detailsForm.batteryName}
                                     onChange={(e) => setDetailsForm((f) => ({ ...f, batteryName: e.target.value }))}
-                                />
-                            </div>
-                            <div className="form-control">
-                                <label className="label py-1">
-                                    <span className="label-text font-medium">URL ảnh (mỗi dòng một link, ít nhất 2) *</span>
-                                </label>
-                                <textarea
-                                    className="textarea textarea-bordered textarea-sm w-full min-h-[88px] font-mono text-xs"
-                                    value={detailsForm.imagesText}
-                                    onChange={(e) => setDetailsForm((f) => ({ ...f, imagesText: e.target.value }))}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-2">
@@ -1464,26 +1469,24 @@ export default function AdminBatteryTradeInPage() {
                                         </div>
                                         <div className="form-control sm:col-span-2">
                                             <label className="label py-1">
-                                                <span className="label-text font-medium">Sản phẩm acquy thu được *</span>
+                                                <span className="label-text font-medium">Tên sản phẩm acquy thu được *</span>
                                             </label>
-                                            <select
-                                                className="select select-bordered select-sm w-full"
-                                                value={detailsForm.completedProductId}
+                                            <input
+                                                type="text"
+                                                className="input input-bordered input-sm w-full"
+                                                placeholder="Ghi tên thực tế đã thu"
+                                                maxLength={200}
+                                                value={detailsForm.completedProductName}
                                                 onChange={(e) =>
                                                     setDetailsForm((f) => ({
                                                         ...f,
-                                                        completedProductId: e.target.value,
+                                                        completedProductName: e.target.value,
                                                     }))
                                                 }
-                                            >
-                                                <option value="">Chọn sản phẩm</option>
-                                                {products.map((p) => (
-                                                    <option key={p._id} value={p._id}>
-                                                        {p.name}
-                                                        {p.sku ? ` (${p.sku})` : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            />
+                                            <label className="label py-0">
+                                                <span className="label-text-alt text-base-content/50">2–200 ký tự</span>
+                                            </label>
                                         </div>
                                         <div className="form-control sm:col-span-2">
                                             <label className="label py-1">

@@ -194,7 +194,9 @@ function TradeInDetailBody({ req }) {
                     </p>
                     <p>
                         <span className="text-gray-600">Sản phẩm thu được:</span>{' '}
-                        {completedProdObj?.name || '—'}
+                        {(req.completedProductName && String(req.completedProductName).trim()) ||
+                            completedProdObj?.name ||
+                            '—'}
                     </p>
                     <p>
                         <span className="text-gray-600">Chi nhánh:</span>{' '}

@@ -60,7 +60,7 @@ export const getMyBatteryTradeIns = async (params = {}) => {
 
 /**
  * @param {string} id
- * @param {Record<string, unknown>} payload - { status } hoặc thêm cancelledReason / completedProductId, completedAmount, completedNote, locationId
+ * @param {Record<string, unknown>} payload - { status } hoặc thêm cancelledReason / completedProductName, completedAmount, completedNote, locationId, appointmentAt...
  */
 export const updateBatteryTradeInStatus = async (id, payload) => {
     const { data } = await api.patch(`/battery-trade-in/${id}`, payload);
