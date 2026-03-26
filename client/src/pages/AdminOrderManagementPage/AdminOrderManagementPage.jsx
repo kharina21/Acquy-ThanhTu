@@ -26,7 +26,7 @@ const ORDER_TYPE_LABELS = {
 };
 
 const getStatusSelectClass = (status) => {
-    const s = ['paid', 'confirmed'].includes(status) ? 'completed' : (status || 'pending');
+    const s = ['paid', 'confirmed'].includes(status) ? 'completed' : status || 'pending';
     return STATUS_CONFIG[s]?.className || 'bg-base-100';
 };
 
@@ -128,79 +128,86 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     };
 
     return (
-        <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
-            <div className="container mx-auto space-y-4">
-                <h1 className="text-2xl font-bold text-base-content">
-                    {type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}
-                </h1>
+        <div className='flex-1 p-6 bg-base-200 overflow-y-auto'>
+            <div className='container mx-auto space-y-4'>
+                <h1 className='text-2xl font-bold text-base-content'>{type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}</h1>
 
-                <div className="flex flex-wrap gap-2 items-center">
+                <div className='flex flex-wrap gap-2 items-center'>
                     <div>
-                        <label className="label py-0 text-xs">Cơ sở</label>
+                        <label className='label py-0 text-xs'>Cơ sở</label>
                         <select
-                            className="select select-bordered select-sm w-48"
+                            className='select select-bordered select-sm w-48'
                             value={currentLocationId || ''}
                             onChange={(e) => setCurrentLocationId(e.target.value || null)}
                         >
-                            <option value="">-- Chọn cơ sở --</option>
+                            <option value=''>-- Chọn cơ sở --</option>
                             {locations.map((loc) => (
-                                <option key={loc._id} value={loc._id}>
+                                <option
+                                    key={loc._id}
+                                    value={loc._id}
+                                >
                                     {loc.name || loc.code}
                                 </option>
                             ))}
                         </select>
                     </div>
                     <select
-                        className="select select-bordered select-sm w-40"
+                        className='select select-bordered select-sm w-40'
                         value={filters.status}
                         onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
                     >
-                        <option value="">Tất cả trạng thái</option>
+                        <option value=''>Tất cả trạng thái</option>
                         {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                            <option key={v} value={v}>{l}</option>
+                            <option
+                                key={v}
+                                value={v}
+                            >
+                                {l}
+                            </option>
                         ))}
                     </select>
                     <select
-                        className="select select-bordered select-sm w-40"
+                        className='select select-bordered select-sm w-40'
                         value={filters.paymentStatus}
                         onChange={(e) => setFilters((f) => ({ ...f, paymentStatus: e.target.value }))}
                     >
-                        <option value="">Tất cả thanh toán</option>
+                        <option value=''>Tất cả thanh toán</option>
                         {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
-                            <option key={v} value={v}>{l}</option>
+                            <option
+                                key={v}
+                                value={v}
+                            >
+                                {l}
+                            </option>
                         ))}
                     </select>
                 </div>
 
-                <div className="bg-base-100 rounded-lg shadow-lg">
+                <div className='bg-base-100 rounded-lg shadow-lg'>
                     {loading ? (
-                        <div className="flex justify-center py-12">
-                            <span className="loading loading-spinner loading-lg text-primary" />
+                        <div className='flex justify-center py-12'>
+                            <span className='loading loading-spinner loading-lg text-primary' />
                         </div>
                     ) : orders.length === 0 ? (
-                        <div className="p-12 text-center text-base-content/60">
-                            {!currentLocationId
-                                ? 'Vui lòng chọn cơ sở'
-                                : 'Chưa có đơn hàng nào tại cơ sở này'}
-                        </div>
+                        <div className='p-12 text-center text-base-content/60'>{!currentLocationId ? 'Vui lòng chọn cơ sở' : 'Chưa có đơn hàng nào tại cơ sở này'}</div>
                     ) : (
                         <>
-                            <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
-                                <table className="table">
-                                    <thead className="bg-blue-100 sticky top-0 z-20 border-b-2 border-base-300">
+                            <div className='overflow-x-auto overflow-y-auto max-h-[700px]'>
+                                <table className='table'>
+                                    <thead className='bg-blue-100 sticky top-0 z-20 border-b-2 border-base-300'>
                                         <tr>
-                                            <th className="w-8 py-3"></th>
-                                            <th className="font-medium text-neutral text-xs py-3">Mã đơn</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Loại đơn</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Khách hàng</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Chi nhánh</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Tổng tiền</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Trạng thái</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Thanh toán</th>
-                                            <th className="font-medium text-neutral text-xs py-3">Ngày tạo</th>
+                                            <th className='w-8 py-3'></th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Mã đơn</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Loại đơn</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Khách hàng</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Chi nhánh</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Tổng tiền</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Trạng thái</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Thanh toán</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Ngày tạo</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="text-xs">
+                                    <tbody className='text-xs'>
                                         {orders.map((order) => {
                                             const isExpanded = expandedId === order._id;
                                             return (
@@ -210,105 +217,128 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         onClick={() => setExpandedId(isExpanded ? null : order._id)}
                                                     >
                                                         <td className={`w-8 ${isExpanded ? 'border-l-4 border-l-primary' : ''}`}>
-                                                            {isExpanded ? (
-                                                                <ChevronDown className="w-4 h-4" />
-                                                            ) : (
-                                                                <ChevronRight className="w-4 h-4" />
-                                                            )}
+                                                            {isExpanded ? <ChevronDown className='w-4 h-4' /> : <ChevronRight className='w-4 h-4' />}
                                                         </td>
-                                                        <td className="py-3">
-                                                            <span className="font-mono font-medium">{order.code}</span>
-                                                            {order.isPreOrder && (
-                                                                <span className="ml-1 badge badge-sm badge-ghost">Đặt trước</span>
-                                                            )}
+                                                        <td className='py-3'>
+                                                            <span className='font-mono font-medium'>{order.code}</span>
+                                                            {order.isPreOrder && <span className='ml-1 badge badge-sm badge-ghost'>Đặt trước</span>}
                                                         </td>
-                                                        <td className="py-3">
-                                                            <span className="badge badge-sm badge-ghost whitespace-nowrap">
+                                                        <td className='py-3'>
+                                                            <span className='badge badge-sm badge-ghost whitespace-nowrap'>
                                                                 {ORDER_TYPE_LABELS[order.channel] || order.channel || '—'}
                                                             </span>
                                                         </td>
-                                                        <td className="py-3">{formatCustomer(order)}</td>
-                                                        <td className="py-3">{order.location?.name || '—'}</td>
-                                                        <td className="font-semibold text-primary py-3">
-                                                            {(order.totalAmount || 0).toLocaleString()}đ
-                                                        </td>
+                                                        <td className='py-3'>{formatCustomer(order)}</td>
+                                                        <td className='py-3'>{order.location?.name || '—'}</td>
+                                                        <td className='font-semibold text-primary py-3'>{(order.totalAmount || 0).toLocaleString()}đ</td>
                                                         <td onClick={(e) => e.stopPropagation()}>
                                                             <select
                                                                 className={`select select-bordered select-sm border-2 font-medium ${getStatusSelectClass(order.status)}`}
-                                                                value={['paid', 'confirmed'].includes(order.status) ? 'completed' : (order.status || 'pending')}
-                                                                onChange={(e) =>
-                                                                    handleUpdateStatus(order._id, 'status', e.target.value)
-                                                                }
+                                                                value={['paid', 'confirmed'].includes(order.status) ? 'completed' : order.status || 'pending'}
+                                                                onChange={(e) => handleUpdateStatus(order._id, 'status', e.target.value)}
                                                                 disabled={updatingId === order._id}
                                                             >
                                                                 {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                                                                    <option key={v} value={v}>{l}</option>
+                                                                    <option
+                                                                        key={v}
+                                                                        value={v}
+                                                                    >
+                                                                        {l}
+                                                                    </option>
                                                                 ))}
                                                             </select>
                                                         </td>
-                                                        <td className="py-3" onClick={(e) => e.stopPropagation()}>
+                                                        <td
+                                                            className='py-3'
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
                                                             <select
                                                                 className={`select select-bordered select-sm border-2 font-medium ${getPaymentSelectClass(order.paymentStatus)}`}
                                                                 value={order.paymentStatus || 'pending'}
-                                                                onChange={(e) =>
-                                                                    handleUpdateStatus(order._id, 'paymentStatus', e.target.value)
-                                                                }
+                                                                onChange={(e) => handleUpdateStatus(order._id, 'paymentStatus', e.target.value)}
                                                                 disabled={updatingId === order._id}
                                                             >
                                                                 {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
-                                                                    <option key={v} value={v}>{l}</option>
+                                                                    <option
+                                                                        key={v}
+                                                                        value={v}
+                                                                    >
+                                                                        {l}
+                                                                    </option>
                                                                 ))}
                                                             </select>
                                                         </td>
-                                                        <td className="text-base-content/70 py-3">
-                                                            {order.createdAt
-                                                                ? new Date(order.createdAt).toLocaleString('vi-VN')
-                                                                : '—'}
-                                                        </td>
+                                                        <td className='text-base-content/70 py-3'>{order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : '—'}</td>
                                                     </tr>
                                                     {isExpanded && (
-                                                        <tr key={`${order._id}-detail`} className="bg-primary/5 border-b-2 border-base-300">
-                                                            <td colSpan={9} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                    <div className="space-y-2">
-                                                                        <p><span className="font-medium text-base-content/70">Khách hàng:</span> {formatCustomer(order)}</p>
-                                                                        <p><span className="font-medium text-base-content/70">Chi nhánh:</span> {order.location?.name || '—'}</p>
-                                                                        <p><span className="font-medium text-base-content/70">Địa chỉ giao hàng:</span> {order.shippingAddress || '—'}</p>
+                                                        <tr
+                                                            key={`${order._id}-detail`}
+                                                            className='bg-primary/5 border-b-2 border-base-300'
+                                                        >
+                                                            <td
+                                                                colSpan={9}
+                                                                className='p-4 border-l-4 border-l-primary align-top'
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                                                                    <div className='space-y-2'>
+                                                                        <p>
+                                                                            <span className='font-medium text-base-content/70'>Khách hàng:</span> {formatCustomer(order)}
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className='font-medium text-base-content/70'>Chi nhánh:</span> {order.location?.name || '—'}
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className='font-medium text-base-content/70'>Địa chỉ giao hàng:</span>{' '}
+                                                                            {order.shippingAddress || '—'}
+                                                                        </p>
                                                                         {order.shippingPhone && (
-                                                                            <p><span className="font-medium text-base-content/70">SĐT nhận hàng:</span> {order.shippingPhone}</p>
+                                                                            <p>
+                                                                                <span className='font-medium text-base-content/70'>SĐT nhận hàng:</span> {order.shippingPhone}
+                                                                            </p>
                                                                         )}
                                                                         {order.note && (
-                                                                            <p><span className="font-medium text-base-content/70">Ghi chú:</span> {order.note}</p>
+                                                                            <p>
+                                                                                <span className='font-medium text-base-content/70'>Ghi chú:</span> {order.note}
+                                                                            </p>
                                                                         )}
                                                                     </div>
-                                                                    <div className="space-y-2">
+                                                                    <div className='space-y-2'>
                                                                         <p>
-                                                                            <span className="font-medium text-base-content/70">Trạng thái:</span>{' '}
-                                                                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getStatusSelectClass(order.status)}`}>
-                                                                                {STATUS_LABELS[['paid','confirmed'].includes(order.status) ? 'completed' : order.status] || order.status}
+                                                                            <span className='font-medium text-base-content/70'>Trạng thái:</span>{' '}
+                                                                            <span
+                                                                                className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getStatusSelectClass(order.status)}`}
+                                                                            >
+                                                                                {STATUS_LABELS[['paid', 'confirmed'].includes(order.status) ? 'completed' : order.status] ||
+                                                                                    order.status}
                                                                             </span>
                                                                         </p>
                                                                         <p>
-                                                                            <span className="font-medium text-base-content/70">Thanh toán:</span>{' '}
-                                                                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getPaymentSelectClass(order.paymentStatus)}`}>
+                                                                            <span className='font-medium text-base-content/70'>Thanh toán:</span>{' '}
+                                                                            <span
+                                                                                className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getPaymentSelectClass(order.paymentStatus)}`}
+                                                                            >
                                                                                 {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
                                                                             </span>
                                                                         </p>
                                                                     </div>
                                                                 </div>
-                                                                <div className="mt-4 pt-4 border-t border-base-200">
-                                                                    <p className="font-medium text-base-content/70 mb-2">Chi tiết sản phẩm</p>
-                                                                    <div className="divide-y divide-base-200">
+                                                                <div className='mt-4 pt-4 border-t border-base-200'>
+                                                                    <p className='font-medium text-base-content/70 mb-2'>Chi tiết sản phẩm</p>
+                                                                    <div className='divide-y divide-base-200'>
                                                                         {order.items?.map((item, idx) => (
-                                                                            <div key={idx} className="flex justify-between py-2">
-                                                                                <span>{item.product?.name || 'Sản phẩm'} × {item.quantity}</span>
-                                                                                <span className="font-medium">
-                                                                                    {((item.quantity || 0) * (item.price || 0)).toLocaleString()}đ
+                                                                            <div
+                                                                                key={idx}
+                                                                                className='flex justify-between py-2'
+                                                                            >
+                                                                                <span>
+                                                                                    {item.product?.name || 'Sản phẩm'} × {item.quantity}
                                                                                 </span>
+                                                                                <span className='font-medium'>{((item.quantity || 0) * (item.price || 0)).toLocaleString()}đ</span>
                                                                             </div>
                                                                         ))}
                                                                     </div>
-                                                                    <div className="flex justify-between font-bold text-primary pt-2 mt-2 border-t border-base-200">
+                                                                    <div className='flex justify-between font-bold text-primary pt-2 mt-2 border-t border-base-200'>
                                                                         <span>Tổng tiền</span>
                                                                         <span>{(order.totalAmount || 0).toLocaleString()}đ</span>
                                                                     </div>
@@ -323,27 +353,29 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                 </table>
                             </div>
 
-                            <div className="flex justify-between items-center p-4 border-t border-base-200">
-                                <p className="text-sm text-base-content/60">
+                            <div className='flex justify-between items-center p-4 border-t border-base-200'>
+                                <p className='text-sm text-base-content/60'>
                                     Hiển thị {orders.length} / {pagination.total} đơn hàng
                                 </p>
-                                <div className="join">
+                                <div className='join'>
                                     <button
-                                        type="button"
-                                        className="join-item btn btn-sm"
+                                        type='button'
+                                        className='join-item btn btn-sm'
                                         disabled={pagination.page <= 1}
-                                        onClick={() =>
-                                            setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))
-                                        }
+                                        onClick={() => setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))}
                                     >
-                                        <ChevronLeft className="w-4 h-4" />
+                                        <ChevronLeft className='w-4 h-4' />
                                     </button>
-                                    <button type="button" className="join-item btn btn-sm" disabled>
+                                    <button
+                                        type='button'
+                                        className='join-item btn btn-sm'
+                                        disabled
+                                    >
                                         Trang {pagination.page} / {pagination.totalPages}
                                     </button>
                                     <button
-                                        type="button"
-                                        className="join-item btn btn-sm"
+                                        type='button'
+                                        className='join-item btn btn-sm'
                                         disabled={pagination.page >= pagination.totalPages}
                                         onClick={() =>
                                             setPagination((p) => ({
@@ -352,7 +384,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                             }))
                                         }
                                     >
-                                        <ChevronRight className="w-4 h-4" />
+                                        <ChevronRight className='w-4 h-4' />
                                     </button>
                                 </div>
                             </div>
