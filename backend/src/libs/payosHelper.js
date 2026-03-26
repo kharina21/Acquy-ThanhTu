@@ -44,11 +44,26 @@ export const createPayOSPaymentLink = async ({ orderId, orderCode, amount, descr
 
     const orderCodeInt = toPayOSOrderCode();
     const amountInt = Math.round(Number(amount) || 0);
+    const orderRef9 = String(orderCode || '')
+        .replace(/[^\w]/g, '')
+        .slice(0, 9)
+        .trim();
+    const orderRef25 = String(orderCode || '')
+        .replace(/[^\w]/g, '')
+        .slice(0, 25)
+        .trim();
+    const idTail = String(orderId || '')
+        .replace(/\D/g, '')
+        .slice(-10);
+    /** Mô tả PayOS (giới hạn ~9 ký tự): ưu tiên mô tả từ route; không dùng chữ chung "thanh toán tại quầy". */
     const desc =
-        String(description || orderCode || 'Thanh toan')
-            .replace(/[^\w\s-]/g, '')
+        String(description || '')
+            .replace(/[^\w]/g, '')
             .slice(0, 9)
-            .trim() || 'DonHang';
+            .trim() ||
+        orderRef9 ||
+        (idTail ? `D${idTail}`.slice(0, 9) : '') ||
+        'DonHang';
 
     const body = {
         orderCode: orderCodeInt,
@@ -81,12 +96,20 @@ export const createPayOSPaymentLink = async ({ orderId, orderCode, amount, descr
     }
 
     if (!qrDataURL && data.bin && data.accountNumber && data.accountName) {
+        /** Nội dung CK trên VietQR: mã đơn cửa hàng (đối soát), không dùng mô tả PayOS rút gọn. */
+        const transferMemo =
+            orderRef25 ||
+            (idTail ? `DH${idTail}` : '') ||
+            String(data.description || '')
+                .replace(/[^\w\s]/g, '')
+                .slice(0, 25)
+                .trim();
         qrDataURL = getVietQRQuickLink({
             bankCode: data.bin,
             accountNumber: data.accountNumber,
             accountName: data.accountName,
             amount: data.amount,
-            memo: data.description,
+            memo: transferMemo,
         });
     }
 

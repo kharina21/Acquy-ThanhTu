@@ -494,12 +494,14 @@ export const createOrderFromItems = async (req, res) => {
         if (canSelectSeller && sellerId && mongoose.Types.ObjectId.isValid(sellerId) && sellerId.toString() !== userId.toString()) {
             const seller = await User.findById(sellerId).populate('roles', 'name').lean();
             const sellerRoles = seller?.roles?.map((r) => r.name) || [];
-            if (seller && sellerRoles.includes('seller')) {
+            if (seller && sellerRoles.some((r) => ['seller', 'admin'].includes(r))) {
                 createdByUserId = sellerId;
             }
         }
 
         const code = await generateOrderCode();
+
+        const awaitingBankTransfer = !isPreOrder && (method === 'transfer' || method === 'vietqr');
 
         const order = await Order.create({
             code,
@@ -513,8 +515,8 @@ export const createOrderFromItems = async (req, res) => {
             discount,
             status: isPreOrder ? 'pending' : 'completed',
             paymentMethod: method,
-            paymentStatus: isPreOrder ? 'pending' : 'paid',
-            paidAt: isPreOrder ? null : new Date(),
+            paymentStatus: isPreOrder ? 'pending' : awaitingBankTransfer ? 'pending' : 'paid',
+            paidAt: isPreOrder || awaitingBankTransfer ? null : new Date(),
             shippingAddress: 'Tại quầy',
             note: String(note).trim(),
             isPreOrder: !!isPreOrder,
@@ -528,9 +530,11 @@ export const createOrderFromItems = async (req, res) => {
                     await stock.save();
                 }
             }
-            await Customer.findByIdAndUpdate(customerProfile._id, {
-                $inc: { accumulatedAmount: finalTotal },
-            });
+            if (!awaitingBankTransfer) {
+                await Customer.findByIdAndUpdate(customerProfile._id, {
+                    $inc: { accumulatedAmount: finalTotal },
+                });
+            }
         }
 
         const populated = await Order.findById(order._id)
@@ -696,7 +700,14 @@ export const generateVietQRForOrder = async (req, res) => {
             }
         } catch (payosErr) {
             console.warn('PayOS error, fallback to VietQR Quick Link:', payosErr.message);
-            const acc = await BankAccount.findOne({ location: locationId }).sort({ isDefault: -1, createdAt: 1 }).lean();
+            let acc = null;
+            const bankAccountIdParam = (req.query.bankAccountId || '').trim();
+            if (bankAccountIdParam && mongoose.Types.ObjectId.isValid(bankAccountIdParam)) {
+                acc = await BankAccount.findOne({ _id: bankAccountIdParam, location: locationId }).lean();
+            }
+            if (!acc) {
+                acc = await BankAccount.findOne({ location: locationId }).sort({ isDefault: -1, createdAt: 1 }).lean();
+            }
             if (!acc) {
                 return res.status(400).json({
                     message: 'Chưa cấu hình PayOS hoặc tài khoản ngân hàng. Vào Hồ sơ cửa hàng → Tài khoản ngân hàng.',

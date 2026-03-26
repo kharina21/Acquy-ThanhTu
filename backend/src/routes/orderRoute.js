@@ -22,7 +22,11 @@ router.use(authenticate);
 // Mua hàng online (chỉ user, customer)
 router.post('/', hasRole('user', 'customer'), createOrder);
 router.get('/checkout-preview', hasRole('user', 'customer'), checkoutPreview);
-router.get('/:id/generate-vietqr', hasRole('user', 'customer'), generateVietQRForOrder);
+router.get(
+    '/:id/generate-vietqr',
+    hasRole('user', 'customer', 'admin', 'manager', 'seller'),
+    generateVietQRForOrder,
+);
 router.get('/:id/sync-payment', hasRole('user', 'customer', 'admin', 'manager', 'seller'), syncPaymentFromPayOS);
 router.post('/:id/cancel', hasRole('user', 'customer'), cancelOrderByCustomer);
 router.patch('/:id', hasRole('user', 'customer'), updateOrderByCustomer);

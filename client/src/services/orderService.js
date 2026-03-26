@@ -64,8 +64,8 @@ export const getOrderReport = async (params = {}) => {
 /**
  * Tạo mã QR VietQR cho đơn hàng (thanh toán chuyển khoản)
  */
-export const generateVietQR = async (orderId) => {
-    const res = await api.get(`/orders/${orderId}/generate-vietqr`);
+export const generateVietQR = async (orderId, params = {}) => {
+    const res = await api.get(`/orders/${orderId}/generate-vietqr`, { params });
     return res.data;
 };
 

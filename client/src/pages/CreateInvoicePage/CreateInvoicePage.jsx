@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBranchStore } from '@/stores/useBranchStore';
@@ -6,22 +6,135 @@ import { getProducts } from '@/services/productService';
 import { getActiveLocations } from '@/services/locationService';
 import { getBankAccountsByLocation } from '@/services/bankAccountService';
 import { getProductStocks } from '@/services/productStockService';
-import { createOrderFromItems, generateVietQR } from '@/services/orderService';
+import {
+    createOrderFromItems,
+    generateVietQR,
+    getOrderById,
+    syncPaymentStatus,
+    updateOrder,
+} from '@/services/orderService';
 import { searchCustomersByPhone, createCustomer, restoreCustomer } from '@/services/customerService';
 import { getMemberPolicies } from '@/services/memberPolicyService';
 import { getUsers } from '@/services/userService';
 import { useUserRole } from '@/hooks/useUserRole';
 import { getInitials, getPrimaryRole, getCustomerTier, getCustomerPolicy } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Search, Plus, Minus, Trash2, ArrowLeftRight, X, ScanBarcode, MoreVertical, Pencil, ChevronDown, LogOut, UserRoundPen, UserPlus } from 'lucide-react';
+import {
+    Search,
+    Plus,
+    Minus,
+    Trash2,
+    ArrowLeftRight,
+    X,
+    ScanBarcode,
+    Keyboard,
+    Pencil,
+    ChevronDown,
+    LogOut,
+    UserRoundPen,
+    UserPlus,
+    Printer,
+} from 'lucide-react';
+import { ROLE_LABELS } from '@/config/roleConfig';
+import { buildVietQRImageUrl } from '@/lib/vietqrQuickLink';
 import CustomerModal from '@/pages/CustomersPage/CustomerModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 
 const TAB_TYPES = { INVOICE: 'invoice', ORDER: 'order' };
+const PRODUCT_SEARCH_MODE = { MANUAL: 'manual', SCAN: 'scan' };
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function getUserRoleLabels(user) {
+    if (!user?.roles?.length) return '';
+    return user.roles
+        .map((r) => {
+            if (!r) return '';
+            if (ROLE_LABELS[r?.name]) return ROLE_LABELS[r.name];
+            if (r?.description) {
+                const short = String(r.description).split(' - ')[0]?.trim();
+                if (short) return short;
+            }
+            return r?.name || '';
+        })
+        .filter(Boolean)
+        .join(', ');
+}
+
+function userHasAdminRole(u) {
+    return u?.roles?.some((r) => r?.name === 'admin');
+}
+
+/** Chỉ admin hoặc nhân viên bán hàng được chọn làm người bán trên POS */
+const SALES_DROPDOWN_ROLE_NAMES = new Set(['admin', 'seller']);
+
+function userHasSalesDropdownRole(u) {
+    if (!u?.roles?.length) return false;
+    return u.roles.some((r) => {
+        const n = typeof r === 'string' ? r : r?.name;
+        return n && SALES_DROPDOWN_ROLE_NAMES.has(n);
+    });
+}
+
+function usersFromGetUsersResponse(res) {
+    if (!res || res.success === false) return [];
+    return res.data?.users ?? [];
+}
+
+function roleMergeKey(r) {
+    if (!r) return null;
+    if (r._id != null) return `id:${String(r._id)}`;
+    if (r.name) return `n:${r.name}`;
+    return null;
+}
+
+/** Gộp user từ nhiều API; cùng _id thì hợp nhất roles (tránh bản seller ghi đè làm mất vai trò admin đã populate) */
+function mergeUsersById(...lists) {
+    const map = new Map();
+    for (const list of lists) {
+        for (const u of list || []) {
+            if (!u?._id) continue;
+            const id = String(u._id);
+            const prev = map.get(id);
+            if (!prev) {
+                map.set(id, { ...u });
+                continue;
+            }
+            const rolesMap = new Map();
+            for (const r of [...(prev.roles || []), ...(u.roles || [])]) {
+                const k = roleMergeKey(r);
+                if (k) rolesMap.set(k, r);
+            }
+            map.set(id, {
+                ...prev,
+                ...u,
+                roles: Array.from(rolesMap.values()),
+            });
+        }
+    }
+    return Array.from(map.values());
+}
 const PAYMENT_METHODS = [
     { value: 'cash', label: 'Tiền mặt' },
     { value: 'transfer', label: 'Chuyển khoản (VietQR)' },
 ];
+
+const emptyVietQRModal = () => ({
+    show: false,
+    qrDataURL: '',
+    order: null,
+    bankAccount: null,
+    checkoutUrl: null,
+    orderId: null,
+    paymentStatus: 'pending',
+});
 
 export default function CreateInvoicePage() {
     const navigate = useNavigate();
@@ -48,6 +161,7 @@ export default function CreateInvoicePage() {
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+    const [productSearchMode, setProductSearchMode] = useState(PRODUCT_SEARCH_MODE.MANUAL);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [locations, setLocations] = useState([]);
@@ -71,11 +185,63 @@ export default function CreateInvoicePage() {
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [customerModalSubmitting, setCustomerModalSubmitting] = useState(false);
     const [restoreConfirm, setRestoreConfirm] = useState({ show: false, customerId: null, message: '' });
-    const [vietQRModal, setVietQRModal] = useState({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null });
+    const [vietQRModal, setVietQRModal] = useState(() => emptyVietQRModal());
+    /** Đơn CK vừa tạo: chờ thanh toán hoặc đã paid (chờ bấm Hoàn thành). tabId = tab tạo đơn. */
+    const [transferSession, setTransferSession] = useState(null);
+    const [selectedBankAccountId, setSelectedBankAccountId] = useState('');
+    const [cancelOrderSubmitting, setCancelOrderSubmitting] = useState(false);
+    const [checkPaymentSubmitting, setCheckPaymentSubmitting] = useState(false);
+    const payPollPaidToastRef = useRef(false);
 
     const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
     const items = activeTab?.items || [];
     const currentLocation = locations.find((l) => l._id === form.locationId);
+
+    const defaultBankAccount = useMemo(() => {
+        if (!bankAccounts?.length) return null;
+        return [...bankAccounts].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))[0];
+    }, [bankAccounts]);
+
+    useEffect(() => {
+        if (!bankAccounts?.length) {
+            setSelectedBankAccountId('');
+            return;
+        }
+        setSelectedBankAccountId((prev) => {
+            if (prev && bankAccounts.some((a) => String(a._id) === String(prev))) return prev;
+            const def = [...bankAccounts].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))[0];
+            return def?._id ? String(def._id) : '';
+        });
+    }, [bankAccounts]);
+
+    const selectedBankAccount = useMemo(() => {
+        if (!bankAccounts?.length || !selectedBankAccountId) return null;
+        return bankAccounts.find((a) => String(a._id) === String(selectedBankAccountId)) ?? null;
+    }, [bankAccounts, selectedBankAccountId]);
+
+    const bankForTransferPreview = selectedBankAccount || defaultBankAccount;
+
+    const transferFooterActive = transferSession && activeTabId === transferSession.tabId;
+    const lockPaymentUiForCurrentTransfer =
+        transferSession && transferSession.paymentStatus !== 'paid' && activeTabId === transferSession.tabId;
+    const pendingTransferHoldsLocation = transferSession && transferSession.paymentStatus !== 'paid';
+    const cartLockedForTransfer =
+        transferSession && transferSession.paymentStatus !== 'paid' && activeTabId === transferSession.tabId;
+
+    const refreshStocks = useCallback(async () => {
+        if (!form.locationId) return;
+        try {
+            const res = await getProductStocks({ locationId: form.locationId });
+            const map = {};
+            (res?.data?.stocks || []).forEach((s) => {
+                const pid = (s.product?._id ?? s.product)?.toString?.();
+                if (pid) map[pid] = s.quantity ?? 0;
+            });
+            setStocksByProduct(map);
+        } catch {
+            /* ignore */
+        }
+    }, [form.locationId]);
 
     useEffect(() => {
         if (!accessToken) {
@@ -152,9 +318,10 @@ export default function CreateInvoicePage() {
     );
 
     useEffect(() => {
+        if (productSearchMode === PRODUCT_SEARCH_MODE.SCAN) return;
         const t = setTimeout(() => searchProducts(search), 200);
         return () => clearTimeout(t);
-    }, [search, searchProducts]);
+    }, [search, searchProducts, productSearchMode]);
 
     useEffect(() => {
         if (!customerSearch?.trim()) {
@@ -169,11 +336,16 @@ export default function CreateInvoicePage() {
         return () => clearTimeout(t);
     }, [customerSearch]);
 
+    // Chỉ đồng bộ khi đổi tài khoản (_id) hoặc quyền chọn — không ghi đè khi /auth/me trả cùng user nhưng object mới
     useEffect(() => {
-        if (user) {
-            setSelectedSeller(user);
+        const u = useAuthStore.getState().user;
+        if (!u?._id) return;
+        if (canSelectSeller) {
+            setSelectedSeller(userHasSalesDropdownRole(u) ? u : null);
+        } else {
+            setSelectedSeller(u);
         }
-    }, [user]);
+    }, [user?._id, canSelectSeller]);
 
     useEffect(() => {
         getMemberPolicies()
@@ -185,15 +357,39 @@ export default function CreateInvoicePage() {
     }, []);
 
     useEffect(() => {
-        if (canSelectSeller && accessToken) {
-            getUsers({ kindFilter: 'staff', limit: 100 })
-                .then((res) => {
-                    const list = res?.data?.users || [];
-                    const sellerList = list.filter((u) => u.roles?.some((r) => r?.name === 'seller'));
-                    setSellers(sellerList);
-                })
-                .catch(() => setSellers([]));
-        }
+        if (!canSelectSeller || !accessToken) return;
+        let cancelled = false;
+        (async () => {
+            let admins = [];
+            let sellersList = [];
+            try {
+                const adminRes = await getUsers({ role: 'admin', limit: 200, page: 1 });
+                if (!cancelled) admins = usersFromGetUsersResponse(adminRes);
+            } catch {
+                admins = [];
+            }
+            try {
+                const sellerRes = await getUsers({ role: 'seller', limit: 200, page: 1 });
+                if (!cancelled) sellersList = usersFromGetUsersResponse(sellerRes);
+            } catch {
+                sellersList = [];
+            }
+            if (cancelled) return;
+            // seller trước, admin sau → cùng user thì ưu tiên payload từ API role=admin; mergeUsersById vẫn gộp roles nếu thiếu
+            const merged = mergeUsersById(sellersList, admins);
+            merged.sort((a, b) => {
+                const pa = userHasAdminRole(a) ? 0 : 1;
+                const pb = userHasAdminRole(b) ? 0 : 1;
+                if (pa !== pb) return pa - pb;
+                const na = [a.firstName, a.lastName].filter(Boolean).join(' ') || a.username || '';
+                const nb = [b.firstName, b.lastName].filter(Boolean).join(' ') || b.username || '';
+                return na.localeCompare(nb, 'vi', { sensitivity: 'base' });
+            });
+            setSellers(merged);
+        })();
+        return () => {
+            cancelled = true;
+        };
     }, [canSelectSeller, accessToken]);
 
     useEffect(() => {
@@ -206,6 +402,43 @@ export default function CreateInvoicePage() {
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, []);
+
+    useEffect(() => {
+        payPollPaidToastRef.current = false;
+    }, [transferSession?.orderId]);
+
+    useEffect(() => {
+        if (!transferSession?.orderId || transferSession.paymentStatus === 'paid') return;
+        let cancelled = false;
+        const id = transferSession.orderId;
+        const tick = async () => {
+            if (cancelled) return;
+            try {
+                const res = await syncPaymentStatus(id);
+                const ord = res?.data?.order;
+                if (cancelled || !ord) return;
+                const ps = ord.paymentStatus || 'pending';
+                setTransferSession((s) =>
+                    s && String(s.orderId) === String(id) ? { ...s, paymentStatus: ps } : s,
+                );
+                setVietQRModal((m) =>
+                    String(m.orderId) === String(id) ? { ...m, paymentStatus: ps } : m,
+                );
+                if (ps === 'paid' && !payPollPaidToastRef.current) {
+                    payPollPaidToastRef.current = true;
+                    toast.success('Đã nhận thanh toán chuyển khoản');
+                }
+            } catch {
+                /* ignore */
+            }
+        };
+        tick();
+        const iv = setInterval(tick, 4000);
+        return () => {
+            cancelled = true;
+            clearInterval(iv);
+        };
+    }, [transferSession?.orderId, transferSession?.paymentStatus]);
 
     const updateActiveTabItems = (updater) => {
         setTabs((prev) => prev.map((t) => (t.id === activeTabId ? { ...t, items: updater(t.items) } : t)));
@@ -249,7 +482,24 @@ export default function CreateInvoicePage() {
         );
     };
 
+    const resolveProductFromScan = (code, results) => {
+        const c = code.trim().toLowerCase();
+        if (!c || !results?.length) return null;
+        const exact = results.filter(
+            (p) =>
+                (p.sku && String(p.sku).trim().toLowerCase() === c) ||
+                (p.barcode && String(p.barcode).trim().toLowerCase() === c),
+        );
+        if (exact.length >= 1) return exact[0];
+        if (results.length === 1) return results[0];
+        return null;
+    };
+
     const handleAddProduct = (product) => {
+        if (cartLockedForTransfer) {
+            toast.error('Đang chờ chuyển khoản cho tab này. Hủy đơn hoặc hoàn tất trước khi sửa giỏ.');
+            return;
+        }
         const id = product._id?.toString?.() || product._id;
         updateActiveTabItems((prev) => {
             const existing = prev.find((i) => i.productId === id);
@@ -273,10 +523,18 @@ export default function CreateInvoicePage() {
     };
 
     const handleRemoveItem = (productId) => {
+        if (cartLockedForTransfer) {
+            toast.error('Đang chờ chuyển khoản cho tab này. Hủy đơn hoặc hoàn tất trước khi sửa giỏ.');
+            return;
+        }
         updateActiveTabItems((prev) => prev.filter((i) => i.productId !== productId?.toString?.()));
     };
 
     const handleUpdateQty = (productId, qty) => {
+        if (cartLockedForTransfer) {
+            toast.error('Đang chờ chuyển khoản cho tab này. Hủy đơn hoặc hoàn tất trước khi sửa giỏ.');
+            return;
+        }
         if (qty < 1) {
             handleRemoveItem(productId);
             return;
@@ -287,14 +545,268 @@ export default function CreateInvoicePage() {
     const subtotal = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
     const totalQty = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
 
-    const hasTierDiscount =
-        selectedCustomer && selectedCustomer.type !== 'walkin' && getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies);
-    const tierPolicy = hasTierDiscount ? getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies) : null;
+    const tierPolicy = selectedCustomer ? getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies) : null;
     const tierDiscountAmount = tierPolicy?.discountPercent
-        ? Math.round((subtotal * (tierPolicy.discountPercent || 0)) / 100)
+        ? Math.round((subtotal * (Number(tierPolicy.discountPercent) || 0)) / 100)
         : 0;
-    const discount = hasTierDiscount ? tierDiscountAmount : (Number(form.discount) || 0);
+    const discount =
+        selectedCustomer && tierPolicy ? tierDiscountAmount : Number(form.discount) || 0;
     const total = Math.max(0, subtotal - discount);
+
+    const transferPreviewQrUrl =
+        form.paymentMethod === 'transfer' && bankForTransferPreview && total > 0 && items.length > 0
+            ? buildVietQRImageUrl({
+                  bankCode: bankForTransferPreview.bankCode,
+                  accountNumber: bankForTransferPreview.bankAccount,
+                  accountName: bankForTransferPreview.userBankName,
+                  amount: total,
+                  /** Chưa có đơn: không gắn nội dung CK — sau tạo đơn, server/PayOS dùng mã đơn làm nội dung. */
+                  memo: '',
+              })
+            : '';
+
+    const handleTransferCheckStatus = async () => {
+        if (!transferSession?.orderId) return;
+        setCheckPaymentSubmitting(true);
+        try {
+            const res = await syncPaymentStatus(transferSession.orderId);
+            const ord = res?.data?.order;
+            if (ord?.paymentStatus) {
+                const ps = ord.paymentStatus;
+                const oid = transferSession.orderId;
+                setTransferSession((s) => (s ? { ...s, paymentStatus: ps } : s));
+                setVietQRModal((m) => (String(m.orderId) === String(oid) ? { ...m, paymentStatus: ps } : m));
+                if (ps === 'paid') {
+                    toast.success('Đã nhận thanh toán chuyển khoản');
+                } else {
+                    toast.info('Chưa có xác nhận thanh toán (PayOS / ngân hàng).');
+                }
+            }
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Không kiểm tra được trạng thái');
+        } finally {
+            setCheckPaymentSubmitting(false);
+        }
+    };
+
+    const handleTransferCancel = async () => {
+        if (!transferSession?.orderId) return;
+        setCancelOrderSubmitting(true);
+        try {
+            await updateOrder(transferSession.orderId, { status: 'cancelled' });
+            toast.success('Đã hủy đơn chuyển khoản');
+            setVietQRModal(emptyVietQRModal());
+            setTransferSession(null);
+            await refreshStocks();
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Không hủy được đơn');
+        } finally {
+            setCancelOrderSubmitting(false);
+        }
+    };
+
+    const handleTransferComplete = () => {
+        const tid = transferSession?.tabId;
+        if (tid != null) {
+            setTabs((prev) => prev.map((t) => (t.id === tid ? { ...t, items: [] } : t)));
+        }
+        setCustomerPaid('');
+        setForm((f) => ({ ...f, note: '', discount: 0 }));
+        setSelectedCustomer(null);
+        setVietQRModal(emptyVietQRModal());
+        setTransferSession(null);
+        refreshStocks();
+        toast.success('Đã hoàn thành hóa đơn');
+    };
+
+    const handlePrintTransferInvoice = useCallback(async () => {
+        if (!transferSession?.orderId || items.length === 0) {
+            toast.error('Không có dữ liệu hóa đơn để in.');
+            return;
+        }
+        let orderCode =
+            vietQRModal.order?.code != null
+                ? String(vietQRModal.order.code)
+                : transferSession?.orderSnapshot?.code != null
+                  ? String(transferSession.orderSnapshot.code)
+                  : '';
+        let orderTotal = vietQRModal.order?.totalAmount ?? transferSession?.orderSnapshot?.totalAmount;
+        try {
+            const res = await getOrderById(transferSession.orderId);
+            const ord = res?.data?.order ?? res?.order;
+            if (ord) {
+                if (ord.code != null) orderCode = String(ord.code);
+                if (ord.totalAmount != null) orderTotal = ord.totalAmount;
+            }
+        } catch {
+            /* dùng dữ liệu trên màn hình */
+        }
+        if (!orderCode) orderCode = String(transferSession.orderId).slice(-12);
+        const totalPrint = orderTotal != null ? Number(orderTotal) : Number(total) || 0;
+        const bank = vietQRModal.bankAccount || transferSession?.bankAccount || selectedBankAccount;
+        const locName = escapeHtml(currentLocation?.name || '—');
+        const now = escapeHtml(new Date().toLocaleString('vi-VN'));
+        const customerLine = selectedCustomer
+            ? `${escapeHtml(selectedCustomer.name || '')}${selectedCustomer.phone ? ` · ${escapeHtml(selectedCustomer.phone)}` : ''}`
+            : 'Khách vãng lai';
+        const sellerLine = selectedSeller
+            ? escapeHtml(
+                  [selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') ||
+                      selectedSeller.username ||
+                      '—',
+              )
+            : '—';
+        const noteLine = form.note?.trim() ? escapeHtml(form.note.trim()) : '';
+        const bankLine = bank
+            ? `${escapeHtml(bank.bankName || bank.bankCode || '')} · STK ${escapeHtml(String(bank.bankAccount || ''))}`
+            : '';
+
+        const itemBlocks = items
+            .map((item, idx) => {
+                const name = escapeHtml(item.name || '');
+                const sku = item.sku ? escapeHtml(item.sku) : '';
+                const qty = Number(item.quantity) || 0;
+                const price = Number(item.price) || 0;
+                const lineTotal = price * qty;
+                return `<div class="item">
+    <div class="item-name">${idx + 1}. ${name}</div>
+    ${sku ? `<div class="item-sku">SKU: ${sku}</div>` : ''}
+    <div class="item-calc">${qty} × ${price.toLocaleString('vi-VN')}đ = <strong>${lineTotal.toLocaleString('vi-VN')}đ</strong></div>
+  </div>`;
+            })
+            .join('');
+
+        const subtotalPrint = Number(subtotal) || 0;
+        const discountPrint = Number(discount) || 0;
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hóa đơn ${escapeHtml(orderCode)}</title>
+<style>
+  /* Khổ ngang 55mm; chiều dọc theo nội dung (cuộn nhiệt — không cố định chiều cao trang). */
+  @page {
+    size: 55mm auto;
+    margin: 2mm 2.5mm;
+  }
+  * { box-sizing: border-box; }
+  html {
+    width: 55mm;
+    max-width: 55mm;
+    margin: 0;
+    padding: 0;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  body {
+    width: 55mm;
+    max-width: 55mm;
+    margin: 0;
+    padding: 0;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    color: #000;
+    background: #fff;
+    font-family: ui-monospace, "Cascadia Code", "Segoe UI", system-ui, sans-serif;
+    font-size: 10px;
+    line-height: 1.35;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    display: block;
+  }
+  .title { text-align: center; font-size: 11px; font-weight: 700; margin: 0 0 3mm; letter-spacing: 0.04em; }
+  hr.rule { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
+  .meta-line { margin: 0.8mm 0; font-size: 9px; word-break: break-word; }
+  .item {
+    margin: 2.5mm 0;
+    padding-bottom: 2mm;
+    border-bottom: 1px dotted #888;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .item-name { font-weight: 600; word-break: break-word; }
+  .item-sku { font-size: 8px; color: #333; margin-top: 0.5mm; }
+  .item-calc { font-size: 9px; margin-top: 1mm; text-align: right; }
+  .totals { margin-top: 3mm; font-size: 9px; text-align: right; break-inside: avoid; page-break-inside: avoid; }
+  .totals .row { margin: 1mm 0; }
+  .totals .grand { font-weight: 700; font-size: 11px; margin-top: 2mm; padding-top: 2mm; border-top: 1px solid #000; }
+  .footer { text-align: center; font-size: 8px; margin-top: 4mm; word-break: break-word; }
+  @media print {
+    @page {
+      size: 55mm auto;
+      margin: 2mm 2.5mm;
+    }
+    html, body, .receipt {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+  }
+</style></head><body>
+  <div class="receipt">
+    <div class="title">HÓA ĐƠN BÁN HÀNG</div>
+    <hr class="rule" />
+    <div class="meta-line"><b>Mã đơn:</b> ${escapeHtml(orderCode)}</div>
+    <div class="meta-line"><b>In:</b> ${now}</div>
+    <div class="meta-line"><b>CN:</b> ${locName}</div>
+    <div class="meta-line"><b>Khách:</b> ${customerLine}</div>
+    <div class="meta-line"><b>NV:</b> ${sellerLine}</div>
+    ${bankLine ? `<div class="meta-line"><b>TK:</b> ${bankLine}</div>` : ''}
+    ${noteLine ? `<div class="meta-line"><b>Ghi chú:</b> ${noteLine}</div>` : ''}
+    <hr class="rule" />
+    ${itemBlocks}
+    <hr class="rule" />
+    <div class="totals">
+      <div class="row">Tổng hàng: <strong>${subtotalPrint.toLocaleString('vi-VN')}đ</strong></div>
+      ${discountPrint > 0 ? `<div class="row">Giảm: <strong>-${discountPrint.toLocaleString('vi-VN')}đ</strong></div>` : ''}
+      <div class="row grand">KHÁCH TRẢ: ${totalPrint.toLocaleString('vi-VN')}đ</div>
+    </div>
+    <div class="footer">CK · Đã thanh toán · Cảm ơn quý khách</div>
+  </div>
+</body></html>`;
+
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText =
+            'position:fixed;left:-9999px;top:0;width:55mm;min-width:55mm;height:1px;border:none;opacity:0;pointer-events:none;';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        const runPrint = () => {
+            const h = Math.max(doc.documentElement?.scrollHeight || 0, doc.body?.scrollHeight || 0, 1);
+            iframe.style.height = `${h}px`;
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        };
+        requestAnimationFrame(() => requestAnimationFrame(runPrint));
+        setTimeout(() => {
+            if (iframe.parentNode) document.body.removeChild(iframe);
+        }, 1500);
+    }, [
+        transferSession?.orderId,
+        transferSession?.orderSnapshot,
+        transferSession?.bankAccount,
+        items,
+        vietQRModal.order,
+        vietQRModal.bankAccount,
+        selectedBankAccount,
+        currentLocation?.name,
+        selectedCustomer,
+        selectedSeller,
+        form.note,
+        subtotal,
+        discount,
+        total,
+    ]);
 
     const handleSubmit = async () => {
         if (!form.locationId) {
@@ -305,18 +817,42 @@ export default function CreateInvoicePage() {
             toast.error('Hóa đơn trống. Vui lòng thêm sản phẩm.');
             return;
         }
-        const outOfStock = items.filter((i) => {
+        if (canSelectSeller && !selectedSeller) {
+            toast.error('Vui lòng chọn người bán hàng (quản trị viên hoặc nhân viên bán hàng).');
+            return;
+        }
+        const insufficientStock = items.filter((i) => {
             const stock = stocksByProduct[i.productId] ?? 0;
-            return stock === 0;
+            return (Number(i.quantity) || 0) > stock;
         });
-        if (outOfStock.length > 0) {
-            const names = outOfStock.map((i) => i.name).join(', ');
-            toast.error(`Không còn sản phẩm: ${names}`);
+        if (insufficientStock.length > 0) {
+            const names = insufficientStock.map((i) => i.name).join(', ');
+            toast.error(`Sản phẩm không đủ tồn kho: ${names}`);
+            return;
+        }
+        if (transferSession?.paymentStatus === 'paid') {
+            toast.error('Nhấn «Hoàn thành hóa đơn» cho đơn chuyển khoản vừa xong (tab đang xử lý) trước khi bán tiếp.');
             return;
         }
         const method = form.paymentMethod === 'transfer' ? 'transfer' : 'cash';
+        if (
+            method === 'transfer' &&
+            transferSession &&
+            transferSession.paymentStatus !== 'paid'
+        ) {
+            toast.error('Đang có đơn chuyển khoản chưa hoàn tất. Hủy hoặc xác nhận thanh toán đơn đó trước.');
+            return;
+        }
         if (method === 'transfer' && bankAccounts.length === 0) {
             toast.error('Hãy thêm tài khoản ngân hàng để nhận chuyển khoản. Vào Hồ sơ cửa hàng → Tài khoản ngân hàng.');
+            return;
+        }
+        const bankAccountIdForQr =
+            method === 'transfer'
+                ? String(selectedBankAccountId || bankAccounts[0]?._id || '')
+                : '';
+        if (method === 'transfer' && !bankAccountIdForQr) {
+            toast.error('Vui lòng chọn tài khoản nhận chuyển khoản.');
             return;
         }
         setSubmitting(true);
@@ -338,29 +874,58 @@ export default function CreateInvoicePage() {
             if (order) {
                 if (method === 'transfer') {
                     try {
-                        const qrRes = await generateVietQR(order._id);
+                        const qrRes = await generateVietQR(order._id, {
+                            bankAccountId: bankAccountIdForQr,
+                        });
                         const qrData = qrRes?.data;
+                        const payStatus = order.paymentStatus || 'pending';
+                        const sessionBase = {
+                            orderId: order._id,
+                            paymentStatus: payStatus,
+                            tabId: activeTabId,
+                            qrDataURL: qrData?.qrDataURL ?? '',
+                            checkoutUrl: qrData?.checkoutUrl ?? null,
+                            bankAccount: qrData?.bankAccount ?? null,
+                            orderSnapshot: qrData?.order ?? {
+                                code: order.code,
+                                totalAmount: order.totalAmount,
+                            },
+                        };
+                        setTransferSession(sessionBase);
                         if (qrData?.checkoutUrl || qrData?.qrDataURL) {
                             setVietQRModal({
+                                ...emptyVietQRModal(),
                                 show: true,
-                                qrDataURL: qrData.qrDataURL,
-                                order: qrData.order,
-                                bankAccount: qrData.bankAccount,
-                                checkoutUrl: qrData.checkoutUrl,
+                                qrDataURL: sessionBase.qrDataURL,
+                                order: sessionBase.orderSnapshot,
+                                bankAccount: sessionBase.bankAccount,
+                                checkoutUrl: sessionBase.checkoutUrl,
+                                orderId: order._id,
+                                paymentStatus: payStatus,
                             });
+                            toast.success('Đã tạo đơn chuyển khoản. QR dưới đây đồng bộ PayOS / VietQR — theo dõi trạng thái bên cạnh.');
                         } else {
-                            toast.success('Đơn hàng đã tạo. Không thể tạo mã QR.');
+                            toast.warning('Đơn hàng đã tạo. Không thể tạo mã QR — vẫn có thể kiểm tra trạng thái thanh toán (PayOS).');
                         }
                     } catch (qrErr) {
                         toast.warning(qrErr.response?.data?.message || 'Đơn đã tạo nhưng không tạo được mã QR');
+                        setTransferSession({
+                            orderId: order._id,
+                            paymentStatus: order.paymentStatus || 'pending',
+                            tabId: activeTabId,
+                            qrDataURL: '',
+                            checkoutUrl: null,
+                            bankAccount: null,
+                            orderSnapshot: { code: order.code, totalAmount: order.totalAmount },
+                        });
                     }
                 } else {
                     toast.success('Thanh toán thành công!');
+                    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? { ...t, items: [] } : t)));
+                    setCustomerPaid('');
+                    setForm((f) => ({ ...f, note: '', discount: 0 }));
+                    setSelectedCustomer(null);
                 }
-                setTabs((prev) => prev.map((t) => (t.id === activeTabId ? { ...t, items: [] } : t)));
-                setCustomerPaid('');
-                setForm((f) => ({ ...f, note: '', discount: 0 }));
-                setSelectedCustomer(null);
             } else {
                 toast.error(res?.message || 'Thanh toán thất bại');
             }
@@ -389,30 +954,80 @@ export default function CreateInvoicePage() {
                         <input
                             ref={searchInputRef}
                             type='text'
-                            placeholder='Tìm hàng hóa (F3)'
+                            placeholder={
+                                productSearchMode === PRODUCT_SEARCH_MODE.SCAN
+                                    ? 'Quét mã / SKU — Enter để thêm'
+                                    : 'Tìm hàng hóa (F3)'
+                            }
                             className='input input-ghost input-sm flex-1 min-w-0 border-0 focus:outline-none text-base-content placeholder:opacity-60 py-2'
                             value={search}
                             onChange={(e) => {
                                 setSearch(e.target.value);
-                                setShowSearchDropdown(true);
+                                if (productSearchMode === PRODUCT_SEARCH_MODE.MANUAL) setShowSearchDropdown(true);
                             }}
-                            onFocus={() => setShowSearchDropdown(true)}
+                            onFocus={() => {
+                                if (productSearchMode === PRODUCT_SEARCH_MODE.MANUAL) setShowSearchDropdown(true);
+                            }}
                             onBlur={() => setTimeout(() => setShowSearchDropdown(false), 150)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && searchResults.length > 0) {
-                                    handleAddProduct(searchResults[0]);
+                            onKeyDown={async (e) => {
+                                if (e.key !== 'Enter') return;
+                                if (productSearchMode === PRODUCT_SEARCH_MODE.SCAN) {
+                                    e.preventDefault();
+                                    const code = search.trim();
+                                    if (!code) return;
+                                    try {
+                                        const res = await getProducts({ page: 1, limit: 200, search: code.trim() });
+                                        const prods = (res?.data?.products || res?.products || []).filter((p) => !p.isDeleted);
+                                        const picked = resolveProductFromScan(code, prods);
+                                        if (picked) handleAddProduct(picked);
+                                        else if (!prods.length) toast.error('Không có sản phẩm');
+                                        else toast.error('Không có sản phẩm khớp mã. Kiểm tra mã hoặc dùng nhập tay.');
+                                    } catch {
+                                        toast.error('Lỗi khi tra sản phẩm');
+                                    }
+                                    return;
                                 }
+                                if (searchResults.length > 0) handleAddProduct(searchResults[0]);
                             }}
                         />
                         <button
                             type='button'
-                            className='p-2 hover:bg-base-200 text-base-content/60'
-                            aria-label='Quét mã vạch'
+                            className={`p-2 shrink-0 transition-colors ${
+                                productSearchMode === PRODUCT_SEARCH_MODE.SCAN
+                                    ? 'bg-primary/15 text-primary'
+                                    : 'hover:bg-base-200 text-base-content/60'
+                            }`}
+                            aria-label={
+                                productSearchMode === PRODUCT_SEARCH_MODE.SCAN
+                                    ? 'Chuyển sang nhập tay'
+                                    : 'Chuyển sang quét mã'
+                            }
+                            title={
+                                productSearchMode === PRODUCT_SEARCH_MODE.SCAN
+                                    ? 'Đang: Quét mã — bấm để nhập tay'
+                                    : 'Đang: Nhập tay — bấm để quét mã'
+                            }
+                            onClick={() => {
+                                setProductSearchMode((m) => {
+                                    const next =
+                                        m === PRODUCT_SEARCH_MODE.MANUAL ? PRODUCT_SEARCH_MODE.SCAN : PRODUCT_SEARCH_MODE.MANUAL;
+                                    if (next === PRODUCT_SEARCH_MODE.SCAN) {
+                                        queueMicrotask(() => searchInputRef.current?.focus());
+                                    }
+                                    return next;
+                                });
+                                setShowSearchDropdown(false);
+                                setSearch('');
+                            }}
                         >
-                            <ScanBarcode className='size-4' />
+                            {productSearchMode === PRODUCT_SEARCH_MODE.SCAN ? (
+                                <Keyboard className='size-4' />
+                            ) : (
+                                <ScanBarcode className='size-4' />
+                            )}
                         </button>
                     </div>
-                    {showSearchDropdown && (
+                    {showSearchDropdown && productSearchMode === PRODUCT_SEARCH_MODE.MANUAL && (
                         <div className='absolute top-full left-0 right-0 mt-1 rounded-lg border border-base-300 bg-base-100 shadow-lg z-50 overflow-hidden'>
                             {currentLocation && (
                                 <div className='px-3 py-1.5 text-xs text-base-content/70 bg-base-200 border-b border-base-300'>
@@ -571,75 +1186,99 @@ export default function CreateInvoicePage() {
                                     <th className='w-10'></th>
                                     <th className='w-24'>Mã</th>
                                     <th>Tên sản phẩm</th>
-                                    <th className='w-24 text-right'>SL</th>
+                                    <th className='w-32'>Số lượng</th>
                                     <th className='w-28 text-right'>Đơn giá</th>
                                     <th className='w-28 text-right'>Thành tiền</th>
-                                    <th className='w-10'></th>
-                                    <th className='w-10'></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={9}
+                                            colSpan={7}
                                             className='text-center text-base-content/50 py-12'
                                         >
-                                            Chưa có sản phẩm. Gõ tìm kiếm (F3) để thêm.
+                                            Chưa có sản phẩm. Gõ tìm kiếm (F3) hoặc bật quét mã để thêm.
                                         </td>
                                     </tr>
                                 ) : (
-                                    items.map((item, idx) => (
-                                        <tr
-                                            key={item.productId}
-                                            className='hover'
-                                        >
-                                            <td>{idx + 1}</td>
-                                            <td>
-                                                <button
-                                                    type='button'
-                                                    className='btn btn-ghost btn-xs btn-square text-error'
-                                                    onClick={() => handleRemoveItem(item.productId)}
-                                                    aria-label='Xóa'
-                                                >
-                                                    <Trash2 className='size-4' />
-                                                </button>
-                                            </td>
-                                            <td className='font-mono text-sm'>{item.sku || '—'}</td>
-                                            <td>{item.name}</td>
-                                            <td>
-                                                <input
-                                                    type='number'
-                                                    min={1}
-                                                    className={`input input-bordered input-sm w-16 text-right ${(stocksByProduct[item.productId] ?? 0) === 0 ? 'input-error' : ''}`}
-                                                    value={item.quantity}
-                                                    onChange={(e) => handleUpdateQty(item.productId, Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                                    title={(stocksByProduct[item.productId] ?? 0) === 0 ? 'Hết hàng' : ''}
-                                                />
-                                            </td>
-                                            <td className='text-right'>{(item.price || 0).toLocaleString()}đ</td>
-                                            <td className='text-right font-medium text-primary'>{((item.price || 0) * (item.quantity || 1)).toLocaleString()}đ</td>
-                                            <td>
-                                                <button
-                                                    type='button'
-                                                    className='btn btn-ghost btn-xs btn-square'
-                                                    onClick={() => handleUpdateQty(item.productId, (item.quantity || 1) + 1)}
-                                                    aria-label='Thêm 1'
-                                                >
-                                                    <Plus className='size-4' />
-                                                </button>
-                                            </td>
-                                            <td>
-                                                <button
-                                                    type='button'
-                                                    className='btn btn-ghost btn-xs btn-square'
-                                                    aria-label='Thêm'
-                                                >
-                                                    <MoreVertical className='size-4' />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    items.map((item, idx) => {
+                                        const stockAvail = stocksByProduct[item.productId] ?? 0;
+                                        const qty = Number(item.quantity) || 0;
+                                        const overStock = qty > stockAvail;
+                                        return (
+                                            <tr
+                                                key={item.productId}
+                                                className='hover'
+                                            >
+                                                <td>{idx + 1}</td>
+                                                <td>
+                                                    <button
+                                                        type='button'
+                                                        className='btn btn-ghost btn-xs btn-square text-error'
+                                                        onClick={() => handleRemoveItem(item.productId)}
+                                                        aria-label='Xóa'
+                                                    >
+                                                        <Trash2 className='size-4' />
+                                                    </button>
+                                                </td>
+                                                <td className='font-mono text-sm'>{item.sku || '—'}</td>
+                                                <td>{item.name}</td>
+                                                <td className='align-middle py-1'>
+                                                    <div
+                                                        className={`inline-flex h-7 w-full max-w-36 items-stretch overflow-hidden rounded-md border border-base-300 bg-base-100 shadow-sm ${
+                                                            overStock ? 'ring-1 ring-error/70 ring-offset-1 ring-offset-base-100' : ''
+                                                        }`}
+                                                        title={
+                                                            overStock
+                                                                ? `Tồn kho: ${stockAvail}, đang nhập: ${qty}`
+                                                                : stockAvail === 0
+                                                                  ? 'Hết hàng'
+                                                                  : `Tồn kho: ${stockAvail}`
+                                                        }
+                                                    >
+                                                        <button
+                                                            type='button'
+                                                            className='flex w-7 shrink-0 items-center justify-center border-0 bg-base-200/50 text-base-content transition-colors hover:bg-base-200 active:bg-base-300 border-r border-base-300'
+                                                            onClick={() => handleUpdateQty(item.productId, qty - 1)}
+                                                            aria-label={qty <= 1 ? 'Xóa khỏi đơn' : 'Giảm 1'}
+                                                        >
+                                                            <Minus className='size-3.5' strokeWidth={2.5} />
+                                                        </button>
+                                                        <input
+                                                            type='number'
+                                                            min={1}
+                                                            inputMode='numeric'
+                                                            aria-invalid={overStock}
+                                                            className={`h-7 min-h-7 min-w-9 flex-1 border-0 bg-base-100 px-0.5 text-center text-sm font-semibold tabular-nums leading-none text-base-content placeholder:text-base-content/40 focus:border-0 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                                                                overStock ? 'text-error' : ''
+                                                            }`}
+                                                            value={item.quantity}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onChange={(e) =>
+                                                                handleUpdateQty(
+                                                                    item.productId,
+                                                                    Math.max(1, parseInt(e.target.value, 10) || 1),
+                                                                )
+                                                            }
+                                                        />
+                                                        <button
+                                                            type='button'
+                                                            className='flex w-7 shrink-0 items-center justify-center border-0 bg-base-200/50 text-base-content transition-colors hover:bg-base-200 active:bg-base-300 border-l border-base-300'
+                                                            onClick={() => handleUpdateQty(item.productId, qty + 1)}
+                                                            aria-label='Tăng 1'
+                                                        >
+                                                            <Plus className='size-3.5' strokeWidth={2.5} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td className='text-right'>{(item.price || 0).toLocaleString()}đ</td>
+                                                <td className='text-right font-medium text-primary'>
+                                                    {((item.price || 0) * (item.quantity || 1)).toLocaleString()}đ
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -664,15 +1303,32 @@ export default function CreateInvoicePage() {
                         <div>
                             <label className='label py-0 text-xs'>Người bán hàng</label>
                             {canSelectSeller ? (
-                                <div className='dropdown dropdown-bottom w-full'>
+                                <div
+                                    className={`dropdown dropdown-bottom w-full${lockPaymentUiForCurrentTransfer ? ' pointer-events-none opacity-60' : ''}`}
+                                >
                                     <label
-                                        tabIndex={0}
-                                        className='btn btn-sm btn-outline w-full justify-between bg-base-100'
+                                        tabIndex={lockPaymentUiForCurrentTransfer ? -1 : 0}
+                                        className='btn btn-sm btn-outline w-full justify-between bg-base-100 gap-2 min-h-10 h-auto py-1.5'
+                                        onClick={() => setSellerSearch('')}
                                     >
-                                        {selectedSeller
-                                            ? [selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') || selectedSeller.username
-                                            : 'Chọn người bán'}
-                                        <ChevronDown className='size-4' />
+                                        <span className='flex items-center gap-2 min-w-0 flex-1 text-left'>
+                                            {selectedSeller ? (
+                                                <>
+                                                    <span className='truncate font-medium'>
+                                                        {[selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') ||
+                                                            selectedSeller.username}
+                                                    </span>
+                                                    {getUserRoleLabels(selectedSeller) ? (
+                                                        <span className='badge badge-sm badge-ghost shrink-0'>
+                                                            {getUserRoleLabels(selectedSeller)}
+                                                        </span>
+                                                    ) : null}
+                                                </>
+                                            ) : (
+                                                'Chọn người bán'
+                                            )}
+                                        </span>
+                                        <ChevronDown className='size-4 shrink-0' />
                                     </label>
                                     <ul
                                         tabIndex={0}
@@ -681,6 +1337,9 @@ export default function CreateInvoicePage() {
                                         <li className='menu-title px-2 py-1'>
                                             <input
                                                 type='text'
+                                                name='pos-seller-search'
+                                                autoComplete='off'
+                                                autoCorrect='off'
                                                 placeholder='Tìm người bán'
                                                 className='input input-sm input-bordered w-full'
                                                 value={sellerSearch}
@@ -690,11 +1349,21 @@ export default function CreateInvoicePage() {
                                             />
                                         </li>
                                         {sellers
+                                            .filter(
+                                                (s) =>
+                                                    !selectedSeller?._id ||
+                                                    String(s._id) !== String(selectedSeller._id),
+                                            )
                                             .filter((s) => {
                                                 const q = sellerSearch.trim().toLowerCase();
                                                 if (!q) return true;
                                                 const name = [s.firstName, s.lastName].filter(Boolean).join(' ').toLowerCase();
-                                                return name.includes(q) || (s.username || '').toLowerCase().includes(q);
+                                                const rolesStr = getUserRoleLabels(s).toLowerCase();
+                                                return (
+                                                    name.includes(q) ||
+                                                    (s.username || '').toLowerCase().includes(q) ||
+                                                    rolesStr.includes(q)
+                                                );
                                             })
                                             .map((s) => (
                                                 <li key={s._id}>
@@ -704,17 +1373,36 @@ export default function CreateInvoicePage() {
                                                             setSelectedSeller(s);
                                                             setSellerSearch('');
                                                         }}
-                                                        className={selectedSeller?._id === s._id ? 'active' : ''}
+                                                        className={`${selectedSeller?._id === s._id ? 'active' : ''} flex flex-wrap items-center gap-2 justify-between`}
                                                     >
-                                                        {[s.firstName, s.lastName].filter(Boolean).join(' ') || s.username}
+                                                        <span className='text-left'>
+                                                            {[s.firstName, s.lastName].filter(Boolean).join(' ') || s.username}
+                                                        </span>
+                                                        {getUserRoleLabels(s) ? (
+                                                            <span className='badge badge-sm badge-ghost whitespace-normal'>
+                                                                {getUserRoleLabels(s)}
+                                                            </span>
+                                                        ) : null}
                                                     </button>
                                                 </li>
                                             ))}
                                     </ul>
                                 </div>
                             ) : (
-                                <div className='px-3 py-2 rounded-lg bg-base-100 border border-base-300 text-sm'>
-                                    {selectedSeller ? [selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') || selectedSeller.username : '—'}
+                                <div className='px-3 py-2 rounded-lg bg-base-100 border border-base-300 text-sm flex flex-wrap items-center gap-2'>
+                                    {selectedSeller ? (
+                                        <>
+                                            <span>
+                                                {[selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') ||
+                                                    selectedSeller.username}
+                                            </span>
+                                            {getUserRoleLabels(selectedSeller) ? (
+                                                <span className='badge badge-sm badge-ghost'>{getUserRoleLabels(selectedSeller)}</span>
+                                            ) : null}
+                                        </>
+                                    ) : (
+                                        '—'
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -838,11 +1526,11 @@ export default function CreateInvoicePage() {
                             </div>
                             <div className='flex justify-between items-center text-sm gap-2'>
                                 <span>
-                                    {hasTierDiscount
-                                        ? `Giảm theo hạng ${tierPolicy?.name || ''} (${tierPolicy?.discountPercent ?? 0}%)`
-                                        : 'Giảm giá'}
+                                    {selectedCustomer && tierPolicy
+                                        ? `Chiết khấu hạng · ${tierPolicy.name} (${tierPolicy.discountPercent ?? 0}%)`
+                                        : 'Giảm giá (nhập tay)'}
                                 </span>
-                                {hasTierDiscount ? (
+                                {selectedCustomer && tierPolicy ? (
                                     <span className='font-medium text-primary'>{(discount || 0).toLocaleString()}đ</span>
                                 ) : (
                                     <input
@@ -876,13 +1564,14 @@ export default function CreateInvoicePage() {
                                 {PAYMENT_METHODS.map((pm) => (
                                     <label
                                         key={pm.value}
-                                        className='label cursor-pointer gap-2'
+                                        className={`label gap-2${lockPaymentUiForCurrentTransfer ? ' cursor-not-allowed opacity-60' : ' cursor-pointer'}`}
                                     >
                                         <input
                                             type='radio'
                                             name='payment'
                                             className='radio radio-primary radio-sm'
                                             checked={form.paymentMethod === pm.value}
+                                            disabled={lockPaymentUiForCurrentTransfer}
                                             onChange={() => setForm((f) => ({ ...f, paymentMethod: pm.value }))}
                                         />
                                         <span className='label-text text-sm'>{pm.label}</span>
@@ -899,6 +1588,124 @@ export default function CreateInvoicePage() {
                                         Cấu hình
                                     </Link>
                                 </div>
+                            )}
+                            {form.paymentMethod === 'transfer' && !needsBankAccount && bankAccounts.length > 0 && (
+                                <div className='mt-2'>
+                                    <label className='label py-0 text-xs'>Tài khoản nhận (chi nhánh)</label>
+                                    <select
+                                        className='select select-bordered select-sm w-full'
+                                        value={selectedBankAccountId}
+                                        disabled={lockPaymentUiForCurrentTransfer}
+                                        onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                                    >
+                                        {[...bankAccounts]
+                                            .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+                                            .map((acc) => (
+                                                <option
+                                                    key={acc._id}
+                                                    value={acc._id}
+                                                >
+                                                    {(acc.bankName || acc.bankCode || 'Ngân hàng') + ' · ' + acc.bankAccount}
+                                                    {acc.isDefault ? ' — mặc định' : ''}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                            )}
+                            {form.paymentMethod === 'transfer' && !needsBankAccount && items.length > 0 && (
+                                <>
+                                    {transferFooterActive && transferSession?.orderId ? (
+                                        <div className='mt-3 rounded-lg border border-base-300 bg-base-100 p-3 text-center space-y-2'>
+                                            <p className='text-xs font-medium text-base-content/80'>
+                                                {transferSession.checkoutUrl
+                                                    ? 'Mã QR thanh toán (PayOS)'
+                                                    : 'Mã QR chuyển khoản (đơn đã tạo)'}
+                                            </p>
+                                            <div className='flex flex-wrap items-center justify-center gap-2'>
+                                                <span
+                                                    className={`badge text-xs ${
+                                                        transferSession.paymentStatus === 'paid'
+                                                            ? 'badge-success'
+                                                            : 'badge-warning'
+                                                    }`}
+                                                >
+                                                    {transferSession.paymentStatus === 'paid'
+                                                        ? 'Đã thanh toán'
+                                                        : 'Chưa xác nhận — đồng bộ PayOS'}
+                                                </span>
+                                                {transferSession.paymentStatus !== 'paid' && (
+                                                    <span className='text-[11px] text-base-content/50'>
+                                                        Tự kiểm tra mỗi 4 giây · nút Trạng thái
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className='text-xs text-base-content/60'>
+                                                Mã đơn:{' '}
+                                                <span className='font-mono font-medium'>
+                                                    {transferSession.orderSnapshot?.code ?? '—'}
+                                                </span>{' '}
+                                                • {(transferSession.orderSnapshot?.totalAmount ?? 0).toLocaleString()}đ
+                                                {transferSession.bankAccount
+                                                    ? ` — ${transferSession.bankAccount.bankName || transferSession.bankAccount.bankCode || ''}`
+                                                    : ''}
+                                            </p>
+                                            {transferSession.qrDataURL ? (
+                                                <img
+                                                    src={transferSession.qrDataURL}
+                                                    alt='QR thanh toán'
+                                                    className='mx-auto w-40 h-40 object-contain rounded border border-base-200 bg-white'
+                                                />
+                                            ) : (
+                                                <p className='text-[11px] text-amber-700 dark:text-amber-200/90'>
+                                                    Chưa có hình QR. Dùng link PayOS bên dưới (nếu có) hoặc «Trạng thái» để
+                                                    đồng bộ.
+                                                </p>
+                                            )}
+                                            {transferSession.bankAccount && (
+                                                <p className='text-[11px] text-base-content/65'>
+                                                    STK{' '}
+                                                    <span className='font-mono'>
+                                                        {transferSession.bankAccount.bankAccount}
+                                                    </span>
+                                                </p>
+                                            )}
+                                            {transferSession.checkoutUrl &&
+                                                transferSession.paymentStatus !== 'paid' && (
+                                                    <a
+                                                        href={transferSession.checkoutUrl}
+                                                        target='_blank'
+                                                        rel='noopener noreferrer'
+                                                        className='btn btn-primary btn-sm w-full'
+                                                    >
+                                                        Mở thanh toán PayOS
+                                                    </a>
+                                                )}
+                                        </div>
+                                    ) : (
+                                        transferPreviewQrUrl && (
+                                            <div className='mt-3 rounded-lg border border-base-300 bg-base-100 p-3 text-center'>
+                                                <p className='text-xs font-medium text-base-content/80 mb-1'>
+                                                    Xem trước VietQR (chưa tạo đơn)
+                                                </p>
+                                                <p className='text-xs text-base-content/60 mb-2'>
+                                                    {(total || 0).toLocaleString()}đ —{' '}
+                                                    {bankForTransferPreview?.bankName ||
+                                                        bankForTransferPreview?.bankCode ||
+                                                        'TK'}
+                                                </p>
+                                                <img
+                                                    src={transferPreviewQrUrl}
+                                                    alt='VietQR xem trước'
+                                                    className='mx-auto w-40 h-40 object-contain rounded border border-base-200 bg-white'
+                                                />
+                                                <p className='text-[11px] text-base-content/50 mt-2'>
+                                                    Sau «Thanh toán», mã QR thật (PayOS nếu bật) hiển thị ở đây và đồng bộ
+                                                    trạng thái tự động.
+                                                </p>
+                                            </div>
+                                        )
+                                    )}
+                                </>
                             )}
                         </div>
 
@@ -931,6 +1738,7 @@ export default function CreateInvoicePage() {
                         <select
                             className='select select-bordered select-sm w-full mb-2'
                             value={form.locationId}
+                            disabled={pendingTransferHoldsLocation}
                             onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
                         >
                             <option value=''>-- Chi nhánh --</option>
@@ -943,14 +1751,68 @@ export default function CreateInvoicePage() {
                                 </option>
                             ))}
                         </select>
-                        <button
-                            type='button'
-                            className='btn btn-primary w-full btn-lg'
-                            onClick={handleSubmit}
-                            disabled={submitting || items.length === 0}
-                        >
-                            {submitting ? 'Đang xử lý...' : 'THANH TOÁN'}
-                        </button>
+                        {transferFooterActive ? (
+                            <div className='space-y-2'>
+                                {transferSession.paymentStatus === 'paid' ? (
+                                    <div className='flex gap-2'>
+                                        <button
+                                            type='button'
+                                            className='btn btn-outline btn-lg flex-1 gap-1'
+                                            onClick={handlePrintTransferInvoice}
+                                        >
+                                            <Printer className='size-5 shrink-0' />
+                                            In hóa đơn
+                                        </button>
+                                        <button
+                                            type='button'
+                                            className='btn btn-success btn-lg flex-1'
+                                            onClick={handleTransferComplete}
+                                        >
+                                            Hoàn thành hóa đơn
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className='flex gap-2'>
+                                        <button
+                                            type='button'
+                                            className='btn btn-outline flex-1'
+                                            disabled={cancelOrderSubmitting || checkPaymentSubmitting || submitting}
+                                            onClick={handleTransferCancel}
+                                        >
+                                            {cancelOrderSubmitting ? 'Đang hủy...' : 'Hủy đơn'}
+                                        </button>
+                                        <button
+                                            type='button'
+                                            className='btn btn-primary flex-1'
+                                            disabled={checkPaymentSubmitting || cancelOrderSubmitting || submitting}
+                                            onClick={handleTransferCheckStatus}
+                                        >
+                                            {checkPaymentSubmitting ? 'Đang kiểm tra...' : 'Trạng thái'}
+                                        </button>
+                                    </div>
+                                )}
+                                <p className='text-[11px] text-center text-base-content/55'>
+                                    {transferSession.paymentStatus === 'paid'
+                                        ? 'Đã xác nhận chuyển khoản — nhấn Hoàn thành để kết thúc và xóa giỏ trên tab này.'
+                                        : 'Đang chờ CK — Hủy đơn hoàn tồn; Trạng thái đồng bộ PayOS (tự kiểm tra mỗi 4 giây).'}
+                                </p>
+                            </div>
+                        ) : (
+                            <button
+                                type='button'
+                                className='btn btn-primary w-full btn-lg'
+                                onClick={handleSubmit}
+                                disabled={
+                                    submitting ||
+                                    items.length === 0 ||
+                                    (transferSession &&
+                                        transferSession.paymentStatus !== 'paid' &&
+                                        form.paymentMethod === 'transfer')
+                                }
+                            >
+                                {submitting ? 'Đang xử lý...' : 'THANH TOÁN'}
+                            </button>
+                        )}
                     </div>
                 </aside>
             </div>
@@ -963,7 +1825,36 @@ export default function CreateInvoicePage() {
                             Mã đơn: <span className='font-mono font-medium'>{vietQRModal.order?.code}</span> •{' '}
                             {(vietQRModal.order?.totalAmount || 0).toLocaleString()}đ
                         </p>
-                        {vietQRModal.checkoutUrl && (
+                        <div className='mt-2 flex flex-col items-stretch gap-2'>
+                            <div className='flex flex-wrap items-center justify-center gap-2'>
+                                <span
+                                    className={`badge text-xs ${
+                                        vietQRModal.paymentStatus === 'paid' ? 'badge-success' : 'badge-warning'
+                                    }`}
+                                >
+                                    {vietQRModal.paymentStatus === 'paid'
+                                        ? 'Đã chuyển khoản'
+                                        : 'Chưa xác nhận thanh toán'}
+                                </span>
+                                {vietQRModal.orderId && vietQRModal.paymentStatus !== 'paid' && (
+                                    <span className='text-xs text-base-content/50'>Tự kiểm tra mỗi 4 giây</span>
+                                )}
+                            </div>
+                            {vietQRModal.qrDataURL ? (
+                                <img
+                                    src={vietQRModal.qrDataURL}
+                                    alt='QR thanh toán'
+                                    className='mx-auto max-w-[260px] rounded-lg border border-base-200 bg-white p-2'
+                                />
+                            ) : null}
+                            {vietQRModal.bankAccount && (
+                                <p className='text-xs text-base-content/70 text-center'>
+                                    {vietQRModal.bankAccount.bankName || vietQRModal.bankAccount.bankCode} · STK{' '}
+                                    <span className='font-mono'>{vietQRModal.bankAccount.bankAccount}</span>
+                                </p>
+                            )}
+                        </div>
+                        {vietQRModal.checkoutUrl && vietQRModal.paymentStatus !== 'paid' && (
                             <a
                                 href={vietQRModal.checkoutUrl}
                                 target='_blank'
@@ -973,11 +1864,40 @@ export default function CreateInvoicePage() {
                                 Thanh toán qua PayOS
                             </a>
                         )}
+                        {vietQRModal.orderId && (
+                            <button
+                                type='button'
+                                className='btn btn-outline btn-sm w-full'
+                                onClick={async () => {
+                                    try {
+                                        const res = await syncPaymentStatus(vietQRModal.orderId);
+                                        const ord = res?.data?.order;
+                                        if (ord?.paymentStatus) {
+                                            const oid = vietQRModal.orderId;
+                                            const ps = ord.paymentStatus;
+                                            setVietQRModal((m) => ({ ...m, paymentStatus: ps }));
+                                            setTransferSession((s) =>
+                                                s && String(s.orderId) === String(oid) ? { ...s, paymentStatus: ps } : s,
+                                            );
+                                            if (ps === 'paid') {
+                                                toast.success('Đã nhận thanh toán chuyển khoản');
+                                            } else {
+                                                toast.info('Chưa có xác nhận thanh toán (PayOS / ngân hàng).');
+                                            }
+                                        }
+                                    } catch (e) {
+                                        toast.error(e.response?.data?.message || 'Không kiểm tra được trạng thái');
+                                    }
+                                }}
+                            >
+                                Kiểm tra thanh toán ngay
+                            </button>
+                        )}
                         <div className='modal-action'>
                             <button
                                 type='button'
                                 className='btn'
-                                onClick={() => setVietQRModal({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null })}
+                                onClick={() => setVietQRModal((m) => ({ ...m, show: false }))}
                             >
                                 Đóng
                             </button>
@@ -986,7 +1906,7 @@ export default function CreateInvoicePage() {
                     <form method='dialog' className='modal-backdrop'>
                         <button
                             type='button'
-                            onClick={() => setVietQRModal({ show: false, qrDataURL: '', order: null, bankAccount: null, checkoutUrl: null })}
+                            onClick={() => setVietQRModal((m) => ({ ...m, show: false }))}
                         >
                             đóng
                         </button>
