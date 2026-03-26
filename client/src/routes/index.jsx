@@ -36,6 +36,8 @@ import NotFoundPage from '../pages/error/NotFoundPage';
 import ForbiddenPage from '../pages/error/ForbiddenPage';
 import ListProduct from '../pages/ListProduct';
 import BatteryTradeInPage from '../pages/BatteryTradeInPage';
+import BatteryTradeInLookupPage from '../pages/BatteryTradeInLookupPage';
+import BatteryTradeInMinePage from '../pages/BatteryTradeInMinePage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 
 // Dashboards
@@ -98,6 +100,14 @@ export const AppRoutes = () => {
             <Route
                 path='/battery-trade-in'
                 element={<BatteryTradeInPage />}
+            />
+            <Route
+                path='/battery-trade-in/tra-cuu'
+                element={<BatteryTradeInLookupPage />}
+            />
+            <Route
+                path='/battery-trade-in/don-cua-toi'
+                element={<BatteryTradeInMinePage />}
             />
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}

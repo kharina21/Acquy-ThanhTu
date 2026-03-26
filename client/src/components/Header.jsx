@@ -1,4 +1,4 @@
-import { Search, User, LogOut, ShoppingCart, Package, Menu } from 'lucide-react';
+import { Search, User, LogOut, ShoppingCart, Package, Menu, ChevronDown, Send, FileSearch, ClipboardList } from 'lucide-react';
 import { getDisplayName } from '@/lib/utils';
 import { useNavigate, Link } from 'react-router';
 import { useState } from 'react';
@@ -10,7 +10,6 @@ import { getProducts } from '@/services/productService';
 const navLinks = [
     { label: 'Trang chủ', to: '/' },
     { label: 'Sản phẩm', to: '/listproduct' },
-    { label: 'Thu mua ắc quy', to: '/battery-trade-in' },
     { label: 'Liên hệ', to: '#' },
 ];
 
@@ -196,6 +195,40 @@ export function Header({ user, onLogout }) {
                                 </Link>
                             )
                         )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="px-4 py-2 rounded-lg text-sm font-medium opacity-90 hover:opacity-100 hover:bg-white/10 transition-all inline-flex items-center gap-1 outline-none"
+                                >
+                                    Thu mua ắc quy
+                                    <ChevronDown className="w-4 h-4 opacity-90" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="start"
+                                className="w-56 rounded-xl shadow-lg border-gray-100 p-1 bg-white"
+                            >
+                                <DropdownMenuItem asChild className="rounded-lg cursor-pointer gap-2 py-2.5">
+                                    <Link to="/battery-trade-in" className="flex items-center gap-2 w-full">
+                                        <Send className="w-4 h-4 text-primary shrink-0" />
+                                        Gửi yêu cầu
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild className="rounded-lg cursor-pointer gap-2 py-2.5">
+                                    <Link to="/battery-trade-in/tra-cuu" className="flex items-center gap-2 w-full">
+                                        <FileSearch className="w-4 h-4 text-primary shrink-0" />
+                                        Tra cứu đơn thu cũ
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild className="rounded-lg cursor-pointer gap-2 py-2.5">
+                                    <Link to="/battery-trade-in/don-cua-toi" className="flex items-center gap-2 w-full">
+                                        <ClipboardList className="w-4 h-4 text-primary shrink-0" />
+                                        Đơn thu cũ của bạn
+                                    </Link>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
             </nav>
@@ -230,6 +263,35 @@ export function Header({ user, onLogout }) {
                             </Link>
                         )
                     )}
+                    <div className="px-4 pt-1 pb-2">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Thu mua ắc quy</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-primary/30">
+                            <Link
+                                to="/battery-trade-in"
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2.5 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <Send className="w-4 h-4 text-primary shrink-0" />
+                                Gửi yêu cầu
+                            </Link>
+                            <Link
+                                to="/battery-trade-in/tra-cuu"
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2.5 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <FileSearch className="w-4 h-4 text-primary shrink-0" />
+                                Tra cứu đơn thu cũ
+                            </Link>
+                            <Link
+                                to="/battery-trade-in/don-cua-toi"
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2.5 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <ClipboardList className="w-4 h-4 text-primary shrink-0" />
+                                Đơn thu cũ của bạn
+                            </Link>
+                        </div>
+                    </div>
                     {/* Mobile search */}
                     <div className="pt-3 mt-3 border-t border-gray-100">
                         <div className="relative">

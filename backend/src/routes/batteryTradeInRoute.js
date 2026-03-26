@@ -5,8 +5,15 @@ import { hasRole } from '../middlewares/rbac.js';
 import {
     submitBatteryTradeIn,
     getBatteryTradeInList,
+    getBatteryTradeInById,
+    getMyBatteryTradeIns,
     updateBatteryTradeInStatus,
     uploadBatteryImage,
+    lookupBatteryTradeIn,
+    getBatteryTradeInPrefill,
+    updateBatteryTradeInByLookup,
+    deleteBatteryTradeInByLookup,
+    updateBatteryTradeInDetailsByAdmin,
 } from '../controllers/batteryTradeInController.js';
 
 const uploadImage = multer({
@@ -24,14 +31,25 @@ const router = express.Router();
 // Public - Upload ảnh acquy
 router.post('/upload-image', uploadImage.array('image', 5), uploadBatteryImage);
 
+// Public - Tra cứu / prefill / sửa-xóa khi đang xử lý (mã + Gmail)
+router.get('/lookup/prefill', getBatteryTradeInPrefill);
+router.post('/lookup', lookupBatteryTradeIn);
+router.patch('/lookup', updateBatteryTradeInByLookup);
+router.post('/lookup/delete', deleteBatteryTradeInByLookup);
+
 // Public - Gửi yêu cầu thu cũ (guest và customer đều dùng được, optional auth để lưu userId nếu đã đăng nhập)
 router.post('/', optionalAuthenticate, submitBatteryTradeIn);
+
+// Đã đăng nhập — đơn thu cũ của chính user (không cần admin)
+router.get('/mine', authenticate, getMyBatteryTradeIns);
 
 // Admin/Manager - Lấy danh sách và cập nhật trạng thái
 router.use(authenticate);
 router.use(hasRole('admin', 'manager'));
 
 router.get('/', getBatteryTradeInList);
+router.get('/:id', getBatteryTradeInById);
+router.patch('/:id/details', updateBatteryTradeInDetailsByAdmin);
 router.patch('/:id', updateBatteryTradeInStatus);
 
 export default router;

@@ -15,7 +15,7 @@ const formatDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—');
 const OrderReportPage = () => {
     const { currentLocationId, locations } = useBranchStore();
     const currentLocation = locations?.find((l) => l._id === currentLocationId);
-    const [orders, setOrders] = useState([]);
+    const [items, setItems] = useState([]);
     const [summary, setSummary] = useState({
         totalRevenue: 0,
         totalOrders: 0,
@@ -34,10 +34,12 @@ const OrderReportPage = () => {
             const params = { page, limit: 20 };
             if (dateFrom) params.dateFrom = dateFrom;
             if (dateTo) params.dateTo = dateTo;
-            if (currentLocationId) params.locationId = currentLocationId;
+            if (currentLocationId && currentLocationId !== 'all') {
+                params.locationId = currentLocationId;
+            }
             const res = await getOrderReport(params);
             const data = res?.data;
-            setOrders(data?.orders || []);
+            setItems(data?.items ?? data?.orders ?? []);
             setSummary(
                 data?.summary || {
                     totalRevenue: 0,
@@ -66,12 +68,42 @@ const OrderReportPage = () => {
         return name || c.username || c.email || '—';
     };
 
+    const getRowCode = (row) => {
+        if (row.type === 'battery_trade_in') return row.requestCode || String(row._id).slice(-8);
+        return row.code;
+    };
+
+    const getRowCustomer = (row) => {
+        if (row.type === 'battery_trade_in') return row.name || row.email || '—';
+        return getCustomerName(row);
+    };
+
+    const getRowDate = (row) => {
+        if (row.type === 'battery_trade_in') return formatDate(row.completedAt || row.createdAt);
+        return formatDate(row.createdAt);
+    };
+
+    const getRowAmount = (row) => {
+        if (row.type === 'battery_trade_in') return row.completedAmount ?? 0;
+        return row.totalAmount;
+    };
+
+    const getRowLocation = (row) => {
+        if (row.type === 'battery_trade_in') return row.locationId?.name || row.locationId?.code || '—';
+        return row.location?.name || row.location?.code || '—';
+    };
+
+    const getDetailTo = (row) => {
+        if (row.type === 'battery_trade_in') return `/admin/battery-trade-in?detail=${row._id}`;
+        return `/admin/orders/${row._id}`;
+    };
+
     return (
         <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
             <div className="container mx-auto">
                 <div className="flex items-center gap-3 mb-6">
                     <BarChart3 className="w-8 h-8 text-primary" />
-                    <h1 className="text-2xl font-bold text-base-content">Báo cáo đơn hàng</h1>
+                    <h1 className="text-2xl font-bold text-base-content">Báo cáo doanh thu</h1>
                 </div>
 
                 <p className="text-base-content/70 mb-6">
@@ -157,18 +189,21 @@ const OrderReportPage = () => {
                     </div>
                 </div>
 
-                {/* Bảng đơn hàng */}
+                {/* Bảng giao dịch */}
                 <div className="bg-base-100 rounded-lg shadow overflow-hidden">
                     <div className="px-6 py-4 border-b border-base-200">
-                        <h2 className="font-semibold">Danh sách đơn hàng đã thanh toán</h2>
+                        <h2 className="font-semibold">Danh sách giao dịch</h2>
+                        <p className="text-sm text-base-content/60 mt-1">
+                            Đơn hàng đã thanh toán và đơn thu cũ đã hoàn thành thu mua — sắp xếp theo thời gian mới nhất.
+                        </p>
                     </div>
                     {loading ? (
                         <div className="flex justify-center py-12">
                             <span className="loading loading-spinner loading-lg text-primary" />
                         </div>
-                    ) : orders.length === 0 ? (
+                    ) : items.length === 0 ? (
                         <div className="text-center py-12 text-base-content/60">
-                            <p>Chưa có đơn hàng nào đã xác nhận và thanh toán trong khoảng thời gian này</p>
+                            <p>Chưa có giao dịch nào trong khoảng thời gian này</p>
                         </div>
                     ) : (
                         <>
@@ -176,34 +211,46 @@ const OrderReportPage = () => {
                                 <table className="table table-zebra">
                                     <thead>
                                         <tr>
-                                            <th>Mã đơn</th>
+                                            <th>Loại</th>
+                                            <th>Mã</th>
                                             <th>Khách hàng</th>
-                                            <th>Ngày đặt</th>
+                                            <th>Ngày</th>
                                             <th>Chi nhánh</th>
-                                            <th className="text-right">Tổng tiền</th>
+                                            <th className="text-right">Số tiền</th>
                                             <th className="w-12"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {orders.map((order) => (
-                                            <tr key={order._id}>
+                                        {items.map((row) => (
+                                            <tr key={`${row.type}-${row._id}`}>
+                                                <td>
+                                                    {row.type === 'battery_trade_in' ? (
+                                                        <span className="badge badge-accent badge-sm whitespace-nowrap">
+                                                            Thu cũ
+                                                        </span>
+                                                    ) : (
+                                                        <span className="badge badge-ghost badge-sm whitespace-nowrap">
+                                                            Đơn hàng
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="font-medium">
                                                     <Link
-                                                        to={`/admin/orders/${order._id}`}
+                                                        to={getDetailTo(row)}
                                                         className="link link-primary hover:underline"
                                                     >
-                                                        {order.code}
+                                                        {getRowCode(row)}
                                                     </Link>
                                                 </td>
-                                                <td>{getCustomerName(order)}</td>
-                                                <td>{formatDate(order.createdAt)}</td>
-                                                <td>{order.location?.name || order.location?.code || '—'}</td>
+                                                <td>{getRowCustomer(row)}</td>
+                                                <td>{getRowDate(row)}</td>
+                                                <td>{getRowLocation(row)}</td>
                                                 <td className="text-right font-medium text-primary">
-                                                    {formatVND(order.totalAmount)}
+                                                    {formatVND(getRowAmount(row))}
                                                 </td>
                                                 <td>
                                                     <Link
-                                                        to={`/admin/orders/${order._id}`}
+                                                        to={getDetailTo(row)}
                                                         className="btn btn-ghost btn-xs"
                                                         title="Xem chi tiết"
                                                     >
@@ -226,7 +273,7 @@ const OrderReportPage = () => {
                                         Trước
                                     </button>
                                     <span className="flex items-center px-4 text-sm">
-                                        Trang {pagination.page} / {pagination.totalPages} ({pagination.total} đơn)
+                                        Trang {pagination.page} / {pagination.totalPages} ({pagination.total} giao dịch)
                                     </span>
                                     <button
                                         className="btn btn-sm"
