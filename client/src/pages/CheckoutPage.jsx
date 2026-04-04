@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCartStore } from '@/stores/useCartStore';
@@ -6,8 +6,23 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { createOrder, generateVietQR, getCheckoutPreview } from '@/services/orderService';
-import { getProvinces, getDistricts, getWards } from '@/services/addressService';
+import { getProvinces } from '@/services/addressService';
+import { getShippingAddresses } from '@/services/shippingAddressService';
+import { ShippingAddressBookDialog } from '@/components/checkout/ShippingAddressBookDialog';
+import { MapPin, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+
+const emptyShippingFields = () => ({
+  recipientName: '',
+  shippingPhone: '',
+  provinceCode: '',
+  provinceName: '',
+  districtCode: '',
+  districtName: '',
+  wardCode: '',
+  wardName: '',
+  addressLine: '',
+});
 
 // Validate tên người nhận: 2–100 ký tự, chữ và dấu cách, không số
 const validateRecipientName = (name) => {
@@ -46,12 +61,10 @@ const validateNote = (note) => {
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user, accessToken, logout } = useAuthStore();
-  const { items, loadCartFromServer, clearCartServer, setItemsFromServer } = useCartStore();
+  const { items, loadCartFromServer } = useCartStore();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [provinces, setProvinces] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [wards, setWards] = useState([]);
   const [form, setForm] = useState({
     paymentMethod: 'transfer',
     recipientName: '',
@@ -65,9 +78,56 @@ export default function CheckoutPage() {
     shippingPhone: '',
     note: '',
   });
-  const [orderSuccess, setOrderSuccess] = useState(null); // { order, qrDataURL, bankAccount, checkoutUrl }
-  const [checkoutPreview, setCheckoutPreview] = useState(null); // { tierName, discountPercent, discount, subtotal, finalTotal }
-  const [errors, setErrors] = useState({}); // { recipientName?, shippingPhone?, addressLine?, provinceCode?, districtCode?, wardCode?, note? }
+  const [orderSuccess, setOrderSuccess] = useState(null);
+  const [checkoutPreview, setCheckoutPreview] = useState(null);
+  const [errors, setErrors] = useState({});
+
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addressBookOpen, setAddressBookOpen] = useState(false);
+
+  const defaultAddress = useMemo(
+    () => savedAddresses.find((a) => a.isDefault) ?? null,
+    [savedAddresses]
+  );
+
+  const applySavedAddress = (addr) => {
+    if (!addr) return;
+    setForm((f) => ({
+      ...f,
+      recipientName: addr.recipientName,
+      shippingPhone: addr.shippingPhone,
+      provinceCode: String(addr.provinceCode),
+      provinceName: addr.provinceName,
+      districtCode: String(addr.districtCode),
+      districtName: addr.districtName,
+      wardCode: String(addr.wardCode),
+      wardName: addr.wardName,
+      addressLine: addr.addressLine,
+    }));
+  };
+
+  const loadAddresses = async () => {
+    setAddressesLoading(true);
+    try {
+      const res = await getShippingAddresses();
+      const list = res?.data?.addresses ?? [];
+      setSavedAddresses(list);
+      const def = list.find((a) => a.isDefault);
+      if (def) applySavedAddress(def);
+      else setForm((f) => ({ ...f, ...emptyShippingFields() }));
+    } catch (e) {
+      console.error(e);
+      setSavedAddresses([]);
+      setForm((f) => ({ ...f, ...emptyShippingFields() }));
+    } finally {
+      setAddressesLoading(false);
+    }
+  };
+
+  const openAddressBook = () => {
+    setAddressBookOpen(true);
+  };
 
   useEffect(() => {
     if (!accessToken) {
@@ -79,9 +139,7 @@ export default function CheckoutPage() {
       try {
         await loadCartFromServer();
         getProvinces().then(setProvinces).catch(() => setProvinces([]));
-        getCheckoutPreview()
-          .then((res) => res?.data && setCheckoutPreview(res.data))
-          .catch(() => setCheckoutPreview(null));
+        await loadAddresses();
       } catch (e) {
         console.error(e);
         toast.error('Lỗi khi tải dữ liệu');
@@ -92,24 +150,21 @@ export default function CheckoutPage() {
     init();
   }, [accessToken, navigate]);
 
-  useEffect(() => {
-    if (!form.provinceCode) {
-      setDistricts([]);
-      setWards([]);
-      return;
-    }
-    getDistricts(form.provinceCode).then(setDistricts).catch(() => setDistricts([]));
-    setForm((f) => ({ ...f, districtCode: '', districtName: '', wardCode: '', wardName: '' }));
-  }, [form.provinceCode]);
+  const checkoutPreviewKey = useMemo(
+    () => items.map((i) => `${i.productId}:${i.selected !== false ? 1 : 0}`).join('|'),
+    [items]
+  );
 
   useEffect(() => {
-    if (!form.districtCode) {
-      setWards([]);
+    if (!accessToken || loading) return;
+    if (items.length === 0) {
+      setCheckoutPreview(null);
       return;
     }
-    getWards(form.districtCode).then(setWards).catch(() => setWards([]));
-    setForm((f) => ({ ...f, wardCode: '', wardName: '' }));
-  }, [form.districtCode]);
+    getCheckoutPreview()
+      .then((res) => res?.data && setCheckoutPreview(res.data))
+      .catch(() => setCheckoutPreview(null));
+  }, [accessToken, loading, checkoutPreviewKey]);
 
   const handleLogout = async () => {
     try {
@@ -133,8 +188,18 @@ export default function CheckoutPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const selectedForOrder = items.filter((i) => i.selected !== false);
     if (items.length === 0) {
       toast.error('Giỏ hàng trống');
+      return;
+    }
+    if (selectedForOrder.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một sản phẩm trong giỏ để thanh toán');
+      return;
+    }
+
+    if (!defaultAddress) {
+      toast.error('Vui lòng thêm địa chỉ giao hàng mặc định');
       return;
     }
 
@@ -184,8 +249,7 @@ export default function CheckoutPage() {
       });
       const order = res?.data?.order;
       if (order) {
-        await clearCartServer();
-        setItemsFromServer([]);
+        await loadCartFromServer();
         toast.success('Đặt hàng thành công! Vui lòng chuyển khoản theo thông tin bên dưới.');
         try {
           const qrRes = await generateVietQR(order._id);
@@ -216,11 +280,18 @@ export default function CheckoutPage() {
     }
   };
 
-  const total = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
+  const selectedItems = useMemo(
+    () => items.filter((i) => i.selected !== false),
+    [items]
+  );
+  const selectedSubtotalLocal = selectedItems.reduce(
+    (sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0),
+    0
+  );
   const preview = checkoutPreview;
-  const subtotal = preview?.subtotal ?? total;
+  const subtotal = preview?.subtotal ?? selectedSubtotalLocal;
   const discount = preview?.discount ?? 0;
-  const finalTotal = preview?.finalTotal ?? total;
+  const finalTotal = preview?.finalTotal ?? selectedSubtotalLocal;
   const tierName = preview?.tierName;
   const discountPercent = preview?.discountPercent ?? 0;
 
@@ -284,138 +355,74 @@ export default function CheckoutPage() {
               <Button variant="outline">Quay lại giỏ hàng</Button>
             </Link>
           </div>
+        ) : selectedItems.length === 0 ? (
+          <div className="bg-amber-50 rounded-2xl p-12 text-center border border-amber-100 max-w-lg mx-auto">
+            <p className="text-amber-900 font-medium mb-2">Chưa chọn sản phẩm nào để thanh toán</p>
+            <p className="text-sm text-amber-800/90 mb-6">
+              Vào giỏ hàng và tick chọn các mục bạn muốn mua, hoặc bỏ chọn những mục chỉ để xem sau.
+            </p>
+            <Link to="/cart">
+              <Button>Quay lại giỏ hàng</Button>
+            </Link>
+          </div>
         ) : (
           <div className="flex flex-col lg:flex-row gap-8">
             <form id="checkout-form" onSubmit={handleSubmit} className="flex-1 max-w-xl space-y-6">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="font-semibold text-gray-800 mb-4">Địa chỉ giao hàng</h2>
-                <div className="space-y-3">
-                  <div>
-                    <label className="label py-0 text-xs">Tên người nhận</label>
-                    <input
-                      type="text"
-                      className={`input input-bordered input-sm w-full ${errors.recipientName ? 'input-error' : ''}`}
-                      placeholder="Ví dụ: Nguyễn Văn A"
-                      value={form.recipientName}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, recipientName: e.target.value }));
-                        if (errors.recipientName) setErrors((e) => ({ ...e, recipientName: null }));
-                      }}
-                      required
-                    />
-                    {errors.recipientName && <p className="text-xs text-red-600 mt-1">{errors.recipientName}</p>}
-                  </div>
-                  <div>
-                    <label className="label py-0 text-xs">Tỉnh / Thành phố</label>
-                    <select
-                      className={`select select-bordered select-sm w-full ${errors.provinceCode ? 'select-error' : ''}`}
-                      value={form.provinceCode}
-                      onChange={(e) => {
-                        const code = e.target.value;
-                        const p = provinces.find((x) => String(x.code) === code);
-                        setForm((f) => ({
-                          ...f,
-                          provinceCode: code,
-                          provinceName: p?.name || '',
-                        }));
-                        if (errors.provinceCode) setErrors((er) => ({ ...er, provinceCode: null }));
-                      }}
-                      required
-                    >
-                      <option value="">— Chọn Tỉnh/Thành phố —</option>
-                      {provinces.map((p) => (
-                        <option key={p.code} value={p.code}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.provinceCode && <p className="text-xs text-red-600 mt-1">{errors.provinceCode}</p>}
-                  </div>
-                  <div>
-                    <label className="label py-0 text-xs">Quận / Huyện</label>
-                    <select
-                      className={`select select-bordered select-sm w-full ${errors.districtCode ? 'select-error' : ''}`}
-                      value={form.districtCode}
-                      onChange={(e) => {
-                        const code = e.target.value;
-                        const d = districts.find((x) => String(x.code) === code);
-                        setForm((f) => ({
-                          ...f,
-                          districtCode: code,
-                          districtName: d?.name || '',
-                        }));
-                        if (errors.districtCode) setErrors((er) => ({ ...er, districtCode: null }));
-                      }}
-                      required
-                      disabled={!form.provinceCode}
-                    >
-                      <option value="">— Chọn Quận/Huyện —</option>
-                      {districts.map((d) => (
-                        <option key={d.code} value={d.code}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.districtCode && <p className="text-xs text-red-600 mt-1">{errors.districtCode}</p>}
-                  </div>
-                  <div>
-                    <label className="label py-0 text-xs">Phường / Xã / Thị trấn</label>
-                    <select
-                      className={`select select-bordered select-sm w-full ${errors.wardCode ? 'select-error' : ''}`}
-                      value={form.wardCode}
-                      onChange={(e) => {
-                        const code = e.target.value;
-                        const w = wards.find((x) => String(x.code) === code);
-                        setForm((f) => ({
-                          ...f,
-                          wardCode: code,
-                          wardName: w?.name || '',
-                        }));
-                        if (errors.wardCode) setErrors((er) => ({ ...er, wardCode: null }));
-                      }}
-                      required
-                      disabled={!form.districtCode}
-                    >
-                      <option value="">— Chọn Phường/Xã/Thị trấn —</option>
-                      {wards.map((w) => (
-                        <option key={w.code} value={w.code}>
-                          {w.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.wardCode && <p className="text-xs text-red-600 mt-1">{errors.wardCode}</p>}
-                  </div>
-                  <div>
-                    <label className="label py-0 text-xs">Địa chỉ cụ thể (số nhà, tên đường...)</label>
-                    <input
-                      type="text"
-                      className={`input input-bordered input-sm w-full ${errors.addressLine ? 'input-error' : ''}`}
-                      placeholder="Ví dụ: Số 123, đường ABC, phường 1"
-                      value={form.addressLine}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, addressLine: e.target.value }));
-                        if (errors.addressLine) setErrors((er) => ({ ...er, addressLine: null }));
-                      }}
-                      required
-                    />
-                    {errors.addressLine && <p className="text-xs text-red-600 mt-1">{errors.addressLine}</p>}
-                  </div>
-                  <div>
-                    <label className="label py-0 text-xs">Số điện thoại nhận hàng</label>
-                    <input
-                      type="tel"
-                      className={`input input-bordered input-sm w-full ${errors.shippingPhone ? 'input-error' : ''}`}
-                      placeholder="Ví dụ: 0901234567"
-                      value={form.shippingPhone}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, shippingPhone: e.target.value }));
-                        if (errors.shippingPhone) setErrors((er) => ({ ...er, shippingPhone: null }));
-                      }}
-                      required
-                    />
-                    {errors.shippingPhone && <p className="text-xs text-red-600 mt-1">{errors.shippingPhone}</p>}
-                  </div>
-                </div>
+
+                {addressesLoading ? (
+                  <p className="text-sm text-gray-500 py-4">Đang tải địa chỉ...</p>
+                ) : defaultAddress ? (
+                  <button
+                    type="button"
+                    onClick={openAddressBook}
+                    className="w-full text-left rounded-xl border border-gray-100 bg-gray-50/50 p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                  >
+                    <div className="flex gap-3 items-start">
+                      <MapPin className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-gray-800">
+                            {defaultAddress.label?.trim() || 'Địa chỉ mặc định'}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                            Mặc định
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-gray-900">{defaultAddress.recipientName}</p>
+                        <p className="text-sm text-gray-600">{defaultAddress.shippingPhone}</p>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                          {[
+                            defaultAddress.addressLine,
+                            defaultAddress.wardName,
+                            defaultAddress.districtName,
+                            defaultAddress.provinceName,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </p>
+                      </div>
+                      <span className="text-xs text-blue-600 font-medium shrink-0 pt-1">Thay đổi</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-3">
+                      Nhấn để quản lý địa chỉ: thêm, sửa, xóa hoặc đổi địa chỉ mặc định.
+                    </p>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openAddressBook}
+                    className="w-full rounded-xl border border-dashed border-amber-200 bg-amber-50/40 p-6 text-center transition-colors hover:bg-amber-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50"
+                  >
+                    <p className="text-amber-900 font-medium mb-1">Chưa có địa chỉ giao hàng mặc định</p>
+                    <p className="text-sm text-amber-800/90 mb-4">Nhấn để thêm địa chỉ và tiếp tục đặt hàng.</p>
+                    <span className="inline-flex items-center gap-1 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium">
+                      <Plus className="w-4 h-4" />
+                      Mở sổ địa chỉ
+                    </span>
+                  </button>
+                )}
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -448,7 +455,7 @@ export default function CheckoutPage() {
                       Quay lại giỏ hàng
                     </Button>
                   </Link>
-                  <Button type="submit" disabled={submitting} className="flex-1">
+                  <Button type="submit" disabled={submitting || !defaultAddress} className="flex-1">
                     {submitting ? 'Đang xử lý...' : 'Đặt hàng'}
                   </Button>
                 </div>
@@ -466,7 +473,7 @@ export default function CheckoutPage() {
                     )}
                   </div>
                 )}
-                {!tierName && items.length > 0 && (
+                {!tierName && selectedItems.length > 0 && (
                   <div className="mb-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
                     <p className="text-xs text-gray-600">Hạng thành viên: Chưa có hạng</p>
                     <p className="text-xs text-gray-500 mt-0.5">Mua thêm để tích lũy và nhận ưu đãi</p>
@@ -474,8 +481,8 @@ export default function CheckoutPage() {
                 )}
                 <h2 className="font-semibold text-gray-800 mb-4">Sản phẩm đặt mua</h2>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {items.map((item) => {
-                    const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
+                  {selectedItems.map((item) => {
+                    const lineSub = (Number(item.price) || 0) * (Number(item.quantity) || 1);
                     return (
                       <div
                         key={item.productId}
@@ -494,7 +501,7 @@ export default function CheckoutPage() {
                             {(item.price || 0).toLocaleString()}đ × {item.quantity || 1}
                           </p>
                           <p className="text-blue-600 font-semibold text-sm mt-1">
-                            {subtotal.toLocaleString()}đ
+                            {lineSub.toLocaleString()}đ
                           </p>
                         </div>
                       </div>
@@ -525,7 +532,7 @@ export default function CheckoutPage() {
                     <Button
                       type="submit"
                       form="checkout-form"
-                      disabled={submitting}
+                      disabled={submitting || !defaultAddress}
                       className="flex-1"
                     >
                       {submitting ? 'Đang xử lý...' : 'Đặt hàng'}
@@ -537,6 +544,18 @@ export default function CheckoutPage() {
           </div>
         )}
       </main>
+
+      <ShippingAddressBookDialog
+        open={addressBookOpen}
+        onOpenChange={setAddressBookOpen}
+        provinces={provinces}
+        onAddressesChange={(list) => {
+          setSavedAddresses(list);
+          const def = list.find((a) => a.isDefault);
+          if (def) applySavedAddress(def);
+          else setForm((f) => ({ ...f, ...emptyShippingFields() }));
+        }}
+      />
 
       <Footer />
     </div>

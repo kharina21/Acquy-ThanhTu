@@ -25,6 +25,11 @@ const cartItemSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
+        /** Đánh dấu sản phẩm được chọn để thanh toán (mặc định true). */
+        selected: {
+            type: Boolean,
+            default: true,
+        },
     },
     { _id: false }
 );

@@ -76,6 +76,7 @@ export const checkoutPreview = async (req, res) => {
         let subtotal = 0;
         if (cart?.items?.length) {
             for (const item of cart.items) {
+                if (item.selected === false) continue;
                 const product = item.product && typeof item.product === 'object' ? item.product : await Product.findById(item.product);
                 if (product && !product.isDeleted) {
                     const qty = Number(item.quantity) || 1;
@@ -204,10 +205,17 @@ export const createOrder = async (req, res) => {
             return res.status(400).json({ message: 'Giỏ hàng trống' });
         }
 
+        const selectedCartItems = cart.items.filter((item) => item.selected !== false);
+        if (selectedCartItems.length === 0) {
+            return res.status(400).json({
+                message: 'Vui lòng chọn ít nhất một sản phẩm trong giỏ để thanh toán',
+            });
+        }
+
         const orderItems = [];
         let totalAmount = 0;
 
-        for (const item of cart.items) {
+        for (const item of selectedCartItems) {
             const productId = item.product?._id || item.product;
             if (!productId) continue;
 
@@ -239,7 +247,7 @@ export const createOrder = async (req, res) => {
         }
 
         if (orderItems.length === 0) {
-            return res.status(400).json({ message: 'Không có sản phẩm hợp lệ trong giỏ hàng' });
+            return res.status(400).json({ message: 'Không có sản phẩm hợp lệ trong các mục đã chọn' });
         }
 
         const customerProfile = await getOrCreateCustomerFromUser(await User.findById(userId).lean());
@@ -293,7 +301,11 @@ export const createOrder = async (req, res) => {
             }
         }
 
-        cart.items = [];
+        const orderedIds = new Set(orderItems.map((i) => i.product.toString()));
+        cart.items = cart.items.filter((line) => {
+            const pid = (line.product?._id || line.product).toString();
+            return !orderedIds.has(pid);
+        });
         await cart.save();
 
         const populated = await Order.findById(order._id)
@@ -783,7 +795,8 @@ export const syncPaymentFromPayOS = async (req, res) => {
             return res.status(200).json({ success: true, data: { order: populated } });
         }
 
-        const paymentLink = await PaymentLink.findOne({ order: id }).lean();
+        /** Nhiều lần tạo QR → nhiều PaymentLink; luôn đồng bộ theo link mới nhất (đúng giao dịch vừa thanh toán). */
+        const paymentLink = await PaymentLink.findOne({ order: id }).sort({ createdAt: -1 }).lean();
         if (!paymentLink?.orderCode) {
             const populated = await Order.findById(order._id)
                 .populate('items.product', 'sku name')
@@ -794,8 +807,30 @@ export const syncPaymentFromPayOS = async (req, res) => {
             return res.status(200).json({ success: true, data: { order: populated } });
         }
 
-        const payosStatus = await getPayOSPaymentStatus(paymentLink.orderCode);
-        const isPaid = payosStatus && (payosStatus.status === 'PAID' || payosStatus.status === 'COMPLETED');
+        const payOrderTotal = Math.max(0, Number(order.totalAmount) || 0);
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+        let payosStatus = await getPayOSPaymentStatus(paymentLink.orderCode, paymentLink.paymentLinkId);
+        /** PayOS đôi khi chưa kịp PAID ngay khi redirect — gọi lại vài lần. */
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const st = payosStatus?.status || '';
+            if (payosStatus && (st === 'PAID' || st === 'COMPLETED')) break;
+            if (payosStatus && ['CANCELLED', 'EXPIRED', 'FAILED'].includes(st)) break;
+            if (attempt >= 4) break;
+            await sleep(700 * (attempt + 1));
+            payosStatus = await getPayOSPaymentStatus(paymentLink.orderCode, paymentLink.paymentLinkId);
+        }
+
+        const st = payosStatus?.status || '';
+        const paid = Number(payosStatus?.amountPaid) || 0;
+        const remaining = payosStatus?.amountRemaining;
+        const remNum = remaining === null || remaining === undefined ? null : Number(remaining);
+        const isPaid =
+            payosStatus &&
+            (st === 'PAID' ||
+                st === 'COMPLETED' ||
+                (paid >= payOrderTotal && payOrderTotal > 0) ||
+                (remNum === 0 && paid > 0));
         if (isPaid) {
             await Order.findByIdAndUpdate(id, {
                 paymentStatus: 'paid',
@@ -1166,6 +1201,8 @@ export const updateOrderByCustomer = async (req, res) => {
             wardCode,
             wardName,
             addressLine,
+            recipientName,
+            shippingRecipientName,
         } = req.body || {};
 
         if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -1211,6 +1248,10 @@ export const updateOrderByCustomer = async (req, res) => {
         }
         if (shippingPhone !== undefined) order.shippingPhone = String(shippingPhone).trim();
         if (note !== undefined) order.note = String(note).trim();
+        const nameRaw = recipientName !== undefined ? recipientName : shippingRecipientName;
+        if (nameRaw !== undefined) {
+            order.shippingRecipientName = String(nameRaw).trim();
+        }
         await order.save();
 
         const populated = await Order.findById(order._id)

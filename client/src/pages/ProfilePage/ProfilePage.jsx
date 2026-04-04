@@ -2,19 +2,59 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import ProfileInfoCard from './ProfileInfoCard';
 import ProfileHeader from './ProfileHeader';
 import AccountInfoCard from './AccountInfoCard';
+import CustomerMembershipCard from './CustomerMembershipCard';
 import { useLogStore } from '@/stores/useLogStore';
 import ActivityHistoryCard from './ActivityHistoryCard';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { toast } from 'sonner';
+import { getCheckoutPreview } from '@/services/orderService';
 
 const ProfilePage = () => {
     const { user, logout } = useAuthStore();
     const { fetchActivityLogs } = useLogStore();
     const { isAdmin, isManager, isSeller, isStaff, isWarehouseManager } = useUserRole();
     const isInternalUser = isAdmin || isManager || isSeller || isStaff || isWarehouseManager;
+
+    const [membershipPreview, setMembershipPreview] = useState({
+        loading: true,
+        error: null,
+        data: null,
+    });
+
+    useEffect(() => {
+        if (!user) return;
+        if (isInternalUser) {
+            setMembershipPreview({ loading: false, error: null, data: null });
+        }
+    }, [user, isInternalUser]);
+
+    const loadMembershipPreview = useCallback(() => {
+        setMembershipPreview((s) => ({ ...s, loading: true, error: null }));
+        getCheckoutPreview()
+            .then((res) => {
+                setMembershipPreview({
+                    loading: false,
+                    error: null,
+                    data: res?.data ?? null,
+                });
+            })
+            .catch((err) => {
+                setMembershipPreview({
+                    loading: false,
+                    error: err,
+                    data: null,
+                });
+            });
+    }, []);
+
+    useEffect(() => {
+        if (user && !isInternalUser) {
+            loadMembershipPreview();
+        }
+    }, [user, isInternalUser, loadMembershipPreview]);
 
     useEffect(() => {
         if (user && isInternalUser) {
@@ -50,9 +90,17 @@ const ProfilePage = () => {
                         <h1 className="text-2xl font-bold text-gray-800 mb-6">Hồ sơ cá nhân</h1>
 
                         <div className="space-y-6">
-                            <ProfileHeader user={user} isCustomer />
+                            <ProfileHeader user={user} isCustomer membershipPreview={membershipPreview} />
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <AccountInfoCard isCustomer />
+                                <div className="space-y-6">
+                                    <AccountInfoCard isCustomer />
+                                    <CustomerMembershipCard
+                                        loading={membershipPreview.loading}
+                                        error={membershipPreview.error}
+                                        data={membershipPreview.data}
+                                        onRetry={loadMembershipPreview}
+                                    />
+                                </div>
                                 <div className="lg:col-span-2">
                                     <ProfileInfoCard isCustomer />
                                 </div>

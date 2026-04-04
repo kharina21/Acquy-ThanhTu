@@ -15,6 +15,7 @@ const normalizeItems = (items) =>
     image: i.image ?? '',
     quantity: Math.max(1, Number(i.quantity) || 1),
     stock: typeof i.stock === 'number' ? i.stock : null,
+    selected: i.selected !== false,
   }));
 
 export const useCartStore = create(
@@ -46,6 +47,7 @@ export const useCartStore = create(
               price: product.price ?? 0,
               image: product.images?.[0] || product.image || '',
               quantity: quantity || 1,
+              selected: true,
             },
           ];
         }
@@ -71,6 +73,41 @@ export const useCartStore = create(
       },
 
       clearCart: () => set({ items: [] }),
+
+      setItemSelected: (productId, selected) => {
+        const id = productId?.toString?.() ?? productId;
+        set({
+          items: get().items.map((i) =>
+            i.productId === id ? { ...i, selected: Boolean(selected) } : i
+          ),
+        });
+      },
+
+      setAllItemsSelected: (selected) => {
+        set({
+          items: get().items.map((i) => ({ ...i, selected: Boolean(selected) })),
+        });
+      },
+
+      updateItemSelectedServer: async (productId, selected) => {
+        const id = productId?.toString?.() ?? productId;
+        const res = await api.patch(`/cart/items/${id}/selection`, {
+          selected: Boolean(selected),
+        });
+        set({ items: normalizeItems(res.data?.data?.items) });
+      },
+
+      syncAllItemsSelectedServer: async (selected) => {
+        const { items: list } = get();
+        await Promise.all(
+          list.map((i) =>
+            api.patch(`/cart/items/${i.productId}/selection`, {
+              selected: Boolean(selected),
+            })
+          )
+        );
+        await get().loadCartFromServer();
+      },
 
       // ----- Server (đã đăng nhập) -----
       loadCartFromServer: async () => {

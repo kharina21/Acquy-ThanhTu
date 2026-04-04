@@ -5,6 +5,7 @@ import {
     getCart,
     addItemToCart,
     updateCartItem,
+    updateCartItemSelection,
     removeCartItem,
     clearCart,
 } from '../controllers/cartController.js';
@@ -23,6 +24,9 @@ router.post('/items', addItemToCart);
 
 // Cập nhật số lượng một sản phẩm trong giỏ
 router.put('/items/:productId', updateCartItem);
+
+// Bật/tắt chọn sản phẩm để thanh toán: { selected: boolean }
+router.patch('/items/:productId/selection', updateCartItemSelection);
 
 // Xóa một sản phẩm khỏi giỏ
 router.delete('/items/:productId', removeCartItem);

@@ -38,6 +38,7 @@ const mapCartToResponse = (cart) => {
             price,
             image,
             quantity: item.quantity,
+            selected: item.selected !== false,
         };
     });
 };
@@ -142,6 +143,7 @@ export const addItemToCart = async (req, res) => {
                 priceSnapshot: product.price ?? 0,
                 nameSnapshot: product.name ?? '',
                 imageSnapshot: product.images?.[0] || product.image || '',
+                selected: true,
             });
         }
 
@@ -233,6 +235,59 @@ export const updateCartItem = async (req, res) => {
         console.error('updateCartItem error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi cập nhật sản phẩm trong giỏ hàng',
+            error: error.message,
+        });
+    }
+};
+
+export const updateCartItemSelection = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const { productId } = req.params;
+        const { selected } = req.body || {};
+
+        if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+            return res.status(400).json({ message: 'productId không hợp lệ' });
+        }
+        if (typeof selected !== 'boolean') {
+            return res.status(400).json({ message: 'selected phải là true hoặc false' });
+        }
+
+        const cart = await getOrCreateCart(userId);
+
+        const index = cart.items.findIndex(
+            (item) => item.product.toString() === productId.toString()
+        );
+
+        if (index === -1) {
+            return res.status(404).json({ message: 'Sản phẩm không có trong giỏ hàng' });
+        }
+
+        cart.items[index].selected = selected;
+        await cart.save();
+
+        const populated = await Cart.findOne({ userId })
+            .populate('items.product', 'name price image images isDeleted')
+            .lean();
+
+        let items = mapCartToResponse(populated);
+        const defaultLocation = await getOnlineLoc();
+        if (defaultLocation) {
+            items = await addStockToItems(items, defaultLocation._id);
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: { items },
+        });
+    } catch (error) {
+        console.error('updateCartItemSelection error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi cập nhật chọn sản phẩm trong giỏ hàng',
             error: error.message,
         });
     }

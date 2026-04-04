@@ -1,8 +1,12 @@
 import { getInitials, getPrimaryRole } from '@/lib/utils';
 import { Shield } from 'lucide-react';
 
-const ProfileHeader = ({ user, isCustomer }) => {
+const ProfileHeader = ({ user, isCustomer, membershipPreview }) => {
     if (isCustomer) {
+        const mpLoading =
+            membershipPreview?.loading || (!membershipPreview?.error && membershipPreview?.data == null);
+        const tierName = membershipPreview?.data?.tierName;
+
         return (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 sm:p-8">
@@ -17,6 +21,20 @@ const ProfileHeader = ({ user, isCustomer }) => {
                                 {user.firstName} {user.lastName}
                             </h2>
                             <p className="text-gray-500 mt-1 break-all">{user.email}</p>
+                            {mpLoading && (
+                                <p className="text-xs text-gray-400 mt-2 flex items-center justify-center sm:justify-start gap-2">
+                                    <span className="loading loading-spinner loading-xs" />
+                                    Đang tải hạng thành viên...
+                                </p>
+                            )}
+                            {!mpLoading && tierName && (
+                                <p className="mt-3 inline-flex items-center rounded-full bg-amber-50 border border-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+                                    Hạng: {tierName}
+                                </p>
+                            )}
+                            {!mpLoading && membershipPreview?.data && !tierName && (
+                                <p className="mt-3 text-sm text-gray-500">Hạng thành viên: Chưa có hạng</p>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -6,9 +6,10 @@ let payosInstance = null;
 
 const getPayOS = () => {
     if (payosInstance) return payosInstance;
-    const clientId = process.env.POS_CLIENT_ID || '';
-    const apiKey = process.env.POS_API_KEY || '';
-    const checksumKey = process.env.POS_CHECKSUM_KEY || '';
+    /** Hỗ trợ cả POS_* (project) và PAYOS_* (tài liệu PayOS) */
+    const clientId = process.env.POS_CLIENT_ID || process.env.PAYOS_CLIENT_ID || '';
+    const apiKey = process.env.POS_API_KEY || process.env.PAYOS_API_KEY || '';
+    const checksumKey = process.env.POS_CHECKSUM_KEY || process.env.PAYOS_CHECKSUM_KEY || '';
     if (!clientId || !apiKey || !checksumKey) return null;
     payosInstance = new PayOS({ clientId, apiKey, checksumKey });
     return payosInstance;
@@ -16,12 +17,13 @@ const getPayOS = () => {
 
 /**
  * Tạo orderCode integer cho PayOS (6–19 chữ số, unique).
- * Dùng timestamp + random để tránh trùng khi tạo nhiều link cho cùng đơn.
+ * Phải nằm trong Number.MAX_SAFE_INTEGER — bản cũ dùng t*10000+r có thể > 2^53 gây sai số
+ * khi lưu Mongo / so khớp webhook → không tìm được PaymentLink, không đồng bộ được trạng thái.
  */
 const toPayOSOrderCode = () => {
-    const t = Date.now() % 1000000000000; // 12 chữ số
-    const r = Math.floor(Math.random() * 10000); // 4 chữ số
-    return t * 10000 + r;
+    const min = 100_000_000_000_000; // 15 chữ số
+    const max = Number.MAX_SAFE_INTEGER - 1;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
 /**
@@ -131,23 +133,58 @@ export const createPayOSPaymentLink = async ({ orderId, orderCode, amount, descr
     };
 };
 
+const normalizePayOSPaymentLinkPayload = (data) => {
+    if (!data || typeof data !== 'object') return null;
+    const status = String(data.status || '').toUpperCase();
+    const ar = data.amountRemaining;
+    return {
+        status,
+        amountPaid: Number(data.amountPaid) || 0,
+        amountRemaining: ar === undefined || ar === null ? null : Number(ar),
+        amount: Number(data.amount) || 0,
+    };
+};
+
 /**
- * Lấy trạng thái thanh toán từ PayOS API (GET /v2/payment-requests/{id}).
- * @param {number} orderCode - Mã đơn PayOS (orderCode integer)
- * @returns {Promise<{status: string, amountPaid?: number} | null>} null nếu PayOS chưa cấu hình hoặc lỗi
+ * Lấy trạng thái thanh toán từ PayOS (GET /v2/payment-requests/{id}).
+ *
+ * Không dùng `payos.paymentRequests.get()` của SDK — method đó luôn bật
+ * `signatureOpts: { response: 'body' }` và so khớp chữ ký phản hồi; lệch nhỏ là
+ * `InvalidSignatureError` → trước đây hàm nuốt lỗi và trả null → đơn mãi "chờ thanh toán".
+ *
+ * Gọi `payos.get(path)` không verify chữ ký response, vẫn parse `{ code, data }` như SDK.
+ *
+ * @param {number|string} orderCode - Mã orderCode PayOS
+ * @param {string} [paymentLinkId] - ID link thanh toán (ưu tiên)
  */
-export const getPayOSPaymentStatus = async (orderCode) => {
+export const getPayOSPaymentStatus = async (orderCode, paymentLinkId = '') => {
     const payos = getPayOS();
-    if (!payos || !orderCode) return null;
+    if (!payos) return null;
+
+    const fetchStatus = async (idForPath) => {
+        const seg = encodeURIComponent(String(idForPath).trim());
+        if (!seg) return null;
+        const path = `/v2/payment-requests/${seg}`;
+        const data = await payos.get(path);
+        return normalizePayOSPaymentLinkPayload(data);
+    };
+
     try {
-        const res = await payos.get(`/v2/payment-requests/${orderCode}`);
-        // PayOS API: { code, desc, data: { status, amountPaid, ... } } hoặc SDK có thể unwrap
-        const data = res?.data ?? res;
-        if (!data || typeof data !== 'object') return null;
-        const status = String(data.status || '').toUpperCase();
-        return { status, amountPaid: data.amountPaid };
+        const pid = String(paymentLinkId || '').trim();
+        if (pid) {
+            try {
+                const r = await fetchStatus(pid);
+                if (r) return r;
+            } catch (e) {
+                console.warn('PayOS GET status by paymentLinkId:', e?.name, e?.message);
+            }
+        }
+        if (orderCode == null || orderCode === '') return null;
+        const num = typeof orderCode === 'string' ? Number(orderCode.trim()) : Number(orderCode);
+        if (!Number.isFinite(num)) return null;
+        return await fetchStatus(num);
     } catch (err) {
-        console.warn('getPayOSPaymentStatus error:', err?.message);
+        console.warn('getPayOSPaymentStatus error:', err?.name, err?.message);
         return null;
     }
 };

@@ -33,6 +33,7 @@ import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
 import dashboardRoutes from './routes/dashboardRoute.js';
+import shippingAddressRoutes from './routes/shippingAddressRoute.js';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -72,6 +73,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/shipping-addresses', shippingAddressRoutes);
 
 // Serve React build (production)
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

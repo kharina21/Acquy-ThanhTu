@@ -22,14 +22,24 @@ export const handlePayOSWebhook = async (req, res) => {
         }
 
         const data = await verifyPayOSWebhook(body);
-        const orderCode = Number(data?.orderCode) || data?.orderCode;
-        const success = body.success === true;
+        const rawOrderCode = data?.orderCode;
+        const orderCodeNum =
+            typeof rawOrderCode === 'bigint'
+                ? Number(rawOrderCode)
+                : typeof rawOrderCode === 'string'
+                  ? Number(rawOrderCode.trim())
+                  : Number(rawOrderCode);
+        /** PayOS có thể gửi success dạng boolean hoặc chuỗi. */
+        const success =
+            body.success === true ||
+            body.success === 'true' ||
+            (typeof body.success === 'string' && body.success.toLowerCase() === 'true');
 
-        if (!orderCode) {
+        if (rawOrderCode == null || rawOrderCode === '' || !Number.isFinite(orderCodeNum)) {
             return res.status(400).json({ code: '02', desc: 'Missing orderCode' });
         }
 
-        const paymentLink = await PaymentLink.findOne({ orderCode: Number(orderCode) }).lean();
+        const paymentLink = await PaymentLink.findOne({ orderCode: orderCodeNum }).lean();
         if (!paymentLink) {
             console.warn('PayOS webhook: PaymentLink not found for orderCode', orderCode);
             return res.status(200).json({ code: '00', desc: 'OK' }); // Trả 200 để PayOS không retry

@@ -7,26 +7,22 @@ import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { OrderStatusBadge, PaymentStatusBadge } from '@/components/order/StatusBadge';
 import { getOrderById, generateVietQR, updateOrderByCustomer, cancelOrderByCustomer, syncPaymentStatus } from '@/services/orderService';
-import { getProvinces, getDistricts, getWards } from '@/services/addressService';
+import { getProvinces } from '@/services/addressService';
+import { ShippingAddressBookDialog } from '@/components/checkout/ShippingAddressBookDialog';
 import { toast } from 'sonner';
-import { Pencil, XCircle } from 'lucide-react';
+import { MapPin, XCircle } from 'lucide-react';
 import CancelOrderModal from '@/components/common/CancelOrderModal';
 
 export default function OrderDetailPage() {
     const { id } = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
+    const paymentReturn = searchParams.get('payment');
     const { user, accessToken, logout } = useAuthStore();
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
     const [vietQRData, setVietQRData] = useState(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState({
-        provinceCode: '', provinceName: '', districtCode: '', districtName: '', wardCode: '', wardName: '',
-        addressLine: '', shippingPhone: '', note: '',
-    });
     const [provinces, setProvinces] = useState([]);
-    const [districts, setDistricts] = useState([]);
-    const [wards, setWards] = useState([]);
+    const [addressBookOpen, setAddressBookOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
     const [cancelConfirm, setCancelConfirm] = useState(false);
     const [buyAgainLoading, setBuyAgainLoading] = useState(false);
@@ -37,46 +33,82 @@ export default function OrderDetailPage() {
     const canEdit = order && order.status !== 'cancelled' && order.paymentStatus === 'pending';
     const canCancel = order && order.status !== 'cancelled' && order.status === 'pending';
 
-    useEffect(() => {
-        const payment = searchParams.get('payment');
-        if (payment === 'success') {
-            toast.success('Thanh toán thành công! Đơn hàng đã được cập nhật.');
-            setSearchParams({}, { replace: true });
-        } else if (payment === 'cancelled') {
-            toast.info('Bạn đã hủy thanh toán.');
-            setSearchParams({}, { replace: true });
-        }
-    }, [searchParams, setSearchParams]);
-
+    /**
+     * Không xóa ?payment=success trước khi sync xong: effect trước đây clear query ngay
+     * khiến effect tải đơn chạy lại với getOrderById và ghi đè kết quả sync (race) → vẫn "chờ thanh toán".
+     */
     useEffect(() => {
         if (!id || !accessToken) return;
-        const isReturnFromPayOS = searchParams.get('payment') === 'success';
+        const paymentParam = paymentReturn;
+        let cancelled = false;
+
         const fetchOrder = async () => {
             setLoading(true);
             try {
-                // Khi quay về từ PayOS: gọi sync để lấy trạng thái mới nhất từ PayOS API ngay lập tức
-                const res = isReturnFromPayOS
-                    ? await syncPaymentStatus(id)
-                    : await getOrderById(id);
-                const ord = res?.data?.order;
-                setOrder(ord);
+                let res;
+                let ord;
+                if (paymentParam === 'success') {
+                    res = await syncPaymentStatus(id);
+                    ord = res?.data?.order;
+                    /** Backend đã retry; thêm vài lần phía client nếu PayOS chậm cập nhật. */
+                    let attempts = 0;
+                    while (ord?.paymentStatus === 'pending' && attempts < 4) {
+                        await new Promise((r) => setTimeout(r, 900 * (attempts + 1)));
+                        if (cancelled) return;
+                        res = await syncPaymentStatus(id);
+                        ord = res?.data?.order;
+                        attempts += 1;
+                    }
+                    if (cancelled) return;
+                    setOrder(ord);
+                    if (ord?.paymentStatus === 'paid') {
+                        toast.success('Thanh toán thành công! Đơn hàng đã được cập nhật.');
+                    } else {
+                        toast.info(
+                            'Hệ thống chưa ghi nhận thanh toán. Vui lòng tải lại trang sau vài giây hoặc kiểm tra email/SMS từ PayOS.'
+                        );
+                    }
+                    setSearchParams({}, { replace: true });
+                } else {
+                    res = await getOrderById(id);
+                    if (cancelled) return;
+                    ord = res?.data?.order;
+                    setOrder(ord);
+                    if (paymentParam === 'cancelled') {
+                        toast.info('Bạn đã hủy thanh toán.');
+                        setSearchParams({}, { replace: true });
+                    }
+                }
+
                 if (ord && ord.paymentStatus === 'pending' && (ord.paymentMethod === 'transfer' || ord.paymentMethod === 'vietqr')) {
                     try {
                         const qrRes = await generateVietQR(id);
+                        if (cancelled) return;
                         const qrData = qrRes?.data;
                         setVietQRData({ qrDataURL: qrData?.qrDataURL, bankAccount: qrData?.bankAccount, checkoutUrl: qrData?.checkoutUrl });
                     } catch {
-                        setVietQRData(null);
+                        if (!cancelled) setVietQRData(null);
                     }
+                } else if (!cancelled) {
+                    setVietQRData(null);
                 }
             } catch (err) {
-                toast.error(err.response?.data?.message || 'Không tìm thấy đơn hàng');
+                if (!cancelled) toast.error(err.response?.data?.message || 'Không tìm thấy đơn hàng');
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
+
         fetchOrder();
-    }, [id, accessToken, searchParams.get('payment')]);
+        return () => {
+            cancelled = true;
+        };
+    }, [id, accessToken, paymentReturn, setSearchParams]);
+
+    useEffect(() => {
+        if (!accessToken || !order || !canEdit) return;
+        getProvinces().then(setProvinces).catch(() => setProvinces([]));
+    }, [accessToken, order?._id, canEdit]);
 
     const handleLogout = async () => {
         try {
@@ -87,56 +119,26 @@ export default function OrderDetailPage() {
         }
     };
 
-    const handleStartEdit = () => {
-        const addrLine = order?.addressLine || order?.shippingAddress || '';
-        setEditForm({
-            provinceCode: order?.provinceCode || '', provinceName: order?.provinceName || '',
-            districtCode: order?.districtCode || '', districtName: order?.districtName || '',
-            wardCode: order?.wardCode || '', wardName: order?.wardName || '',
-            addressLine: addrLine, shippingPhone: order?.shippingPhone || '', note: order?.note || '',
-        });
-        setIsEditing(true);
-        getProvinces().then(setProvinces).catch(() => setProvinces([]));
-        if (order?.provinceCode) {
-            getDistricts(order.provinceCode).then(setDistricts).catch(() => setDistricts([]));
-            if (order?.districtCode) {
-                getWards(order.districtCode).then(setWards).catch(() => setWards([]));
-            } else setWards([]);
-        } else {
-            setDistricts([]);
-            setWards([]);
-        }
-    };
-
-    const handleSaveEdit = async () => {
+    const applyAddressFromBook = async (addr) => {
         if (!id) return;
-        const addressLine = editForm.addressLine?.trim();
-        if (!addressLine) {
-            toast.error('Vui lòng nhập địa chỉ cụ thể (số nhà, tên đường...)');
-            return;
-        }
-        const hasStructured = editForm.provinceCode && editForm.districtCode && editForm.wardCode;
-        if (!hasStructured) {
-            toast.error('Vui lòng chọn đầy đủ Tỉnh/Thành phố, Quận/Huyện, Phường/Xã');
-            return;
-        }
-        if (!editForm.shippingPhone?.trim()) {
-            toast.error('Vui lòng nhập số điện thoại nhận hàng');
-            return;
-        }
         setActionLoading(true);
         try {
             const res = await updateOrderByCustomer(id, {
-                provinceCode: editForm.provinceCode, provinceName: editForm.provinceName,
-                districtCode: editForm.districtCode, districtName: editForm.districtName,
-                wardCode: editForm.wardCode, wardName: editForm.wardName,
-                addressLine, shippingPhone: editForm.shippingPhone.trim(), note: editForm.note,
+                provinceCode: String(addr.provinceCode),
+                provinceName: addr.provinceName,
+                districtCode: String(addr.districtCode),
+                districtName: addr.districtName,
+                wardCode: String(addr.wardCode),
+                wardName: addr.wardName,
+                addressLine: addr.addressLine.trim(),
+                shippingPhone: addr.shippingPhone.trim(),
+                recipientName: addr.recipientName.trim(),
             });
             setOrder(res?.data?.order || order);
-            setIsEditing(false);
-            toast.success('Cập nhật đơn hàng thành công');
+            toast.success('Đã cập nhật địa chỉ giao hàng');
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Lỗi khi cập nhật đơn hàng');
+            toast.error(err.response?.data?.message || 'Không cập nhật được địa chỉ');
+            throw err;
         } finally {
             setActionLoading(false);
         }
@@ -235,130 +237,72 @@ export default function OrderDetailPage() {
                                         <PaymentStatusBadge status={order.paymentStatus} />
                                     </div>
                                 </div>
-                                {canEdit && !isEditing && (
-                                    <Button variant='outline' size='sm' onClick={handleStartEdit} className='gap-1.5'>
-                                        <Pencil className='w-4 h-4' /> Chỉnh sửa
-                                    </Button>
-                                )}
                             </div>
-                            {isEditing ? (
-                                <div className='pt-3 border-t border-gray-100 space-y-4'>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Tỉnh / Thành phố</label>
-                                        <select
-                                            className='select select-bordered select-sm w-full'
-                                            value={editForm.provinceCode}
-                                            onChange={(e) => {
-                                                const code = e.target.value;
-                                                const p = provinces.find((x) => String(x.code) === code);
-                                                setEditForm((f) => ({ ...f, provinceCode: code, provinceName: p?.name || '', districtCode: '', districtName: '', wardCode: '', wardName: '' }));
-                                                if (code) getDistricts(code).then(setDistricts).catch(() => setDistricts([]));
-                                                else setDistricts([]);
-                                                setWards([]);
-                                            }}
+                            <div className='pt-3 border-t border-gray-100 space-y-4'>
+                                <div>
+                                    <p className='text-xs text-gray-500 mb-2'>Địa chỉ giao hàng</p>
+                                    {canEdit ? (
+                                        <button
+                                            type='button'
+                                            onClick={() => setAddressBookOpen(true)}
+                                            disabled={actionLoading}
+                                            className='w-full text-left rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-60'
                                         >
-                                            <option value=''>— Chọn Tỉnh/Thành phố —</option>
-                                            {provinces.map((p) => (
-                                                <option key={p.code} value={p.code}>{p.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Quận / Huyện</label>
-                                        <select
-                                            className='select select-bordered select-sm w-full'
-                                            value={editForm.districtCode}
-                                            onChange={(e) => {
-                                                const code = e.target.value;
-                                                const d = districts.find((x) => String(x.code) === code);
-                                                setEditForm((f) => ({ ...f, districtCode: code, districtName: d?.name || '', wardCode: '', wardName: '' }));
-                                                if (code) getWards(code).then(setWards).catch(() => setWards([]));
-                                                else setWards([]);
-                                            }}
-                                            disabled={!editForm.provinceCode}
-                                        >
-                                            <option value=''>— Chọn Quận/Huyện —</option>
-                                            {districts.map((d) => (
-                                                <option key={d.code} value={d.code}>{d.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Phường / Xã / Thị trấn</label>
-                                        <select
-                                            className='select select-bordered select-sm w-full'
-                                            value={editForm.wardCode}
-                                            onChange={(e) => {
-                                                const code = e.target.value;
-                                                const w = wards.find((x) => String(x.code) === code);
-                                                setEditForm((f) => ({ ...f, wardCode: code, wardName: w?.name || '' }));
-                                            }}
-                                            disabled={!editForm.districtCode}
-                                        >
-                                            <option value=''>— Chọn Phường/Xã/Thị trấn —</option>
-                                            {wards.map((w) => (
-                                                <option key={w.code} value={w.code}>{w.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Địa chỉ cụ thể (số nhà, tên đường...)</label>
-                                        <input
-                                            type='text'
-                                            value={editForm.addressLine}
-                                            onChange={(e) => setEditForm((f) => ({ ...f, addressLine: e.target.value }))}
-                                            className='input input-bordered input-sm w-full'
-                                            placeholder='Ví dụ: Số 123, đường ABC'
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Số điện thoại nhận hàng</label>
-                                        <input
-                                            type='tel'
-                                            value={editForm.shippingPhone}
-                                            onChange={(e) => setEditForm((f) => ({ ...f, shippingPhone: e.target.value }))}
-                                            className='input input-bordered input-sm w-full'
-                                            placeholder='Số điện thoại nhận hàng'
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className='label py-0 text-xs'>Ghi chú</label>
-                                        <textarea
-                                            value={editForm.note}
-                                            onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
-                                            className='textarea textarea-bordered textarea-sm w-full min-h-[80px]'
-                                            placeholder='Ghi chú cho đơn hàng'
-                                        />
-                                    </div>
-                                    <div className='flex gap-2'>
-                                        <Button size='sm' onClick={handleSaveEdit} disabled={actionLoading}>
-                                            {actionLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
-                                        </Button>
-                                        <Button variant='outline' size='sm' onClick={() => setIsEditing(false)} disabled={actionLoading}>
-                                            Hủy
-                                        </Button>
-                                    </div>
+                                            <div className='flex gap-3 items-start'>
+                                                <MapPin className='w-5 h-5 shrink-0 text-blue-600 mt-0.5' />
+                                                <div className='flex-1 min-w-0 space-y-1'>
+                                                    <p className='text-sm font-medium text-gray-900'>
+                                                        {order.shippingRecipientName?.trim() || '—'}
+                                                    </p>
+                                                    <p className='text-sm text-gray-600'>{order.shippingPhone || '—'}</p>
+                                                    <p className='text-sm text-gray-600 leading-relaxed'>
+                                                        {[
+                                                            order.addressLine,
+                                                            order.wardName,
+                                                            order.districtName,
+                                                            order.provinceName,
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(', ') || order.shippingAddress || '—'}
+                                                    </p>
+                                                </div>
+                                                <span className='text-xs text-blue-600 font-medium shrink-0 pt-1'>Thay đổi</span>
+                                            </div>
+                                            <p className='text-xs text-gray-500 mt-3'>
+                                                Cùng sổ địa chỉ như khi đặt hàng — chọn địa chỉ đã lưu hoặc thêm mới.
+                                            </p>
+                                        </button>
+                                    ) : (
+                                        <div className='rounded-xl border border-gray-200 bg-white p-4 shadow-sm'>
+                                            <div className='flex gap-3 items-start'>
+                                                <MapPin className='w-5 h-5 shrink-0 text-blue-600 mt-0.5' />
+                                                <div className='flex-1 min-w-0 space-y-1'>
+                                                    <p className='text-sm font-medium text-gray-900'>
+                                                        {order.shippingRecipientName?.trim() || '—'}
+                                                    </p>
+                                                    <p className='text-sm text-gray-600'>{order.shippingPhone || '—'}</p>
+                                                    <p className='text-sm text-gray-600 leading-relaxed'>
+                                                        {[
+                                                            order.addressLine,
+                                                            order.wardName,
+                                                            order.districtName,
+                                                            order.provinceName,
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(', ') || order.shippingAddress || '—'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            ) : (
-                                <>
-                                    <div className='pt-3 border-t border-gray-100'>
-                                        <p className='text-xs text-gray-500 mb-1'>Địa chỉ giao hàng</p>
-                                        <p className='text-gray-800'>{order.shippingAddress || '—'}</p>
+                                {order.note?.trim() ? (
+                                    <div>
+                                        <p className='text-xs text-gray-500 mb-1'>Ghi chú</p>
+                                        <p className='text-gray-700'>{order.note}</p>
                                     </div>
-                                    {order.shippingPhone && (
-                                        <div>
-                                            <p className='text-xs text-gray-500 mb-1'>Số điện thoại nhận hàng</p>
-                                            <p className='text-gray-800'>{order.shippingPhone}</p>
-                                        </div>
-                                    )}
-                                    {order.note && (
-                                        <div>
-                                            <p className='text-xs text-gray-500 mb-1'>Ghi chú</p>
-                                            <p className='text-gray-700'>{order.note}</p>
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                ) : null}
+                            </div>
                         </div>
 
                         <div className='bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden'>
@@ -464,6 +408,17 @@ export default function OrderDetailPage() {
             </main>
 
             <Footer />
+
+            {canEdit && (
+                <ShippingAddressBookDialog
+                    open={addressBookOpen}
+                    onOpenChange={setAddressBookOpen}
+                    provinces={provinces}
+                    onAddressesChange={() => {}}
+                    pickForOrder
+                    onPickAddress={applyAddressFromBook}
+                />
+            )}
 
             <CancelOrderModal
                 isOpen={cancelConfirm}

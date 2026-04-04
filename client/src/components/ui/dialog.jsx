@@ -66,7 +66,13 @@ function DialogFooter({ className, ...props }) {
 }
 
 function DialogTitle({ className, ...props }) {
-  return <DialogPrimitive.Title data-slot="dialog-title" className={cn("text-lg leading-none font-semibold", className)} {...props} />;
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("text-lg leading-none font-semibold text-gray-900 dark:text-gray-100", className)}
+      {...props}
+    />
+  );
 }
 
 function DialogDescription({ className, ...props }) {

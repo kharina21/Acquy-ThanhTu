@@ -323,134 +323,55 @@ const ProductListTab = () => {
             toast.error('Sản phẩm chưa có mã vạch hoặc mã hàng');
             return;
         }
-        const qty = Math.min(5000, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
-        const w = 35;
-        const h = 22;
-        const barcodeHeight = 25;
-        const padding = 0;
-        const fontSize = 7;
-        const nameFontSize = 7;
-        const maxChars = 14;
-        const fullName = (selectedProduct.name || selectedProduct.sku || '').toString();
-        const showBarcodeText = fullName.trim().toUpperCase() !== barcodeValue.trim().toUpperCase();
-        const barcodeCanvas = document.createElement('canvas');
+
+        // Khôi phục cách in tem mã "cũ": mở cửa sổ mới và in trực tiếp (ổn định hơn iframe/beforeprint trên một số máy)
+        const qty = Math.min(500, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
+        const canvas = document.createElement('canvas');
         try {
-            JsBarcode(barcodeCanvas, barcodeValue, {
-                format: 'CODE128',
-                width: 1.0,
-                height: barcodeHeight,
-                displayValue: false,
-                margin: 4,
-            });
-        } catch (error) {
-            console.error('JsBarcode error:', error);
+            JsBarcode(canvas, barcodeValue, { format: 'CODE128', width: 2, height: 40, displayValue: true });
+        } catch (e) {
             toast.error('Không tạo được mã vạch. Kiểm tra mã không chứa ký tự đặc biệt.');
             return;
         }
+
+        const barcodeDataUrl = canvas.toDataURL('image/png');
         const priceStr = barcodeShowPrice && selectedProduct.price != null ? formatVND(selectedProduct.price) : '';
-        const name = fullName.length > maxChars ? fullName.slice(0, maxChars) + '…' : fullName;
-        const pxPerMm = 12;
-        const pxW = Math.round(w * pxPerMm);
-        const pxH = Math.round(h * pxPerMm);
-        const labelCanvas = document.createElement('canvas');
-        labelCanvas.width = pxW;
-        labelCanvas.height = pxH;
-        const ctx = labelCanvas.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, pxW, pxH);
-        ctx.fillStyle = '#000';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const fontPx = Math.max(6, fontSize * pxPerMm * 0.35);
-        const nameFontPx = Math.max(6, nameFontSize * pxPerMm * 0.35);
-        const pad = padding * pxPerMm;
-        const maxBcW = pxW;
-        const targetBcH = pxH * 0.58;
-        const scale = Math.min(maxBcW / barcodeCanvas.width, targetBcH / barcodeCanvas.height);
-        const bcW = barcodeCanvas.width * scale;
-        const bcH = barcodeCanvas.height * scale;
-        const nameGap = nameFontPx * 0.92;
-        const codeGap = fontPx * 0.6;
-        const barcodeMarginBottom = 0;
-        const priceMarginTop = 8;
-        const priceH = priceStr ? fontPx * 1.15 : 0;
-        const totalH = pad + nameGap + bcH + barcodeMarginBottom + codeGap + priceMarginTop + priceH + pad;
-        const offsetY = Math.max(0, (pxH - totalH) / 2);
-        let y = offsetY + pad;
-        ctx.font = `${nameFontPx}px Arial`;
-        ctx.fillText(name, pxW / 2, y);
-        y += nameGap;
-        ctx.drawImage(barcodeCanvas, (pxW - bcW) / 2, y, bcW, bcH);
-        y += bcH + barcodeMarginBottom;
-        ctx.font = `${Math.max(6, fontPx * 0.85)}px Arial`;
-        ctx.fillText(barcodeValue, pxW / 2, y);
-        y += codeGap + priceMarginTop;
-        if (priceStr) {
-            ctx.font = `${Math.max(8, fontPx * 1.1)}px Arial`;
-            ctx.fillText(priceStr, pxW / 2, y);
-        }
-        const labelDataUrl = labelCanvas.toDataURL('image/png');
+        const name = (selectedProduct.name || selectedProduct.sku || '').toString();
 
-        // Khổ giấy 70×22mm = 2 cell (35×22mm/cell). Chẵn: cả 2 cell; lẻ: chỉ cell trái.
-        const sheetW = w * 2; // 70mm
-        const sheetH = h; // 22mm
-        const cellW = w; // 35mm
-        const cellH = h; // 22mm
-        const rows = Math.ceil(qty / 2);
-        const bodyStyle = rows === 1 ? `style="height:${sheetH}mm;max-height:${sheetH}mm;overflow:hidden;margin:0;padding:0;"` : `style="padding-top:42px;"`;
-        const imgStyle = `width:${cellW}mm;height:${cellH}mm;min-width:${cellW}mm;min-height:${cellH}mm;max-width:${cellW}mm;max-height:${cellH}mm;display:block;margin:0;padding:0;object-fit:contain;object-position:center;box-sizing:border-box;flex-shrink:0;image-rendering:crisp-edges;-webkit-print-color-adjust:exact;`;
-        const imgTag = `<img src="${labelDataUrl}" alt="tem" style="${imgStyle}" />`;
-        const emptyCell = `<div style="width:${cellW}mm;height:${cellH}mm;flex-shrink:0;background:#fff;"></div>`;
-        const rowHtml = [];
-        for (let row = 0; row < rows; row++) {
-            const count = Math.min(2, qty - row * 2);
-            const rightCell = count >= 2 ? imgTag : emptyCell;
-            const isLast = row === rows - 1;
-            const pageBreakBefore = row === 0 ? 'page-break-before:avoid;' : '';
-            rowHtml.push(
-                `<div style="display:flex;width:${sheetW}mm;height:${sheetH}mm;margin:0;padding:0;${pageBreakBefore}page-break-after:${isLast ? 'avoid' : 'always'};">${imgTag}${rightCell}</div>`,
-            );
-        }
-        const bodyHtml = rowHtml.join('');
-        const singleRowFix =
-            rows === 1 ? `html,body{height:${sheetH}mm !important;max-height:${sheetH}mm !important;overflow:hidden !important;}div{page-break-after:avoid !important;}` : '';
-        const pageStyle = `@page{size:${sheetW}mm ${sheetH}mm landscape;margin:0;}@media print{html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}${singleRowFix}img{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+        const labelHtml = Array(qty)
+            .fill(0)
+            .map(
+                () => `
+          <div class="barcode-label" style="border:1px solid #ddd;padding:8px;margin:4px;page-break-inside:avoid;display:inline-block;text-align:center;min-width:35mm;">
+            <div style="font-size:11px;font-weight:bold;margin-bottom:2px;">${name}</div>
+            <img src="${barcodeDataUrl}" alt="barcode" style="max-width:100%;height:40px;" />
+            ${priceStr ? `<div style="font-size:11px;">${priceStr}</div>` : ''}
+          </div>
+        `,
+            )
+            .join('');
 
-        const hintStyle = `.print-hint{display:block;}@media print{.print-hint{display:none !important;}body{padding:0 !important;margin:0 !important;}}`;
-        const printBody = `<div class="print-hint" style="position:fixed;top:0;left:0;right:0;background:#fef3c7;color:#92400e;padding:8px 12px;font-size:13px;text-align:center;z-index:9999;border-bottom:1px solid #fcd34d;">⚠️ Chọn <strong>Landscape</strong> và <strong>Actual size</strong> trong hộp thoại in.</div>${bodyHtml}`;
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
-        document.body.appendChild(iframe);
-        const doc = iframe.contentWindow.document;
-        doc.open();
-        doc.write(`
-          <!DOCTYPE html><html><head><title>In tem mã - ${selectedProduct.sku}</title>
+        const win = window.open('', '_blank');
+        if (!win) {
+            toast.error('Trình duyệt đang chặn popup. Hãy cho phép popup để in tem mã.');
+            return;
+        }
+
+        win.document.write(`
+          <!DOCTYPE html><html><head><title>In tem mã - ${selectedProduct.sku || ''}</title>
           <meta charset="utf-8">
           <style>
-            *{margin:0;padding:0;box-sizing:border-box;}
-            html,body{margin:0;padding:0;}
-            img{display:block;}
-            img:not(:last-child){page-break-after:always;}
-            img:last-child{page-break-after:avoid;}
-            ${hintStyle}
-            @media print{${pageStyle}}
+            body{font-family:Arial,sans-serif;padding:12px;}
+            @media print{.barcode-label{break-inside:avoid;}}
           </style></head>
-          <body ${bodyStyle}>${printBody}</body></html>
+          <body>${labelHtml}</body></html>
         `);
-        doc.close();
-        iframe.contentWindow.addEventListener('beforeprint', function onBeforePrint() {
-            iframe.contentDocument.body.innerHTML = bodyHtml;
-            iframe.contentDocument.body.style.cssText = 'margin:0;padding:0;';
-        });
-        iframe.contentWindow.addEventListener('afterprint', () => {
-            document.body.removeChild(iframe);
-        });
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        // Fallback: remove iframe nếu afterprint không fire (một số browser)
+        win.document.close();
+        win.focus();
         setTimeout(() => {
-            if (iframe.parentNode) document.body.removeChild(iframe);
-        }, 1000);
+            win.print();
+            win.close();
+        }, 300);
     };
 
     const handleExportBarcodeExcel = () => {
