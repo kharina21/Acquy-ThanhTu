@@ -12,15 +12,24 @@ export const getOnlineLocation = async () => {
 };
 
 /**
- * GET /api/locations/online – Chi nhánh được đặt làm bán online (cho UI).
- * Trả về null nếu chưa chọn; backend vẫn dùng fallback khi tạo đơn.
+ * GET /api/locations/online – Chi nhánh bán online cho UI (giống getOnlineLocation: ưu tiên cờ isOnlineLocation, fallback chi nhánh active đầu tiên).
  */
 export const getOnlineLocationHandler = async (req, res) => {
     try {
-        const location = await Location.findOne({ isOnlineLocation: true, isActive: true }).lean();
-        res.status(200).json({
+        const configured = await Location.findOne({ isOnlineLocation: true, isActive: true }).lean();
+        if (configured) {
+            return res.status(200).json({
+                success: true,
+                data: { location: configured, resolvedAs: 'configured' },
+            });
+        }
+        const fallback = await Location.findOne({ isActive: true }).sort({ createdAt: 1 }).lean();
+        return res.status(200).json({
             success: true,
-            data: { location: location || null },
+            data: {
+                location: fallback || null,
+                resolvedAs: fallback ? 'fallback_first_active' : 'none',
+            },
         });
     } catch (error) {
         console.error('getOnlineLocation error:', error.message);

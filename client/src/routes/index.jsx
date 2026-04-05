@@ -16,6 +16,10 @@ import StaffManagementPage from '../pages/StaffManagementPage/StaffManagementPag
 import ProductManagementPage from '../pages/ProductManagementPage/ProductManagementPage';
 import StockCheckPage from '../pages/WarehousePage/StockCheckPage';
 import ImportGoodsPage from '../pages/WarehousePage/ImportGoodsPage';
+import StockOutPage from '../pages/WarehousePage/StockOutPage';
+import WarehouseOutboundScanPage from '../pages/WarehousePage/WarehouseOutboundScanPage';
+import InventoryNxtReportPage from '../pages/WarehousePage/InventoryNxtReportPage';
+import WarehouseStockLinesReportPage from '../pages/WarehousePage/WarehouseStockLinesReportPage';
 import StockReturnsPage from '../pages/WarehousePage/StockReturnsPage';
 import SuppliersPage from '../pages/WarehousePage/SuppliersPage';
 import CategoryManagementPage from '../pages/CategoryManagementPage/CategoryManagementPage';
@@ -209,7 +213,7 @@ export const AppRoutes = () => {
                     </Route>
 
                     {/* Quản lý đơn hàng cửa hàng: admin, manager, seller */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller']} />}>
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'warehouse_manager']} />}>
                         <Route
                             path='/admin/orders/pre-orders'
                             element={<AdminOrderManagementPage key="pre-orders" type="pre-orders" />}
@@ -254,6 +258,26 @@ export const AppRoutes = () => {
                         <Route
                             path='/admin/warehouses/import'
                             element={<ImportGoodsPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/stock-out'
+                            element={<StockOutPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/outbound-scan'
+                            element={<WarehouseOutboundScanPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/nxt-report'
+                            element={<InventoryNxtReportPage />}
+                        />
+                        <Route
+                            path='/admin/warehouses/report-stock-in'
+                            element={<WarehouseStockLinesReportPage variant="in" />}
+                        />
+                        <Route
+                            path='/admin/warehouses/report-stock-out'
+                            element={<WarehouseStockLinesReportPage variant="out" />}
                         />
                         <Route
                             path='/admin/warehouses/stock-returns'

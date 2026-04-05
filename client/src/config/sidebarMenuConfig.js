@@ -38,15 +38,12 @@ export const SIDEBAR_MENU_ITEMS = [
     },
     {
         id: 'staffs',
+        to: '/admin/staffs',
         icon: UserRoundPen,
         label: 'Nhân viên',
         ariaLabel: 'Quản lý nhân viên',
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
         activePaths: ['/admin/staffs'],
-        subItems: [
-            { id: 'staffs-list', to: '/admin/staffs', label: 'Danh sách nhân viên' },
-            { id: 'staffs-schedule', to: '/admin/staffs/schedule', label: 'Lịch làm việc' },
-        ],
     },
     {
         id: 'battery-trade-in',
@@ -62,7 +59,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: Receipt,
         label: 'Đơn hàng',
         ariaLabel: 'Quản lý đơn hàng cửa hàng',
-        allowedRoles: ['admin', 'manager', 'seller', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'seller', 'warehouse_manager', 'Quản lý chi nhánh'],
         activePaths: ['/admin/orders'],
         subItems: [
             { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },
@@ -96,6 +93,11 @@ export const SIDEBAR_MENU_ITEMS = [
         subItems: [
             { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
             { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
+            { id: 'stock-out', to: '/admin/warehouses/stock-out', label: 'Xuất kho' },
+            { id: 'outbound-scan', to: '/admin/warehouses/outbound-scan', label: 'Quét xuất đơn online' },
+            { id: 'nxt-report', to: '/admin/warehouses/nxt-report', label: 'Báo cáo NXT' },
+            { id: 'report-stock-in', to: '/admin/warehouses/report-stock-in', label: 'Báo cáo nhập hàng' },
+            { id: 'report-stock-out', to: '/admin/warehouses/report-stock-out', label: 'Báo cáo xuất kho' },
             { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
             { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
         ],

@@ -1,13 +1,11 @@
 import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import ProductStock from '../models/ProductStock.js';
-import StockCheck from '../models/StockCheck.js';
 import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
 import UsageDevice from '../models/UsageDevice.js';
 import { parseExcelBuffer } from '../utils/parseExcelProduct.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
-import { generateStockCheckCode } from '../utils/stockCheckCode.js';
 
 async function findCategoryByName(categoryName) {
     const name = String(categoryName || '').trim();
@@ -164,21 +162,46 @@ export const getAllProducts = async (req, res) => {
         );
 
         const productIds = processedProducts.map((p) => p._id);
+        const availExpr = {
+            $max: [
+                0,
+                {
+                    $subtract: ['$quantity', { $ifNull: ['$reservedOnlineQty', 0] }],
+                },
+            ],
+        };
         const [totalsAgg, stocksAtLoc] = await Promise.all([
             ProductStock.aggregate([
                 { $match: { product: { $in: productIds } } },
-                { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+                { $addFields: { _avail: availExpr } },
+                { $group: { _id: '$product', total: { $sum: '$_avail' } } },
             ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total]))),
             locationId
                 ? ProductStock.find({ location: locationId, product: { $in: productIds } })
-                    .select('product quantity')
+                    .select('product quantity reservedOnlineQty')
                     .lean()
-                    .then((rows) => Object.fromEntries(rows.map((s) => [s.product.toString(), s.quantity])))
-                : Promise.resolve({}),
+                    .then((rows) => {
+                        const sellable = {};
+                        const physical = {};
+                        for (const s of rows) {
+                            const key = s.product.toString();
+                            const resQ = Math.max(0, Number(s.reservedOnlineQty) || 0);
+                            const q = s.quantity || 0;
+                            sellable[key] = Math.max(0, q - resQ);
+                            physical[key] = q;
+                        }
+                        return { sellable, physical };
+                    })
+                : Promise.resolve({ sellable: {}, physical: {} }),
         ]);
         processedProducts.forEach((p) => {
             p.totalStock = totalsAgg[p._id.toString()] ?? 0;
-            if (locationId) p.stockAtLocation = stocksAtLoc[p._id.toString()] ?? 0;
+            if (locationId) {
+                const key = p._id.toString();
+                p.stockAtLocation = stocksAtLoc.sellable?.[key] ?? 0;
+                /** Tồn thực tế trên sổ (ProductStock.quantity) — dùng cho kiểm kho, khác tồn bán được (đã trừ giữ chỗ online). */
+                p.physicalStockAtLocation = stocksAtLoc.physical?.[key] ?? 0;
+            }
         });
 
         const total = await Product.countDocuments(query);
@@ -283,7 +306,19 @@ export const getProductById = async (req, res) => {
         normalizeProductImages(product);
         const totalRows = await ProductStock.aggregate([
             { $match: { product: product._id } },
-            { $group: { _id: null, total: { $sum: '$quantity' } } },
+            {
+                $addFields: {
+                    _avail: {
+                        $max: [
+                            0,
+                            {
+                                $subtract: ['$quantity', { $ifNull: ['$reservedOnlineQty', 0] }],
+                            },
+                        ],
+                    },
+                },
+            },
+            { $group: { _id: null, total: { $sum: '$_avail' } } },
         ]);
         product.totalStock = totalRows[0]?.total ?? 0;
         res.status(200).json({ success: true, data: { product } });
@@ -336,15 +371,6 @@ export const createProduct = async (req, res) => {
         delete productData.totalStock;
 
         const product = await Product.create(productData);
-        const locationId = req.body.locationId?.trim();
-        const quantity = req.body.quantity !== undefined ? Number(req.body.quantity) || 0 : null;
-        if (locationId && quantity !== null) {
-            await ProductStock.findOneAndUpdate(
-                { product: product._id, location: locationId },
-                { quantity },
-                { upsert: true, new: true }
-            );
-        }
         const populatedProduct = await Product.findById(product._id)
             .populate('category', 'name description')
             .populate('brand', 'name description')
@@ -404,43 +430,11 @@ export const updateProduct = async (req, res) => {
             updateData.images = s ? [s] : [];
             updateData.image = s;
         }
-        const locationId = updateData.locationId?.trim();
-        const quantity = updateData.quantity !== undefined ? Number(updateData.quantity) : null;
         delete updateData.quantity;
         delete updateData.totalStock;
         delete updateData.locationId;
 
         const product = await Product.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-        if (product && locationId && quantity !== null) {
-            const existingStock = await ProductStock.findOne({ product: product._id, location: locationId }).lean();
-            const quantityBefore = existingStock?.quantity ?? 0;
-            await ProductStock.findOneAndUpdate(
-                { product: product._id, location: locationId },
-                { quantity },
-                { upsert: true, new: true }
-            );
-            if (req.user?._id) {
-                const quantityChange = quantity - quantityBefore;
-                const unitPrice = product.costPrice ?? product.price ?? 0;
-                const valueChange = quantityChange * unitPrice;
-                const code = await generateStockCheckCode();
-                await StockCheck.create({
-                    code,
-                    location: locationId,
-                    createdBy: req.user._id,
-                    note: 'Điều chỉnh từ chỉnh sửa số lượng sản phẩm',
-                    status: 'draft',
-                    items: [{
-                        product: product._id,
-                        quantityBefore,
-                        quantityCounted: quantity,
-                        quantityChange,
-                        unitPrice,
-                        valueChange,
-                    }],
-                });
-            }
-        }
         if (!product) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
         }
@@ -571,18 +565,10 @@ export const importFromExcel = async (req, res) => {
                 }
             }
             delete productData.usageDeviceName; // không lưu usageDeviceName nữa
-            const quantityFromExcel = productData.quantity !== undefined ? Number(productData.quantity) ?? 0 : 0;
             delete productData.quantity;
             delete productData.totalStock;
 
             const doc = await Product.create(productData);
-            if (locationId && quantityFromExcel >= 0) {
-                await ProductStock.findOneAndUpdate(
-                    { product: doc._id, location: locationId },
-                    { quantity: quantityFromExcel },
-                    { upsert: true, new: true }
-                );
-            }
             inserted.push(doc);
         }
         const skipMsg = [duplicateSkus.length && `${duplicateSkus.length} mã hàng trùng`, duplicateBarcodes.length && `${duplicateBarcodes.length} mã vạch trùng`].filter(Boolean).join(', ');
@@ -689,7 +675,17 @@ export const getCarBatteryProducts = async (req, res) => {
         const productIds = products.map((p) => p._id);
         const totalsAgg = await ProductStock.aggregate([
             { $match: { product: { $in: productIds } } },
-            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+            {
+                $addFields: {
+                    _avail: {
+                        $max: [
+                            0,
+                            { $subtract: ['$quantity', { $ifNull: ['$reservedOnlineQty', 0] }] },
+                        ],
+                    },
+                },
+            },
+            { $group: { _id: '$product', total: { $sum: '$_avail' } } },
         ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
 
         const processedProducts = products.map(product => {
@@ -742,7 +738,17 @@ export const getMotorcycleBatteryProducts = async (req, res) => {
         const productIds = products.map((p) => p._id);
         const totalsAgg = await ProductStock.aggregate([
             { $match: { product: { $in: productIds } } },
-            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+            {
+                $addFields: {
+                    _avail: {
+                        $max: [
+                            0,
+                            { $subtract: ['$quantity', { $ifNull: ['$reservedOnlineQty', 0] }] },
+                        ],
+                    },
+                },
+            },
+            { $group: { _id: '$product', total: { $sum: '$_avail' } } },
         ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
 
         const processedProducts = products.map(product => {
@@ -983,7 +989,25 @@ export const filterProducts = async (req, res) => {
             },
             {
                 $addFields: {
-                    totalStock: { $sum: '$stocks.quantity' }
+                    totalStock: {
+                        $sum: {
+                            $map: {
+                                input: '$stocks',
+                                as: 's',
+                                in: {
+                                    $max: [
+                                        0,
+                                        {
+                                            $subtract: [
+                                                '$$s.quantity',
+                                                { $ifNull: ['$$s.reservedOnlineQty', 0] },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
                 }
             },
             { $project: { stocks: 0 } },
@@ -1127,7 +1151,17 @@ export const getRelatedProducts = async (req, res) => {
         const topIds = topProducts.map((p) => p._id);
         const totalsAgg = await ProductStock.aggregate([
             { $match: { product: { $in: topIds } } },
-            { $group: { _id: '$product', total: { $sum: '$quantity' } } },
+            {
+                $addFields: {
+                    _avail: {
+                        $max: [
+                            0,
+                            { $subtract: ['$quantity', { $ifNull: ['$reservedOnlineQty', 0] }] },
+                        ],
+                    },
+                },
+            },
+            { $group: { _id: '$product', total: { $sum: '$_avail' } } },
         ]).then((rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.total])));
 
         // Normalize dữ liệu trước khi trả về

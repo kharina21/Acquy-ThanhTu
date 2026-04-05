@@ -121,6 +121,11 @@
 | 120 | Orders | Create Pre-Order | Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder) | 🟡 |
 | 121 | **Feedback** | Submit Feedback | Người dùng gửi phản hồi, đánh giá | 🟡 |
 | 122 | Feedback | Manage Feedback | Quản lý cửa hàng xem và phản hồi feedback từ khách | 🟡 |
+| 123 | Orders | Confirm Warehouse Outbound (Online) | Đơn online giữ chỗ tồn; kho xác nhận xuất mới trừ tồn + phiếu xuất | |
+| 124 | **Warehouse** | Stock Out (Phiếu xuất) | Phiếu xuất nháp/xác nhận; xuất khác đơn online | |
+| 125 | Warehouse | NXT Inventory Report | Báo cáo xuất nhập tồn theo kỳ (NXT) | |
+| 126 | Warehouse | Stock In Lines Report | Báo cáo nhập hàng theo dòng phiếu, xuất Excel | |
+| 127 | Warehouse | Stock Out Lines Report | Báo cáo xuất kho theo dòng phiếu, xuất Excel | |
 
 ---
 

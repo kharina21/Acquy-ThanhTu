@@ -21,6 +21,12 @@ const productStockSchema = new mongoose.Schema(
             default: 0,
             min: 0,
         },
+        /** Số lượng đang giữ cho đơn online chưa xác nhận xuất kho (không trừ khỏi quantity cho đến khi kho xác nhận). */
+        reservedOnlineQty: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
     },
     { timestamps: true }
 );

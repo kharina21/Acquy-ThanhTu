@@ -12,7 +12,9 @@ import BankAccount from '../models/BankAccount.js';
 import PaymentLink from '../models/PaymentLink.js';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import MemberPolicy from '../models/MemberPolicy.js';
+import StockOut from '../models/StockOut.js';
 import { getStockAtLocation } from './productStockController.js';
+import { generateStockOutCode } from '../utils/stockOutCode.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 import { createPayOSPaymentLink, getPayOSPaymentStatus } from '../libs/payosHelper.js';
@@ -43,11 +45,11 @@ const isAdminOrManager = async (userId) => {
     return roleNames.some((r) => ['admin', 'manager'].includes(r));
 };
 
-/** Cửa hàng: admin, manager, seller có thể xem tất cả đơn */
+/** Cửa hàng: admin, manager, seller, warehouse_manager có thể xem tất cả đơn */
 const canViewAllOrders = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => ['admin', 'manager', 'seller'].includes(r));
+    return roleNames.some((r) => ['admin', 'manager', 'seller', 'warehouse_manager'].includes(r));
 };
 
 /**
@@ -60,6 +62,35 @@ const generateOrderCode = async () => {
     if (exists) return generateOrderCode();
     return code;
 };
+
+/**
+ * Hoàn tồn khi hủy đơn: đơn online đang giữ chỗ → chỉ giảm reservedOnlineQty; còn lại → cộng lại quantity.
+ * Xóa phiếu xuất gắn đơn (nếu có) để báo cáo NXT không lệch với tồn đã hoàn.
+ */
+async function restoreInventoryOnOrderCancel(order) {
+    const locationId = order.location;
+    await StockOut.deleteMany({ order: order._id });
+    if (order.channel === 'online' && order.warehouseReservationActive === true) {
+        for (const item of order.items) {
+            await ProductStock.findOneAndUpdate(
+                { product: item.product, location: locationId },
+                { $inc: { reservedOnlineQty: -item.quantity } }
+            );
+        }
+        return;
+    }
+    /** Đặt cọc / chờ: chưa trừ tồn thực tế — không cộng lại */
+    if (order.isPreOrder === true) {
+        return;
+    }
+    for (const item of order.items) {
+        const stockRow = await ProductStock.findOne({ product: item.product, location: locationId });
+        if (stockRow) {
+            stockRow.quantity += item.quantity;
+            await stockRow.save();
+        }
+    }
+}
 
 /**
  * GET /api/orders/checkout-preview – Xem trước hạng khách hàng và chiết khấu khi checkout.
@@ -267,7 +298,7 @@ export const createOrder = async (req, res) => {
 
         const code = await generateOrderCode();
 
-        const order = await Order.create({
+        const orderPayload = {
             code,
             channel: 'online',
             customer: userId,
@@ -291,22 +322,35 @@ export const createOrder = async (req, res) => {
             wardName: String(wardName).trim(),
             addressLine: String(addressLine).trim(),
             note: noteStr,
-        });
+            warehouseReservationActive: true,
+        };
 
-        for (const item of orderItems) {
-            const stock = await ProductStock.findOne({ product: item.product, location: location._id });
-            if (stock) {
-                stock.quantity -= item.quantity;
-                await stock.save();
-            }
+        let order;
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                const created = await Order.create([orderPayload], { session });
+                order = created[0];
+                for (const item of orderItems) {
+                    await ProductStock.findOneAndUpdate(
+                        { product: item.product, location: location._id },
+                        { $inc: { reservedOnlineQty: item.quantity } },
+                        { session, upsert: true }
+                    );
+                }
+                const cartInTxn = await Cart.findOne({ userId }).session(session);
+                if (cartInTxn) {
+                    const orderedIds = new Set(orderItems.map((i) => i.product.toString()));
+                    cartInTxn.items = cartInTxn.items.filter((line) => {
+                        const pid = (line.product?._id || line.product).toString();
+                        return !orderedIds.has(pid);
+                    });
+                    await cartInTxn.save({ session });
+                }
+            });
+        } finally {
+            session.endSession();
         }
-
-        const orderedIds = new Set(orderItems.map((i) => i.product.toString()));
-        cart.items = cart.items.filter((line) => {
-            const pid = (line.product?._id || line.product).toString();
-            return !orderedIds.has(pid);
-        });
-        await cart.save();
 
         const populated = await Order.findById(order._id)
             .populate('items.product', 'sku name')
@@ -515,7 +559,7 @@ export const createOrderFromItems = async (req, res) => {
 
         const awaitingBankTransfer = !isPreOrder && (method === 'transfer' || method === 'vietqr');
 
-        const order = await Order.create({
+        const orderPayload = {
             code,
             channel: 'in_store',
             customer: orderCustomerUserId,
@@ -532,21 +576,79 @@ export const createOrderFromItems = async (req, res) => {
             shippingAddress: 'Tại quầy',
             note: String(note).trim(),
             isPreOrder: !!isPreOrder,
-        });
+        };
 
-        if (!isPreOrder) {
-            for (const item of orderItems) {
-                const stock = await ProductStock.findOne({ product: item.product, location: locationId });
-                if (stock) {
-                    stock.quantity -= item.quantity;
-                    await stock.save();
+        let order;
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                const [created] = await Order.create([orderPayload], { session });
+                order = created;
+                if (!isPreOrder) {
+                    for (const item of orderItems) {
+                        const resUpd = await ProductStock.findOneAndUpdate(
+                            {
+                                product: item.product,
+                                location: locationId,
+                                quantity: { $gte: item.quantity },
+                            },
+                            { $inc: { quantity: -item.quantity } },
+                            { session, new: true }
+                        );
+                        if (!resUpd) {
+                            const err = new Error('INSUFFICIENT_STOCK');
+                            err.code = 'INSUFFICIENT_STOCK';
+                            throw err;
+                        }
+                    }
+                    const processedItems = orderItems.map((it) => ({
+                        product: it.product,
+                        quantity: it.quantity,
+                        unitPrice: it.price,
+                        totalPrice: it.total,
+                    }));
+                    const soTotal = processedItems.reduce((s, it) => s + it.totalPrice, 0);
+                    const soCode = await generateStockOutCode();
+                    await StockOut.create(
+                        [
+                            {
+                                code: soCode,
+                                location: locationId,
+                                createdBy: userId,
+                                note: `Bán tại quầy — đơn ${created.code} (xuất kho tự động, không cần xác nhận tay)`,
+                                status: 'confirmed',
+                                confirmedAt: new Date(),
+                                reasonType: 'sale_order',
+                                saleChannel: 'offline',
+                                order: created._id,
+                                items: processedItems,
+                                totalAmount: soTotal,
+                            },
+                        ],
+                        { session }
+                    );
+                    if (!awaitingBankTransfer) {
+                        await Customer.findByIdAndUpdate(
+                            customerProfile._id,
+                            { $inc: { accumulatedAmount: finalTotal } },
+                            { session }
+                        );
+                    }
                 }
-            }
-            if (!awaitingBankTransfer) {
-                await Customer.findByIdAndUpdate(customerProfile._id, {
-                    $inc: { accumulatedAmount: finalTotal },
+            });
+        } catch (e) {
+            if (e?.code === 'INSUFFICIENT_STOCK') {
+                return res.status(400).json({
+                    message: 'Không đủ tồn kho để hoàn tất đơn',
                 });
             }
+            throw e;
+        } finally {
+            session.endSession();
+        }
+
+        if (!order?._id) {
+            return res.status(500).json({ message: 'Lỗi khi tạo đơn' });
         }
 
         const populated = await Order.findById(order._id)
@@ -588,13 +690,28 @@ export const getOrders = async (req, res) => {
             filter.customer = userId;
         }
 
-        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder } = req.query;
+        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue } = req.query;
         const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
         const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
 
-        if (status) filter.status = status;
-        if (paymentStatus) filter.paymentStatus = paymentStatus;
-        if (canViewAll && locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+        const useWarehouseQueue = warehouseQueue === 'true' || warehouseQueue === '1';
+        if (useWarehouseQueue) {
+            filter.channel = 'online';
+            filter.paymentStatus = 'paid';
+            filter.warehouseReservationActive = true;
+            filter.status = 'confirmed';
+            const onlineLoc = await getOnlineLocation();
+            if (!onlineLoc?._id) {
+                return res.status(400).json({
+                    message: 'Chưa có chi nhánh hoạt động để xác định kho đơn online (cấu hình chi nhánh bán online).',
+                });
+            }
+            filter.location = onlineLoc._id;
+        } else {
+            if (status) filter.status = status;
+            if (paymentStatus) filter.paymentStatus = paymentStatus;
+        }
+        if (canViewAll && locationId && mongoose.Types.ObjectId.isValid(locationId) && !useWarehouseQueue) {
             filter.location = locationId;
         }
         if (isPreOrder !== undefined && isPreOrder !== '') {
@@ -763,6 +880,108 @@ export const generateVietQRForOrder = async (req, res) => {
 };
 
 /**
+ * GET /api/orders/:id/refund-transfer-qr — QR chuyển khoản tới TK khách (VietQR img, không cần API tra cứu).
+ * Chỉ nhân viên cửa hàng.
+ */
+export const getRefundTransferQrForOrder = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+        const staff = await canViewAllOrders(userId);
+        if (!staff) {
+            return res.status(403).json({ message: 'Chỉ nhân viên cửa hàng mới xem được mã QR hoàn tiền.' });
+        }
+        const order = await Order.findById(id).lean();
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        if (order.status !== 'cancelled' || order.paymentStatus !== 'paid') {
+            return res.status(400).json({
+                message: 'Chỉ tạo QR khi đơn đã hủy và đang chờ hoàn tiền (chưa đánh dấu đã hoàn).',
+            });
+        }
+        const bin = String(order.refundBankBin || '').replace(/\D/g, '');
+        const acc = String(order.refundBankAccount || '').replace(/\D/g, '');
+        const holder = order.refundAccountHolder || '';
+        if (!bin || bin.length < 6 || !acc || acc.length < 6) {
+            return res.status(400).json({
+                message:
+                    'Chưa đủ dữ liệu tạo QR: cần mã BIN ngân hàng 6 số và số tài khoản. Liên hệ khách bổ sung nếu thiếu.',
+            });
+        }
+        const memoRaw = `Hoan tien ${order.code || 'DH'}`;
+        const memo = memoRaw.replace(/[^\w\s]/g, '').slice(0, 50).trim() || 'Hoan tien';
+        const qrUrl = getVietQRQuickLink({
+            bankCode: bin.slice(0, 6),
+            accountNumber: acc,
+            accountName: holder,
+            amount: order.totalAmount || 0,
+            memo,
+        });
+        return res.status(200).json({
+            success: true,
+            data: {
+                qrUrl,
+                amount: order.totalAmount || 0,
+                orderCode: order.code,
+                refundBankName: order.refundBankName,
+                refundBankAccount: order.refundBankAccount,
+                refundAccountHolder: order.refundAccountHolder,
+            },
+        });
+    } catch (error) {
+        console.error('getRefundTransferQrForOrder error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi tạo mã QR hoàn tiền', error: error.message });
+    }
+};
+
+/**
+ * POST /api/orders/:id/confirm-refund-transfer — Sau khi đã chuyển khoản hoàn tiền cho khách.
+ */
+export const confirmOrderRefundTransfer = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+        const staff = await canViewAllOrders(userId);
+        if (!staff) {
+            return res.status(403).json({ message: 'Bạn không có quyền xác nhận hoàn tiền.' });
+        }
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        if (order.status !== 'cancelled' || order.paymentStatus !== 'paid') {
+            return res.status(400).json({ message: 'Đơn không ở trạng thái chờ hoàn tiền.' });
+        }
+        if (!order.refundBankAccount?.trim() || !order.refundAccountHolder?.trim()) {
+            return res.status(400).json({ message: 'Đơn thiếu thông tin tài khoản hoàn tiền.' });
+        }
+        order.paymentStatus = 'refunded';
+        await order.save();
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku name')
+            .populate('location', 'code name')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .lean();
+        return res.status(200).json({
+            success: true,
+            message: 'Đã cập nhật trạng thái hoàn tiền',
+            data: { order: populated },
+        });
+    } catch (error) {
+        console.error('confirmOrderRefundTransfer error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi xác nhận hoàn tiền', error: error.message });
+    }
+};
+
+/**
  * GET /api/orders/:id/sync-payment – Đồng bộ trạng thái thanh toán từ PayOS ngay khi khách quay về.
  * Gọi PayOS API GET payment-requests/{orderCode} để lấy status, nếu PAID thì cập nhật Order ngay.
  */
@@ -878,7 +1097,7 @@ export const getOrderById = async (req, res) => {
         }
 
         const order = await Order.findById(id)
-            .populate('items.product', 'sku name price image images')
+            .populate('items.product', 'sku barcode name price image images')
             .populate('location', 'code name address phone')
             .populate('customer', 'username email firstName lastName phoneNumber')
             .populate('customerProfile', 'name phone type')
@@ -902,6 +1121,384 @@ export const getOrderById = async (req, res) => {
         console.error('getOrderById error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi lấy chi tiết đơn hàng',
+            error: error.message,
+        });
+    }
+};
+
+function outboundHttpError(statusCode, message) {
+    const e = new Error(message);
+    e.statusCode = statusCode;
+    return e;
+}
+
+async function findOnlineOrderByScanForWarehouse(rawScan) {
+    const onlineLoc = await getOnlineLocation();
+    if (!onlineLoc?._id) return null;
+    const onlineLocationId = onlineLoc._id;
+    const raw = String(rawScan || '').trim();
+    if (!raw) return null;
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(raw) && String(new mongoose.Types.ObjectId(raw)) === raw) {
+        order = await Order.findOne({ _id: raw, channel: 'online', location: onlineLocationId }).populate(
+            'items.product',
+            'sku barcode name'
+        );
+    }
+    if (!order) {
+        const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        order = await Order.findOne({
+            channel: 'online',
+            location: onlineLocationId,
+            code: new RegExp(`^${esc}$`, 'i'),
+        }).populate('items.product', 'sku barcode name');
+    }
+    return order;
+}
+
+/** Kiểm tra đơn đủ điều kiện đóng gói / xuất kho (chưa kiểm tra đã quét đủ dòng). */
+function assertOnlineOrderWarehouseGate(order) {
+    if (order.channel !== 'online') {
+        throw outboundHttpError(400, 'Chỉ áp dụng cho đơn bán online');
+    }
+    if (order.status === 'cancelled') {
+        throw outboundHttpError(400, 'Đơn đã hủy');
+    }
+    if (order.paymentStatus !== 'paid') {
+        throw outboundHttpError(400, 'Đơn chưa thanh toán');
+    }
+    if (order.status !== 'confirmed') {
+        throw outboundHttpError(400, 'Đơn chưa được seller xác nhận (chưa ở trạng thái chờ xuất kho)');
+    }
+    if (order.warehouseReservationActive !== true) {
+        throw outboundHttpError(400, 'Đơn không còn ở trạng thái chờ xuất kho');
+    }
+}
+
+async function assertOnlineOrderMatchesConfiguredLocation(order) {
+    const onlineLoc = await getOnlineLocation();
+    if (!onlineLoc?._id) {
+        throw outboundHttpError(400, 'Hệ thống chưa xác định được chi nhánh bán online');
+    }
+    if (String(order.location) !== String(onlineLoc._id)) {
+        throw outboundHttpError(
+            400,
+            'Đơn không thuộc chi nhánh bán online đang cấu hình — không thao tác tại đây.'
+        );
+    }
+}
+
+function getPackedLineSet(order) {
+    const arr = order.warehousePackedLineIndexes || [];
+    return new Set(arr.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0));
+}
+
+function packingProgressPayload(orderLean) {
+    const n = orderLean.items?.length || 0;
+    const packed = new Set(
+        (orderLean.warehousePackedLineIndexes || []).map((x) => Number(x)).filter((x) => Number.isInteger(x) && x >= 0)
+    );
+    const lines = (orderLean.items || []).map((it, idx) => {
+        const p = it.product;
+        return {
+            lineIndex: idx,
+            packed: packed.has(idx),
+            quantity: it.quantity,
+            productName: p?.name || '—',
+            sku: p?.sku || '—',
+            barcode: p?.barcode || '',
+        };
+    });
+    return {
+        packedLineIndexes: [...packed].sort((a, b) => a - b),
+        totalLines: n,
+        packedCount: packed.size,
+        allPacked: n > 0 && packed.size === n,
+        lines,
+    };
+}
+
+/**
+ * POST /api/orders/warehouse/lookup-online-order — Tìm đơn theo mã/ID để đóng gói (không trừ tồn).
+ */
+export const lookupOnlineOrderForPacking = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { scan } = req.body || {};
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const raw = String(scan || '').trim();
+        if (!raw) {
+            return res.status(400).json({ message: 'Thiếu mã đơn hoặc ID đơn' });
+        }
+        const order = await findOnlineOrderByScanForWarehouse(raw);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn online tại chi nhánh bán online' });
+        }
+        try {
+            assertOnlineOrderWarehouseGate(order);
+            await assertOnlineOrderMatchesConfiguredLocation(order);
+        } catch (e) {
+            if (e.statusCode) return res.status(e.statusCode).json({ message: e.message });
+            throw e;
+        }
+        const dup = await StockOut.findOne({ order: order._id }).lean();
+        if (dup) {
+            return res.status(400).json({ message: 'Đơn đã có phiếu xuất kho' });
+        }
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku barcode name')
+            .populate('location', 'code name')
+            .lean();
+        return res.status(200).json({
+            success: true,
+            data: {
+                order: populated,
+                ...packingProgressPayload(populated),
+            },
+        });
+    } catch (error) {
+        console.error('lookupOnlineOrderForPacking error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi tải đơn', error: error.message });
+    }
+};
+
+/**
+ * POST /api/orders/:id/warehouse-pack-line — Quét SKU/mã vạch để xác nhận đóng gói một dòng hàng.
+ */
+export const packWarehouseOrderLine = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        const { scannedSku } = req.body || {};
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+        const needle = String(scannedSku || '').trim().toLowerCase();
+        if (!needle) {
+            return res.status(400).json({ message: 'Thiếu mã SKU / mã vạch vừa quét' });
+        }
+        const order = await Order.findById(id).populate('items.product', 'sku barcode name');
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        try {
+            assertOnlineOrderWarehouseGate(order);
+            await assertOnlineOrderMatchesConfiguredLocation(order);
+        } catch (e) {
+            if (e.statusCode) return res.status(e.statusCode).json({ message: e.message });
+            throw e;
+        }
+        const dup = await StockOut.findOne({ order: order._id }).lean();
+        if (dup) {
+            return res.status(400).json({ message: 'Đơn đã có phiếu xuất kho' });
+        }
+        const packed = getPackedLineSet(order);
+        const items = order.items || [];
+        let pickedIdx = -1;
+        for (let i = 0; i < items.length; i++) {
+            if (packed.has(i)) continue;
+            const p = items[i].product;
+            const sku = (p?.sku && String(p.sku).toLowerCase()) || '';
+            const bc = (p?.barcode && String(p.barcode).toLowerCase()) || '';
+            if (sku === needle || bc === needle) {
+                pickedIdx = i;
+                break;
+            }
+        }
+        if (pickedIdx < 0) {
+            return res.status(400).json({
+                message:
+                    'Mã quét không khớp dòng hàng chưa đóng gói nào trong đơn (hoặc dòng này đã được quét trước đó).',
+            });
+        }
+        if (!order.warehousePackedLineIndexes) order.warehousePackedLineIndexes = [];
+        if (!order.warehousePackedLineIndexes.includes(pickedIdx)) {
+            order.warehousePackedLineIndexes.push(pickedIdx);
+            order.warehousePackedLineIndexes.sort((a, b) => a - b);
+        }
+        await order.save();
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku barcode name')
+            .populate('location', 'code name')
+            .lean();
+        return res.status(200).json({
+            success: true,
+            message: `Đã xác nhận đóng gói dòng ${pickedIdx + 1}/${items.length}`,
+            data: {
+                order: populated,
+                ...packingProgressPayload(populated),
+            },
+        });
+    } catch (error) {
+        console.error('packWarehouseOrderLine error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi cập nhật đóng gói', error: error.message });
+    }
+};
+
+/**
+ * Trừ tồn, tạo phiếu xuất, đặt đơn completed.
+ * Luôn đọc lại đơn từ DB để có warehousePackedLineIndexes mới nhất.
+ */
+async function executeOnlineWarehouseOutbound(orderRef, userId) {
+    const o = await Order.findById(orderRef._id).populate('items.product', 'sku barcode name');
+    if (!o) {
+        throw outboundHttpError(404, 'Không tìm thấy đơn hàng');
+    }
+    assertOnlineOrderWarehouseGate(o);
+    await assertOnlineOrderMatchesConfiguredLocation(o);
+
+    const dup = await StockOut.findOne({ order: o._id }).lean();
+    if (dup) {
+        throw outboundHttpError(400, 'Đơn đã có phiếu xuất kho');
+    }
+
+    const n = o.items?.length || 0;
+    if (n === 0) {
+        throw outboundHttpError(400, 'Đơn không có dòng hàng');
+    }
+    const packed = getPackedLineSet(o);
+    for (let i = 0; i < n; i++) {
+        if (!packed.has(i)) {
+            throw outboundHttpError(
+                400,
+                'Chưa quét đủ sản phẩm đóng gói — vui lòng quét SKU/mã vạch từng dòng hàng trước khi xác nhận xuất kho.'
+            );
+        }
+    }
+
+    const locationId = o.location;
+    const session = await mongoose.startSession();
+    let stockOutDoc;
+    try {
+        await session.withTransaction(async () => {
+            for (const item of o.items) {
+                const pid = item.product?._id || item.product;
+                const resUpd = await ProductStock.findOneAndUpdate(
+                    {
+                        product: pid,
+                        location: locationId,
+                        quantity: { $gte: item.quantity },
+                        reservedOnlineQty: { $gte: item.quantity },
+                    },
+                    { $inc: { quantity: -item.quantity, reservedOnlineQty: -item.quantity } },
+                    { session, new: true }
+                );
+                if (!resUpd) {
+                    const err = new Error('INSUFFICIENT_STOCK');
+                    err.code = 'INSUFFICIENT_STOCK';
+                    throw err;
+                }
+            }
+
+            const processedItems = o.items.map((it) => {
+                const pid = it.product?._id || it.product;
+                return {
+                    product: pid,
+                    quantity: it.quantity,
+                    unitPrice: it.price,
+                    totalPrice: it.total,
+                };
+            });
+            const totalAmount = processedItems.reduce((s, it) => s + it.totalPrice, 0);
+            const code = await generateStockOutCode();
+
+            const [so] = await StockOut.create(
+                [
+                    {
+                        code,
+                        location: locationId,
+                        createdBy: userId,
+                        note: `Bán online — đơn ${o.code} (xuất kho sau khi nhân viên kho xác nhận)`,
+                        status: 'confirmed',
+                        confirmedAt: new Date(),
+                        reasonType: 'sale_order',
+                        saleChannel: 'online',
+                        order: o._id,
+                        items: processedItems,
+                        totalAmount,
+                    },
+                ],
+                { session }
+            );
+            stockOutDoc = so;
+
+            await Order.updateOne(
+                { _id: o._id },
+                {
+                    $set: {
+                        warehouseReservationActive: false,
+                        status: 'completed',
+                        warehousePackedLineIndexes: [],
+                    },
+                },
+                { session }
+            );
+        });
+    } catch (e) {
+        if (e?.code === 'INSUFFICIENT_STOCK') {
+            throw outboundHttpError(
+                400,
+                'Không đủ tồn kho thực tế hoặc số giữ chỗ không khớp — không thể xác nhận xuất kho.'
+            );
+        }
+        throw e;
+    } finally {
+        session.endSession();
+    }
+
+    const populated = await Order.findById(o._id)
+        .populate('items.product', 'sku barcode name')
+        .populate('location', 'code name address')
+        .populate('customer', 'username email firstName lastName')
+        .populate('customerProfile', 'name phone type')
+        .lean();
+
+    return { order: populated, stockOutId: stockOutDoc?._id };
+}
+
+/**
+ * POST /api/orders/:id/confirm-warehouse-outbound — Đơn online: trừ tồn thật, giảm giữ chỗ, tạo phiếu xuất.
+ * Yêu cầu đã quét đủ từng dòng hàng đóng gói (warehousePackedLineIndexes).
+ */
+export const confirmWarehouseOutbound = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id).populate('items.product', 'sku barcode name');
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        try {
+            const data = await executeOnlineWarehouseOutbound(order, userId);
+            return res.status(200).json({
+                success: true,
+                message: 'Đã xác nhận xuất kho và trừ tồn',
+                data,
+            });
+        } catch (e) {
+            if (e.statusCode) {
+                return res.status(e.statusCode).json({ message: e.message });
+            }
+            throw e;
+        }
+    } catch (error) {
+        console.error('confirmWarehouseOutbound error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi xác nhận xuất kho',
             error: error.message,
         });
     }
@@ -1093,14 +1690,15 @@ export const getOrderReport = async (req, res) => {
 /**
  * POST /api/orders/:id/cancel – Khách hàng hủy đơn của mình.
  * Được hủy khi: status = pending (chờ xử lý).
- * Khi đã thanh toán: bắt buộc gửi thông tin chuyển khoản hoàn tiền (refundBankName, refundBankAccount, refundAccountHolder).
+ * Khi đã thanh toán: refundBankName, refundBankAccount, refundAccountHolder (bắt buộc);
+ * refundBankBin (6 số, tùy chọn — để tạo mã QR hoàn tiền cho cửa hàng).
  * Hoàn lại tồn kho khi hủy.
  */
 export const cancelOrderByCustomer = async (req, res) => {
     try {
         const userId = req.user?._id;
         const { id } = req.params;
-        const { refundBankName, refundBankAccount, refundAccountHolder } = req.body || {};
+        const { refundBankBin, refundBankName, refundBankAccount, refundAccountHolder } = req.body || {};
 
         if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
@@ -1126,14 +1724,18 @@ export const cancelOrderByCustomer = async (req, res) => {
 
         if (order.paymentStatus === 'paid') {
             const bankName = String(refundBankName || '').trim();
-            const bankAccount = String(refundBankAccount || '').trim();
+            const bankAccount = String(refundBankAccount || '').replace(/\s/g, '').trim();
             const accountHolder = String(refundAccountHolder || '').trim();
+            const binDigits = String(refundBankBin || '').replace(/\D/g, '');
+            const bankBin = binDigits.length >= 6 ? binDigits.slice(0, 6) : '';
             if (!bankName || !bankAccount || !accountHolder) {
                 return res.status(400).json({
-                    message: 'Đơn đã thanh toán. Vui lòng nhập thông tin tài khoản ngân hàng để hoàn tiền.',
+                    message:
+                        'Đơn đã thanh toán. Vui lòng nhập đầy đủ tên ngân hàng, số tài khoản và tên chủ tài khoản nhận hoàn tiền.',
                 });
             }
             order.refundBankName = bankName;
+            order.refundBankBin = bankBin;
             order.refundBankAccount = bankAccount;
             order.refundAccountHolder = accountHolder;
         }
@@ -1147,17 +1749,9 @@ export const cancelOrderByCustomer = async (req, res) => {
             });
         }
 
-        // Hoàn lại tồn kho
-        const locationId = order.location;
-        for (const item of order.items) {
-            const stockRow = await ProductStock.findOne({
-                product: item.product,
-                location: locationId,
-            });
-            if (stockRow) {
-                stockRow.quantity += item.quantity;
-                await stockRow.save();
-            }
+        await restoreInventoryOnOrderCancel(order);
+        if (order.channel === 'online') {
+            await Order.findByIdAndUpdate(order._id, { warehouseReservationActive: false });
         }
 
         const populated = await Order.findById(order._id)
@@ -1277,7 +1871,8 @@ export const updateOrderByCustomer = async (req, res) => {
 
 /**
  * PUT /api/orders/:id – Cập nhật đơn hàng (status, paymentStatus).
- * Chỉ Admin/Manager. Body: { status?, paymentStatus? }
+ * Admin / Manager / Seller. Body: { status?, paymentStatus? }
+ * Đơn online: thanh toán xong vẫn "Chờ xử lý"; seller chuyển "Đã xác nhận" mới vào hàng chờ xuất kho.
  */
 export const updateOrder = async (req, res) => {
     try {
@@ -1296,7 +1891,12 @@ export const updateOrder = async (req, res) => {
         const previousStatus = order.status;
 
         if (status) {
-            const validStatuses = ['pending', 'completed', 'cancelled'];
+            if (order.channel === 'in_store' && status === 'confirmed') {
+                return res.status(400).json({
+                    message: 'Đơn bán tại quầy không dùng trạng thái "Đã xác nhận" — chỉ áp dụng cho đơn online.',
+                });
+            }
+            const validStatuses = ['pending', 'confirmed', 'completed', 'cancelled'];
             if (validStatuses.includes(status)) order.status = status;
         }
         if (paymentStatus) {
@@ -1313,18 +1913,17 @@ export const updateOrder = async (req, res) => {
             }
         }
 
+        if (order.channel === 'online' && order.status === 'confirmed' && order.paymentStatus !== 'paid') {
+            return res.status(400).json({
+                message: 'Đơn online chỉ được chuyển sang "Đã xác nhận" sau khi khách đã thanh toán.',
+            });
+        }
+
         // Khi hủy đơn: hoàn lại tồn kho (chỉ khi đơn chưa từng bị hủy trước đó)
         if (order.status === 'cancelled' && previousStatus !== 'cancelled') {
-            const locationId = order.location;
-            for (const item of order.items) {
-                const stockRow = await ProductStock.findOne({
-                    product: item.product,
-                    location: locationId,
-                });
-                if (stockRow) {
-                    stockRow.quantity += item.quantity;
-                    await stockRow.save();
-                }
+            await restoreInventoryOnOrderCancel(order);
+            if (order.channel === 'online') {
+                order.warehouseReservationActive = false;
             }
         }
 

@@ -18,6 +18,7 @@ const stockInSchema = new mongoose.Schema(
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         note: { type: String, default: '' },
         status: { type: String, enum: ['draft', 'confirmed'], default: 'draft' },
+        confirmedAt: { type: Date, default: null },
         items: [stockInItemSchema],
         totalAmount: { type: Number, default: 0 },
     },

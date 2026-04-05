@@ -9,9 +9,14 @@ import {
     updateOrder,
     updateOrderByCustomer,
     cancelOrderByCustomer,
+    confirmWarehouseOutbound,
+    lookupOnlineOrderForPacking,
+    packWarehouseOrderLine,
     syncPaymentFromPayOS,
     getOrderReport,
     generateVietQRForOrder,
+    getRefundTransferQrForOrder,
+    confirmOrderRefundTransfer,
     checkoutPreview,
 } from '../controllers/orderController.js';
 
@@ -27,8 +32,28 @@ router.get(
     hasRole('user', 'customer', 'admin', 'manager', 'seller'),
     generateVietQRForOrder,
 );
+router.get(
+    '/:id/refund-transfer-qr',
+    hasRole('admin', 'manager', 'seller'),
+    getRefundTransferQrForOrder,
+);
+router.post(
+    '/:id/confirm-refund-transfer',
+    hasRole('admin', 'manager', 'seller'),
+    confirmOrderRefundTransfer,
+);
 router.get('/:id/sync-payment', hasRole('user', 'customer', 'admin', 'manager', 'seller'), syncPaymentFromPayOS);
 router.post('/:id/cancel', hasRole('user', 'customer'), cancelOrderByCustomer);
+router.post(
+    '/:id/confirm-warehouse-outbound',
+    hasRole('admin', 'manager', 'warehouse_manager'),
+    confirmWarehouseOutbound,
+);
+router.post(
+    '/:id/warehouse-pack-line',
+    hasRole('admin', 'manager', 'warehouse_manager'),
+    packWarehouseOrderLine,
+);
 router.patch('/:id', hasRole('user', 'customer'), updateOrderByCustomer);
 
 // Bán tại quầy (admin, manager, seller)
@@ -36,6 +61,12 @@ router.post('/from-items', hasRole('admin', 'manager', 'seller'), createOrderFro
 
 // Báo cáo (admin, manager)
 router.get('/report', hasRole('admin', 'manager'), getOrderReport);
+
+router.post(
+    '/warehouse/lookup-online-order',
+    hasRole('admin', 'manager', 'warehouse_manager'),
+    lookupOnlineOrderForPacking,
+);
 
 // Xem đơn: user/customer xem đơn của mình; admin/manager/seller xem đơn cửa hàng
 router.get('/', getOrders);

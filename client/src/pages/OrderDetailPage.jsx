@@ -238,6 +238,51 @@ export default function OrderDetailPage() {
                                     </div>
                                 </div>
                             </div>
+                            {order.status === 'cancelled' &&
+                                (order.refundBankName || order.refundBankAccount || order.refundAccountHolder) && (
+                                    <div className='rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-gray-800'>
+                                        <p className='font-semibold text-amber-950 mb-2'>Hoàn tiền</p>
+                                        {order.paymentStatus === 'paid' && (
+                                            <p className='text-amber-900/90 mb-3 leading-relaxed'>
+                                                Đơn đã thanh toán và đã hủy. Cửa hàng sẽ chuyển khoản hoàn tiền theo
+                                                thông tin bạn đã gửi. Trạng thái &quot;Đã hoàn tiền&quot; sẽ hiện sau khi
+                                                cửa hàng xác nhận.
+                                            </p>
+                                        )}
+                                        {order.paymentStatus === 'refunded' && (
+                                            <p className='text-emerald-800 font-medium mb-3'>Đã hoàn tiền.</p>
+                                        )}
+                                        <ul className='space-y-1 text-gray-700'>
+                                            {order.refundBankName ? (
+                                                <li>
+                                                    <span className='text-gray-500'>Ngân hàng:</span> {order.refundBankName}
+                                                </li>
+                                            ) : null}
+                                            {order.refundBankBin ? (
+                                                <li>
+                                                    <span className='text-gray-500'>Mã BIN:</span> {order.refundBankBin}
+                                                </li>
+                                            ) : null}
+                                            {order.refundBankAccount ? (
+                                                <li>
+                                                    <span className='text-gray-500'>Số TK:</span>{' '}
+                                                    <span className='font-mono'>{order.refundBankAccount}</span>
+                                                </li>
+                                            ) : null}
+                                            {order.refundAccountHolder ? (
+                                                <li>
+                                                    <span className='text-gray-500'>Chủ TK:</span> {order.refundAccountHolder}
+                                                </li>
+                                            ) : null}
+                                            <li>
+                                                <span className='text-gray-500'>Số tiền:</span>{' '}
+                                                <span className='font-semibold'>
+                                                    {(order.totalAmount || 0).toLocaleString('vi-VN')}đ
+                                                </span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                )}
                             <div className='pt-3 border-t border-gray-100 space-y-4'>
                                 <div>
                                     <p className='text-xs text-gray-500 mb-2'>Địa chỉ giao hàng</p>

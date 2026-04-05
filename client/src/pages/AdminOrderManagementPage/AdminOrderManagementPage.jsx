@@ -8,7 +8,8 @@ import { STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusB
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
-    completed: 'Hoàn thành',
+    confirmed: 'Đã xác nhận · chờ xuất kho',
+    completed: 'Đã xuất kho / hoàn thành',
     cancelled: 'Đã hủy',
 };
 
@@ -26,7 +27,7 @@ const ORDER_TYPE_LABELS = {
 };
 
 const getStatusSelectClass = (status) => {
-    const s = ['paid', 'confirmed'].includes(status) ? 'completed' : status || 'pending';
+    const s = status && STATUS_CONFIG[status] ? status : 'pending';
     return STATUS_CONFIG[s]?.className || 'bg-base-100';
 };
 
@@ -103,20 +104,6 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
         }
     };
 
-    const handleSyncPayOS = async (orderId, e) => {
-        e?.stopPropagation();
-        setSyncingId(orderId);
-        try {
-            await syncPaymentStatus(orderId);
-            toast.success('Đã đồng bộ trạng thái từ PayOS');
-            fetchOrders();
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Không thể đồng bộ từ PayOS');
-        } finally {
-            setSyncingId(null);
-        }
-    };
-
     const formatCustomer = (order) => {
         if (order?.customerProfile) {
             return order.customerProfile.name + (order.customerProfile.phone ? ` (${order.customerProfile.phone})` : '');
@@ -130,7 +117,14 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     return (
         <div className='flex-1 p-6 bg-base-200 overflow-y-auto'>
             <div className='container mx-auto space-y-4'>
-                <h1 className='text-2xl font-bold text-base-content'>{type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}</h1>
+                <div>
+                    <h1 className='text-2xl font-bold text-base-content'>{type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}</h1>
+                    {type === 'invoices' && (
+                        <p className='text-sm text-base-content/65 mt-1 max-w-3xl'>
+                            Đơn online: sau khi khách thanh toán, trạng thái vẫn &quot;Chờ xử lý&quot; — seller chuyển sang &quot;Đã xác nhận&quot; thì kho mới xuất hàng và trừ tồn thực tế. Bán tại quầy không đổi.
+                        </p>
+                    )}
+                </div>
 
                 <div className='flex flex-wrap gap-2 items-center'>
                     <div>
@@ -234,11 +228,14 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         <td onClick={(e) => e.stopPropagation()}>
                                                             <select
                                                                 className={`select select-bordered select-sm border-2 font-medium ${getStatusSelectClass(order.status)}`}
-                                                                value={['paid', 'confirmed'].includes(order.status) ? 'completed' : order.status || 'pending'}
+                                                                value={STATUS_LABELS[order.status] ? order.status : 'pending'}
                                                                 onChange={(e) => handleUpdateStatus(order._id, 'status', e.target.value)}
                                                                 disabled={updatingId === order._id}
                                                             >
-                                                                {Object.entries(STATUS_LABELS).map(([v, l]) => (
+                                                                {(order.channel === 'in_store'
+                                                                    ? Object.entries(STATUS_LABELS).filter(([v]) => v !== 'confirmed')
+                                                                    : Object.entries(STATUS_LABELS)
+                                                                ).map(([v, l]) => (
                                                                     <option
                                                                         key={v}
                                                                         value={v}
@@ -309,8 +306,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                             <span
                                                                                 className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getStatusSelectClass(order.status)}`}
                                                                             >
-                                                                                {STATUS_LABELS[['paid', 'confirmed'].includes(order.status) ? 'completed' : order.status] ||
-                                                                                    order.status}
+                                                                                {STATUS_LABELS[order.status] || order.status}
                                                                             </span>
                                                                         </p>
                                                                         <p>

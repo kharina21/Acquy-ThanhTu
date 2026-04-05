@@ -46,10 +46,40 @@ export const updateOrderByCustomer = async (id, data) => {
 
 /**
  * Khách hàng hủy đơn - khi status pending/confirmed.
- * Khi đã thanh toán: cần truyền { refundBankName, refundBankAccount, refundAccountHolder }
+ * Khi đã thanh toán: refundBankName, refundBankAccount, refundAccountHolder (bắt buộc); refundBankBin (tùy chọn).
  */
 export const cancelOrderByCustomer = async (id, data = {}) => {
     const res = await api.post(`/orders/${id}/cancel`, data);
+    return res.data;
+};
+
+/** QR chuyển khoản hoàn tiền tới TK khách (admin/manager/seller). */
+export const getRefundTransferQr = async (id) => {
+    const res = await api.get(`/orders/${id}/refund-transfer-qr`);
+    return res.data;
+};
+
+/** Đánh dấu đã hoàn tiền xong (sau khi chuyển khoản). */
+export const confirmRefundTransfer = async (id) => {
+    const res = await api.post(`/orders/${id}/confirm-refund-transfer`);
+    return res.data;
+};
+
+/** Xác nhận xuất kho đơn online — chỉ khi đã quét đủ dòng đóng gói (trang xuất kho nhanh). */
+export const confirmWarehouseOutbound = async (id, data = {}) => {
+    const res = await api.post(`/orders/${id}/confirm-warehouse-outbound`, data);
+    return res.data;
+};
+
+/** Tìm đơn online theo mã/ID để đóng gói. Body: { scan } */
+export const lookupOnlineOrderForPacking = async (data) => {
+    const res = await api.post('/orders/warehouse/lookup-online-order', data);
+    return res.data;
+};
+
+/** Quét SKU/mã vạch để đánh dấu đã đóng gói một dòng. Body: { scannedSku } */
+export const packWarehouseOrderLine = async (orderId, data) => {
+    const res = await api.post(`/orders/${orderId}/warehouse-pack-line`, data);
     return res.data;
 };
 

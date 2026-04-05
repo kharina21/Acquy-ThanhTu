@@ -65,6 +65,20 @@ export const createStockCheck = async (payload) => {
 };
 
 /**
+ * Cập nhật phiếu nháp: số đếm thực tế + ghi chú.
+ * Payload: { note?, items: [{ productId, quantityCounted }] }
+ */
+export const updateStockCheck = async (id, payload) => {
+    try {
+        const { data } = await api.put(`/stock-checks/${id}`, payload);
+        return data;
+    } catch (error) {
+        console.error('updateStockCheck error:', error?.response?.data || error);
+        throw error;
+    }
+};
+
+/**
  * Xác nhận phiếu kiểm kho (cập nhật tồn kho theo số đếm thực tế).
  */
 export const confirmStockCheck = async (id) => {

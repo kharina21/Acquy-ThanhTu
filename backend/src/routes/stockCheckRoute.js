@@ -4,6 +4,7 @@ import {
     getAllStockChecks,
     getStockCheckById,
     createStockCheck,
+    updateStockCheck,
     confirmStockCheck,
 } from '../controllers/stockCheckController.js';
 import { authenticate } from '../middlewares/authenticate.js';
@@ -16,8 +17,9 @@ router.use(hasRole('admin', 'manager', 'warehouse_manager'));
 
 router.get('/next-code', getNextCode);
 router.get('/', getAllStockChecks);
-router.get('/:id', getStockCheckById);
 router.post('/', createStockCheck);
 router.put('/:id/confirm', confirmStockCheck);
+router.put('/:id', updateStockCheck);
+router.get('/:id', getStockCheckById);
 
 export default router;

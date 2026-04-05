@@ -291,6 +291,7 @@ export const confirmStockIn = async (req, res) => {
         }
 
         stockIn.status = 'confirmed';
+        stockIn.confirmedAt = new Date();
         await stockIn.save();
 
         const populated = await StockIn.findById(id)

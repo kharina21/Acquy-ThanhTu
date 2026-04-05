@@ -5,6 +5,7 @@ import {
     getStockChecks,
     getStockCheckById,
     createStockCheck,
+    updateStockCheck,
     confirmStockCheck,
 } from '@/services/stockCheckService';
 import { getProducts, getProductOptions } from '@/services/productService';
@@ -46,6 +47,9 @@ const StockCheckTab = () => {
     const [detailStockCheck, setDetailStockCheck] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
+    /** Chỉnh số đếm trong modal chi tiết (nháp): key = _id dòng item */
+    const [detailCountDraft, setDetailCountDraft] = useState({});
+    const [savingDetailCounts, setSavingDetailCounts] = useState(false);
 
     // Ngày hôm nay (YYYY-MM-DD) dùng để giới hạn "Từ ngày"
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -128,22 +132,34 @@ const StockCheckTab = () => {
             toast.error('Sản phẩm đã có trong phiếu');
             return;
         }
+        const physical =
+            product.physicalStockAtLocation ??
+            product.stockAtLocation ??
+            product.totalStock ??
+            0;
         setCreateRows((prev) => [
             ...prev,
             {
                 product,
-                quantityBefore: product.stockAtLocation ?? product.totalStock ?? 0,
-                quantityCounted: product.stockAtLocation ?? product.totalStock ?? 0,
+                quantityBefore: physical,
+                /** null = chưa nhập số đếm (lưu nháp sẽ mặc định = tồn sổ; nhập sau trong chi tiết phiếu) */
+                quantityCounted: null,
             },
         ]);
         setShowPickProduct(false);
     };
 
     const updateRowCounted = (productId, value) => {
+        if (value === '') {
+            setCreateRows((prev) =>
+                prev.map((r) => (r.product._id === productId ? { ...r, quantityCounted: null } : r))
+            );
+            return;
+        }
         const num = parseInt(value, 10);
         setCreateRows((prev) =>
             prev.map((r) =>
-                r.product._id === productId ? { ...r, quantityCounted: isNaN(num) ? 0 : num } : r
+                r.product._id === productId ? { ...r, quantityCounted: isNaN(num) ? null : Math.max(0, num) } : r
             )
         );
     };
@@ -172,12 +188,15 @@ const StockCheckTab = () => {
                 code: createCode.trim(),
                 locationId: createLocationId,
                 note: createNote.trim(),
-                items: createRows.map((r) => ({
-                    productId: r.product._id,
-                    quantityCounted: r.quantityCounted,
-                })),
+                items: createRows.map((r) => {
+                    const base = { productId: r.product._id };
+                    if (r.quantityCounted !== null && r.quantityCounted !== undefined) {
+                        return { ...base, quantityCounted: r.quantityCounted };
+                    }
+                    return base;
+                }),
             });
-            toast.success('Tạo phiếu kiểm kho thành công');
+            toast.success('Đã tạo phiếu kiểm kho (nháp). Mở chi tiết để nhập tồn thực tế sau khi kiểm, rồi xác nhận.');
             closeCreateModal();
             fetchList();
         } catch (err) {
@@ -191,10 +210,45 @@ const StockCheckTab = () => {
     const openDetail = async (id) => {
         const res = await getStockCheckById(id);
         if (res.success && res.data?.stockCheck) {
-            setDetailStockCheck(res.data.stockCheck);
+            const sc = res.data.stockCheck;
+            setDetailStockCheck(sc);
+            const draft = {};
+            (sc.items || []).forEach((it) => {
+                if (it._id) draft[it._id] = it.quantityCounted ?? 0;
+            });
+            setDetailCountDraft(draft);
             setShowDetailModal(true);
         } else {
             toast.error('Không tải được chi tiết phiếu');
+        }
+    };
+
+    const handleSaveDetailCounts = async () => {
+        if (!detailStockCheck?._id || detailStockCheck.status !== 'draft') return;
+        setSavingDetailCounts(true);
+        try {
+            const items = (detailStockCheck.items || []).map((it) => {
+                const pid = it.product?._id || it.product;
+                const raw = detailCountDraft[it._id];
+                const counted = raw === '' || raw === undefined ? it.quantityCounted ?? 0 : Math.max(0, Number(raw) || 0);
+                return { productId: pid, quantityCounted: counted };
+            });
+            const res = await updateStockCheck(detailStockCheck._id, { items });
+            if (res.success && res.data?.stockCheck) {
+                setDetailStockCheck(res.data.stockCheck);
+                const sc = res.data.stockCheck;
+                const draft = {};
+                (sc.items || []).forEach((row) => {
+                    if (row._id) draft[row._id] = row.quantityCounted ?? 0;
+                });
+                setDetailCountDraft(draft);
+                toast.success('Đã lưu số đếm thực tế');
+                fetchList();
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Không lưu được');
+        } finally {
+            setSavingDetailCounts(false);
         }
     };
 
@@ -216,8 +270,6 @@ const StockCheckTab = () => {
             },
         });
     };
-
-    const totalValueChange = detailStockCheck?.items?.reduce((s, it) => s + (it.valueChange || 0), 0) ?? 0;
 
     const optionCategories = useMemo(
         () => (productOptions.category || []).filter(Boolean).sort((a, b) => String(a).localeCompare(b)),
@@ -531,7 +583,10 @@ const StockCheckTab = () => {
             {showCreateModal && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true">
                     <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <h3 className="font-bold text-lg mb-4">Tạo phiếu kiểm kho</h3>
+                        <h3 className="font-bold text-lg mb-2">Tạo phiếu kiểm kho</h3>
+                        <p className="text-sm text-base-content/60 mb-4">
+                            Có thể lưu nháp chỉ với danh sách hàng; số đếm thực tế nhập sau trong màn chi tiết phiếu.
+                        </p>
                         <form onSubmit={handleCreateSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -587,15 +642,18 @@ const StockCheckTab = () => {
                                             <tr>
                                                 <th>Mã hàng</th>
                                                 <th>Tên sản phẩm</th>
-                                                <th className="text-right">Tồn kho (gốc)</th>
-                                                <th className="text-right">Số lượng đếm</th>
+                                                <th className="text-right">Tồn hệ thống (sổ sách)</th>
+                                                <th className="text-right">Tồn thực tế (đếm)</th>
                                                 <th className="text-right">Chênh lệch</th>
                                                 <th></th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {createRows.map((r) => {
-                                                const change = r.quantityCounted - r.quantityBefore;
+                                                const change =
+                                                    r.quantityCounted === null || r.quantityCounted === undefined
+                                                        ? null
+                                                        : r.quantityCounted - r.quantityBefore;
                                                 return (
                                                     <tr key={r.product._id}>
                                                         <td className="font-medium">{r.product.sku}</td>
@@ -605,13 +663,22 @@ const StockCheckTab = () => {
                                                             <input
                                                                 type="number"
                                                                 min={0}
-                                                                className="input input-bordered input-sm w-24 text-right"
-                                                                value={r.quantityCounted}
+                                                                className="input input-bordered input-sm w-28 text-right"
+                                                                placeholder="Sau khi kiểm"
+                                                                value={r.quantityCounted === null || r.quantityCounted === undefined ? '' : r.quantityCounted}
                                                                 onChange={(e) => updateRowCounted(r.product._id, e.target.value)}
                                                             />
                                                         </td>
-                                                        <td className={`text-right font-medium ${change !== 0 ? (change > 0 ? 'text-success' : 'text-error') : ''}`}>
-                                                            {change > 0 ? '+' : ''}{change}
+                                                        <td
+                                                            className={`text-right font-medium ${
+                                                                change !== null && change !== 0
+                                                                    ? change > 0
+                                                                        ? 'text-success'
+                                                                        : 'text-error'
+                                                                    : ''
+                                                            }`}
+                                                        >
+                                                            {change === null ? '—' : `${change > 0 ? '+' : ''}${change}`}
                                                         </td>
                                                         <td>
                                                             <button
@@ -643,7 +710,7 @@ const StockCheckTab = () => {
                                             Đang tạo...
                                         </>
                                     ) : (
-                                        'Tạo phiếu'
+                                        'Lưu phiếu nháp'
                                     )}
                                 </button>
                             </div>
@@ -666,7 +733,8 @@ const StockCheckTab = () => {
                                 .map((p) => (
                                     <li key={p._id}>
                                         <button type="button" onClick={() => addProductToRows(p)}>
-                                            <span className="font-medium">{p.sku}</span> — {p.name} (tồn: {p.stockAtLocation ?? p.totalStock ?? 0})
+                                            <span className="font-medium">{p.sku}</span> — {p.name} (tồn sổ:{' '}
+                                            {p.physicalStockAtLocation ?? p.stockAtLocation ?? p.totalStock ?? 0})
                                         </button>
                                     </li>
                                 ))}
@@ -711,35 +779,99 @@ const StockCheckTab = () => {
                                     <tr>
                                         <th>Mã hàng</th>
                                         <th>Tên sản phẩm</th>
-                                        <th className="text-right">Tồn kho (gốc)</th>
-                                        <th className="text-right">Số đếm thực tế</th>
+                                        <th className="text-right">Tồn hệ thống (sổ)</th>
+                                        <th className="text-right">Tồn thực tế (đếm)</th>
                                         <th className="text-right">Chênh lệch</th>
                                         <th className="text-right">Đơn giá</th>
                                         <th className="text-right">Giá trị chênh lệch</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {detailStockCheck.items?.map((it) => (
-                                        <tr key={it.product?._id || it.product}>
-                                            <td className="font-medium">{it.product?.sku ?? '—'}</td>
-                                            <td>{it.product?.name ?? '—'}</td>
-                                            <td className="text-right">{it.quantityBefore}</td>
-                                            <td className="text-right">{it.quantityCounted}</td>
-                                            <td className={`text-right font-medium ${it.quantityChange !== 0 ? (it.quantityChange > 0 ? 'text-success' : 'text-error') : ''}`}>
-                                                {it.quantityChange > 0 ? '+' : ''}{it.quantityChange}
-                                            </td>
-                                            <td className="text-right">{formatVND(it.unitPrice)}</td>
-                                            <td className="text-right">{formatVND(it.valueChange)}</td>
-                                        </tr>
-                                    ))}
+                                    {detailStockCheck.items?.map((it) => {
+                                        const lineId = it._id;
+                                        const isDraft = detailStockCheck.status === 'draft';
+                                        const draftVal =
+                                            lineId !== undefined && detailCountDraft[lineId] !== undefined
+                                                ? detailCountDraft[lineId]
+                                                : it.quantityCounted;
+                                        const countedNum =
+                                            draftVal === '' || draftVal === undefined ? it.quantityCounted : Math.max(0, Number(draftVal) || 0);
+                                        const displayChange = countedNum - (it.quantityBefore ?? 0);
+                                        return (
+                                            <tr key={lineId || it.product?._id || it.product}>
+                                                <td className="font-medium">{it.product?.sku ?? '—'}</td>
+                                                <td>{it.product?.name ?? '—'}</td>
+                                                <td className="text-right">{it.quantityBefore}</td>
+                                                <td className="text-right">
+                                                    {isDraft && lineId ? (
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            className="input input-bordered input-sm w-28 text-right"
+                                                            value={detailCountDraft[lineId] ?? ''}
+                                                            onChange={(e) =>
+                                                                setDetailCountDraft((d) => ({
+                                                                    ...d,
+                                                                    [lineId]: e.target.value === '' ? '' : e.target.value,
+                                                                }))
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        it.quantityCounted
+                                                    )}
+                                                </td>
+                                                <td
+                                                    className={`text-right font-medium ${
+                                                        displayChange !== 0
+                                                            ? displayChange > 0
+                                                                ? 'text-success'
+                                                                : 'text-error'
+                                                            : ''
+                                                    }`}
+                                                >
+                                                    {displayChange > 0 ? '+' : ''}
+                                                    {displayChange}
+                                                </td>
+                                                <td className="text-right">{formatVND(it.unitPrice)}</td>
+                                                <td className="text-right">
+                                                    {formatVND((countedNum - (it.quantityBefore ?? 0)) * (it.unitPrice ?? 0))}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                         <div className="flex justify-end mt-4">
-                            <p className="font-semibold">Tổng giá trị chênh lệch: {formatVND(totalValueChange)}</p>
+                            <p className="font-semibold">
+                                Tổng giá trị chênh lệch (ước tính):{' '}
+                                {formatVND(
+                                    (detailStockCheck.items || []).reduce((s, it) => {
+                                        const lineId = it._id;
+                                        const raw =
+                                            lineId !== undefined && detailCountDraft[lineId] !== undefined
+                                                ? detailCountDraft[lineId]
+                                                : it.quantityCounted;
+                                        const counted =
+                                            raw === '' || raw === undefined ? it.quantityCounted : Math.max(0, Number(raw) || 0);
+                                        return s + (counted - (it.quantityBefore ?? 0)) * (it.unitPrice ?? 0);
+                                    }, 0)
+                                )}
+                            </p>
                         </div>
                         {detailStockCheck.status === 'draft' && (
-                            <div className="modal-action mt-4">
+                            <div className="modal-action mt-4 flex flex-wrap gap-2 justify-end">
+                                <button
+                                    type="button"
+                                    className="btn btn-outline btn-primary gap-2"
+                                    disabled={savingDetailCounts}
+                                    onClick={handleSaveDetailCounts}
+                                >
+                                    {savingDetailCounts ? (
+                                        <span className="loading loading-spinner loading-sm" />
+                                    ) : null}
+                                    Lưu số đếm thực tế
+                                </button>
                                 <button
                                     type="button"
                                     className="btn btn-primary gap-2"

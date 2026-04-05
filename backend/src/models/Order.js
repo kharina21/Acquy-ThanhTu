@@ -28,9 +28,13 @@ const orderSchema = new mongoose.Schema(
         totalAmount: { type: Number, required: true, default: 0 },
         /** Giảm giá (VNĐ) – từ chính sách hạng khách hàng hoặc giảm thủ công */
         discount: { type: Number, default: 0, min: 0 },
+        /**
+         * Online: pending sau khi đặt và sau khi thanh toán (seller chưa xác nhận) → seller chuyển confirmed → kho xuất → completed.
+         * in_store: pending (đặt cọc) hoặc completed; không dùng confirmed.
+         */
         status: {
             type: String,
-            enum: ['pending', 'completed', 'cancelled'],
+            enum: ['pending', 'confirmed', 'completed', 'cancelled'],
             default: 'pending',
         },
         paymentMethod: {
@@ -61,10 +65,19 @@ const orderSchema = new mongoose.Schema(
         paidAt: { type: Date, default: null },
         /** Thông tin hoàn tiền khi khách hủy đơn đã thanh toán */
         refundBankName: { type: String, default: '' },
+        /** Mã BIN ngân hàng (VietQR) khi hoàn tiền */
+        refundBankBin: { type: String, default: '' },
         refundBankAccount: { type: String, default: '' },
         refundAccountHolder: { type: String, default: '' },
         /** Khách đặt hàng tại cửa hàng nhưng hàng chưa có sẵn */
         isPreOrder: { type: Boolean, default: false },
+        /**
+         * Đơn online: true = đã giữ chỗ tồn (reservedOnlineQty), chưa trừ quantity.
+         * false/undefined = không còn giữ chỗ (đã xuất kho hoặc đơn cũ trừ tồn ngay khi đặt).
+         */
+        warehouseReservationActive: { type: Boolean },
+        /** Xuất kho nhanh: chỉ số dòng trong items (0-based) đã quét đóng gói — đủ mới cho xác nhận xuất kho */
+        warehousePackedLineIndexes: { type: [Number], default: [] },
     },
     { timestamps: true }
 );

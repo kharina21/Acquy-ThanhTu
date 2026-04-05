@@ -166,10 +166,13 @@ export const createStockCheck = async (req, res) => {
         const processedItems = [];
         for (const it of items) {
             const productId = it.productId;
-            const quantityCounted = Number(it.quantityCounted) ?? 0;
             const product = await Product.findById(productId).lean();
             if (!product) continue;
             const quantityBefore = await getStockAtLocation(productId, locationId);
+            const rawCounted = it.quantityCounted;
+            const hasCounted =
+                rawCounted !== undefined && rawCounted !== null && rawCounted !== '' && !Number.isNaN(Number(rawCounted));
+            const quantityCounted = hasCounted ? Math.max(0, Number(rawCounted)) : quantityBefore;
             const quantityChange = quantityCounted - quantityBefore;
             const unitPrice = product.costPrice ?? product.price ?? 0;
             const valueChange = quantityChange * unitPrice;
@@ -214,6 +217,63 @@ export const createStockCheck = async (req, res) => {
 };
 
 /**
+ * Cập nhật phiếu kiểm kho nháp: ghi chú + số lượng đếm thực tế từng dòng (tồn trên sổ quantityBefore giữ nguyên).
+ */
+export const updateStockCheck = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { note, items } = req.body || {};
+
+        const stockCheck = await StockCheck.findById(id);
+        if (!stockCheck) {
+            return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm kho' });
+        }
+        if (stockCheck.status !== 'draft') {
+            return res.status(400).json({ message: 'Chỉ chỉnh sửa được phiếu ở trạng thái nháp' });
+        }
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ message: 'Cần danh sách items (productId, quantityCounted)' });
+        }
+
+        const byProduct = new Map(stockCheck.items.map((row) => [String(row.product), row]));
+
+        for (const it of items) {
+            const pid = it.productId;
+            if (!pid) continue;
+            const row = byProduct.get(String(pid));
+            if (!row) continue;
+            const counted = Math.max(0, Number(it.quantityCounted) || 0);
+            row.quantityCounted = counted;
+            row.quantityChange = counted - (row.quantityBefore ?? 0);
+            row.valueChange = row.quantityChange * (row.unitPrice ?? 0);
+        }
+
+        if (note !== undefined) {
+            stockCheck.note = String(note).trim();
+        }
+
+        stockCheck.markModified('items');
+        await stockCheck.save();
+
+        const populated = await StockCheck.findById(id)
+            .populate('createdBy', 'firstName lastName username')
+            .populate('location', 'code name')
+            .populate('items.product', 'sku name')
+            .lean();
+
+        res.status(200).json({
+            success: true,
+            data: { stockCheck: populated },
+            message: 'Đã cập nhật phiếu kiểm kho',
+        });
+    } catch (error) {
+        console.error('updateStockCheck error:', error.message);
+        res.status(500).json({ message: 'Lỗi khi cập nhật phiếu kiểm kho', error: error.message });
+    }
+};
+
+/**
  * Xác nhận phiếu kiểm kho: cập nhật ProductStock tại chi nhánh theo số đếm thực tế.
  */
 export const confirmStockCheck = async (req, res) => {
@@ -230,14 +290,25 @@ export const confirmStockCheck = async (req, res) => {
         const locationId = stockCheck.location;
         if (locationId) {
             for (const it of stockCheck.items) {
+                const row = await ProductStock.findOne({ product: it.product, location: locationId }).lean();
+                const reserved = Math.max(0, Number(row?.reservedOnlineQty) || 0);
+                const counted = Math.max(0, Number(it.quantityCounted) || 0);
+                if (counted < reserved) {
+                    return res.status(400).json({
+                        message:
+                            'Tồn đếm thực tế không được nhỏ hơn số lượng đang giữ cho đơn online tại kho. ' +
+                            'Vui lòng xử lý đơn hoặc điều chỉnh số đếm.',
+                    });
+                }
                 await ProductStock.findOneAndUpdate(
                     { product: it.product, location: locationId },
-                    { quantity: it.quantityCounted ?? 0 },
+                    { quantity: counted },
                     { upsert: true, new: true }
                 );
             }
         }
         stockCheck.status = 'confirmed';
+        stockCheck.confirmedAt = new Date();
         await stockCheck.save();
 
         const populated = await StockCheck.findById(id)

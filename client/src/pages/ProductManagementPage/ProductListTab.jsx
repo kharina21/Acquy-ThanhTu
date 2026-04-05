@@ -29,7 +29,6 @@ const emptyProductForm = () => ({
     capacity: '',
     costPrice: 0,
     price: 0,
-    quantity: 0,
     images: [],
     isActive: true,
     warrantyText: '',
@@ -258,7 +257,6 @@ const ProductListTab = () => {
             capacity: selectedProduct.capacity ?? '',
             costPrice: selectedProduct.costPrice ?? 0,
             price: selectedProduct.price ?? 0,
-            quantity: selectedProduct.stockAtLocation ?? selectedProduct.totalStock ?? 0,
             images: selectedProduct.images?.length ? selectedProduct.images : selectedProduct.image ? [selectedProduct.image] : [],
             isActive: selectedProduct.isActive ?? true,
             warrantyText: selectedProduct.warrantyText ?? '',
@@ -280,7 +278,6 @@ const ProductListTab = () => {
                 brand: editFormData.brand || null,
                 costPrice: Number(editFormData.costPrice) || 0,
                 price: Number(editFormData.price) || 0,
-                quantity: Number(editFormData.quantity) || 0,
                 images: Array.isArray(editFormData.images) ? editFormData.images : [],
             };
             if (currentLocationId) payload.locationId = currentLocationId;
@@ -603,7 +600,6 @@ const ProductListTab = () => {
                 brand: createFormData.brand || null,
                 costPrice: Number(createFormData.costPrice) || 0,
                 price: Number(createFormData.price) || 0,
-                quantity: Number(createFormData.quantity) || 0,
                 images: Array.isArray(createFormData.images) ? createFormData.images : [],
             };
             delete payload.category;
@@ -1575,7 +1571,7 @@ const ProductListTab = () => {
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
                                         <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Giá & Tồn kho</h4>
-                                        <div className='grid grid-cols-3 gap-3'>
+                                        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                                             <div>
                                                 <label className='label py-0'>
                                                     <span className='label-text text-xs font-medium'>Giá nhập (VNĐ)</span>
@@ -1600,17 +1596,18 @@ const ProductListTab = () => {
                                                     onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
                                                 />
                                             </div>
-                                            <div>
+                                            <div className='sm:col-span-2'>
                                                 <label className='label py-0'>
-                                                    <span className='label-text text-xs font-medium'>Tồn kho</span>
+                                                    <span className='label-text text-xs font-medium'>Tồn kho (chỉ đọc)</span>
                                                 </label>
-                                                <input
-                                                    type='number'
-                                                    min={0}
-                                                    className='input input-bordered input-sm w-full'
-                                                    value={editFormData.quantity}
-                                                    onChange={(e) => setEditFormData({ ...editFormData, quantity: e.target.value })}
-                                                />
+                                                <p className='text-sm py-2 px-3 rounded-lg bg-base-200/80 border border-base-200'>
+                                                    {currentLocationId
+                                                        ? (selectedProduct?.stockAtLocation ?? '—')
+                                                        : (selectedProduct?.totalStock ?? '—')}{' '}
+                                                    <span className='text-base-content/50 text-xs block mt-1'>
+                                                        Thay đổi tồn qua Nhập kho, Xuất kho hoặc Kiểm kho.
+                                                    </span>
+                                                </p>
                                             </div>
                                         </div>
                                     </section>
@@ -1964,7 +1961,7 @@ const ProductListTab = () => {
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
                                         <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Giá & Tồn kho</h4>
-                                        <div className='grid grid-cols-3 gap-3'>
+                                        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                                             <div>
                                                 <label className='label py-0'>
                                                     <span className='label-text text-xs font-medium'>Giá nhập (VNĐ)</span>
@@ -1989,17 +1986,11 @@ const ProductListTab = () => {
                                                     onChange={(e) => setCreateFormData({ ...createFormData, price: e.target.value })}
                                                 />
                                             </div>
-                                            <div>
-                                                <label className='label py-0'>
-                                                    <span className='label-text text-xs font-medium'>Tồn kho</span>
-                                                </label>
-                                                <input
-                                                    type='number'
-                                                    min={0}
-                                                    className='input input-bordered input-sm w-full'
-                                                    value={createFormData.quantity}
-                                                    onChange={(e) => setCreateFormData({ ...createFormData, quantity: e.target.value })}
-                                                />
+                                            <div className='sm:col-span-2'>
+                                                <p className='text-sm py-2 px-3 rounded-lg bg-base-200/80 border border-base-200 text-base-content/80'>
+                                                    Tồn kho ban đầu = 0. Tăng/giảm tồn chỉ qua <strong>Nhập kho</strong>, <strong>Xuất kho</strong> hoặc{' '}
+                                                    <strong>Kiểm kho</strong>.
+                                                </p>
                                             </div>
                                         </div>
                                     </section>

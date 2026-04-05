@@ -124,4 +124,9 @@ export const USE_CASES = [
     { id: 120, module: 'Orders', useCase: 'Create Pre-Order', description: 'Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder)', highlight: true },
     { id: 121, module: 'Feedback', useCase: 'Submit Feedback', description: 'Người dùng gửi phản hồi, đánh giá', highlight: true },
     { id: 122, module: 'Feedback', useCase: 'Manage Feedback', description: 'Quản lý cửa hàng xem và phản hồi feedback từ khách', highlight: true },
+    { id: 123, module: 'Orders', useCase: 'Confirm Warehouse Outbound (Online)', description: 'Đơn online giữ chỗ tồn; admin/kho xác nhận xuất kho mới trừ quantity và tạo phiếu xuất' },
+    { id: 124, module: 'Warehouse', useCase: 'Stock Out (Phiếu xuất)', description: 'Tạo phiếu xuất nháp, xác nhận trừ tồn (xuất điều chỉnh / nội bộ); đơn online có phiếu từ xác nhận kho' },
+    { id: 125, module: 'Warehouse', useCase: 'NXT Inventory Report', description: 'Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho)' },
+    { id: 126, module: 'Warehouse', useCase: 'Stock In Lines Report', description: 'Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel' },
+    { id: 127, module: 'Warehouse', useCase: 'Stock Out Lines Report', description: 'Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel' },
 ];

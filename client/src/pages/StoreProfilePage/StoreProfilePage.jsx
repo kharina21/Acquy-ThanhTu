@@ -54,7 +54,8 @@ const StoreProfilePage = () => {
             try {
                 const res = await getOnlineLocation();
                 const loc = res?.data?.location;
-                setOnlineLocationId(loc?._id || '');
+                const resolvedAs = res?.data?.resolvedAs;
+                setOnlineLocationId(resolvedAs === 'configured' && loc?._id ? loc._id : '');
             } catch {
                 setOnlineLocationId('');
             }
