@@ -13,7 +13,7 @@ const router = express.Router();
 
 router.use(authenticate);
 // Chỉ admin và manager mới được quản lý hồ sơ nhân viên
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin'));
 
 router.get('/', getAllEmployees);
 router.get('/:id', getEmployeeById);

@@ -11,10 +11,10 @@ import AdminLayout from './AdminLayout';
  * để nested routes có thể render.
  */
 const RoleBasedLayout = () => {
-    const { isAdmin, isSeller, isManager, isWarehouseManager, isStaff } = useUserRole();
+    const { isAdmin, isSeller, isManager, isWarehouseManager, isBranchManager } = useUserRole();
 
-    // Dùng chung AdminLayout cho admin, manager, warehouse_manager, seller, staff
-    if (isAdmin || isManager || isWarehouseManager || isSeller || isStaff) {
+    // AdminLayout: nội bộ có menu quản trị / kho / bán hàng
+    if (isAdmin || isManager || isWarehouseManager || isSeller || isBranchManager) {
         return (
             <AdminLayout>
                 <Outlet />

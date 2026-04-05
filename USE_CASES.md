@@ -53,12 +53,12 @@
 | 47 | Stock Check | Create Stock Check | Create new stock check |
 | 48 | Stock Check | Confirm Stock Check | Confirm stock check and apply adjustments |
 | 49 | **Stock In (Import)** | List Stock Ins | View import records (filter by code, supplier) |
-| 50 | Stock In | View Stock In Detail | View single import record details |
-| 51 | Stock In | Create Stock In | Create new import (search products by SKU, barcode, name) |
-| 52 | Stock In | Update Stock In | Update draft import record |
-| 53 | Stock In | Confirm Stock In | Confirm import and add to inventory |
-| 54 | Stock In | Cancel Stock In | Cancel import record |
-| 55 | Stock In | Create Stock Return | Return goods from confirmed import |
+| 50 | Stock In (Import) | View Stock In Detail | View single import record details |
+| 51 | Stock In (Import) | Create Stock In | Create new import (search products by SKU, barcode, name) |
+| 52 | Stock In (Import) | Update Stock In | Update draft import record |
+| 53 | Stock In (Import) | Confirm Stock In | Confirm import and add to inventory |
+| 54 | Stock In (Import) | Cancel Stock In | Cancel import record |
+| 55 | Stock In (Import) | Create Stock Return | Return goods from confirmed import |
 | 56 | **Stock Return** | List Stock Returns | View return records (filter by code, stock in code, supplier) |
 | 57 | Stock Return | View Stock Return Detail | View single return record details |
 | 58 | Stock Return | Cancel Stock Return | Cancel return and restore inventory |
@@ -116,19 +116,19 @@
 | 108 | Payment (PayOS) | Sync Payment Status | Check and sync payment status from PayOS API | |
 | 109 | Locations | Set Online Location | Set branch that receives online orders (isOnlineLocation) | |
 | 110 | Locations | Assign Manager Locations | Assign branches to manager (Employee.locations) | |
-| 118 | Orders | Refund Order | Hoàn tiền khi hủy đơn đã thanh toán | 🟡 |
+| 118 | Orders | Refund Order | Hoàn tiền khi hủy đơn đã thanh toán (cập nhật refundBankName, refundBankAccount) | 🟡 |
 | 119 | **Chat AI** | Chat AI Support | Hỗ trợ khách hàng hỏi đáp về cửa hàng, sản phẩm | 🟡 |
 | 120 | Orders | Create Pre-Order | Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder) | 🟡 |
 | 121 | **Feedback** | Submit Feedback | Người dùng gửi phản hồi, đánh giá | 🟡 |
 | 122 | Feedback | Manage Feedback | Quản lý cửa hàng xem và phản hồi feedback từ khách | 🟡 |
-| 123 | Orders | Confirm Warehouse Outbound (Online) | Đơn online giữ chỗ tồn; kho xác nhận xuất mới trừ tồn + phiếu xuất | |
-| 124 | **Warehouse** | Stock Out (Phiếu xuất) | Phiếu xuất nháp/xác nhận; xuất khác đơn online | |
-| 125 | Warehouse | NXT Inventory Report | Báo cáo xuất nhập tồn theo kỳ (NXT) | |
-| 126 | Warehouse | Stock In Lines Report | Báo cáo nhập hàng theo dòng phiếu, xuất Excel | |
-| 127 | Warehouse | Stock Out Lines Report | Báo cáo xuất kho theo dòng phiếu, xuất Excel | |
+| 123 | Orders | Confirm Warehouse Outbound (Online) | Đơn online giữ chỗ tồn; admin/kho xác nhận xuất kho mới trừ quantity và tạo phiếu xuất | 🔵 |
+| 124 | **Warehouse** | Stock Out (Phiếu xuất) | Tạo phiếu xuất nháp, xác nhận trừ tồn (xuất điều chỉnh / nội bộ); đơn online có phiếu từ xác nhận kho | 🔵 |
+| 125 | Warehouse | NXT Inventory Report | Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho) | 🔵 |
+| 126 | Warehouse | Stock In Lines Report | Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel | 🔵 |
+| 127 | Warehouse | Stock Out Lines Report | Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel | 🔵 |
 
 ---
 
-**Chú thích:** 🟡 = Đánh dấu (Hoàn tiền, Chat AI, Đặt hàng, Feedback – kế hoạch / đặc biệt)
+**Chú thích:** 🟡 = Kế hoạch / đặc biệt (hoàn tiền, Chat AI, đặt hàng, feedback) · 🔵 = Kho và báo cáo đã triển khai (xuất kho online, phiếu xuất, NXT, báo cáo dòng phiếu)
 
 **Nguồn:** `client/src/data/useCases.js` – Single source of truth. UseCasesPage và USE_CASES.md đồng bộ từ file này.

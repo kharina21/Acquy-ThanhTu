@@ -6,7 +6,7 @@ import { getDashboardStats } from '../controllers/dashboardController.js';
 const router = express.Router();
 
 router.use(authenticate);
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin', 'manager', 'Quản lý chi nhánh'));
 router.get('/stats', getDashboardStats);
 
 export default router;

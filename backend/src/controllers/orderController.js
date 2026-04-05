@@ -42,14 +42,23 @@ const getOrCreateGuestUser = async () => {
 const isAdminOrManager = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => ['admin', 'manager'].includes(r));
+    return roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
 };
 
-/** Cửa hàng: admin, manager, seller, warehouse_manager có thể xem tất cả đơn */
+/** Danh sách đơn cửa hàng: admin (mọi cơ sở), manager & quản lý chi nhánh (theo chi nhánh được phân). */
 const canViewAllOrders = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    return roleNames.some((r) => ['admin', 'manager', 'seller', 'warehouse_manager'].includes(r));
+    return roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
+};
+
+/** Xử lý hoàn tiền (VietQR / xác nhận) — khớp route refund-transfer-qr */
+const canProcessRefundTransfer = async (userId) => {
+    const user = await User.findById(userId).populate('roles', 'name').lean();
+    const roleNames = user?.roles?.map((r) => r.name) || [];
+    return roleNames.some((r) =>
+        ['admin', 'manager', 'Quản lý chi nhánh', 'seller', 'staff', 'Nhân viên bán hàng'].includes(r),
+    );
 };
 
 /**
@@ -687,8 +696,16 @@ export const getOrders = async (req, res) => {
 
         const filter = {};
         if (!canViewAll) {
+            const user = await User.findById(userId).populate('roles', 'name').lean();
+            const roleNames = user?.roles?.map((r) => r.name) || [];
+            const isCustomerLike = roleNames.some((r) => ['user', 'customer'].includes(r));
+            if (!isCustomerLike) {
+                return res.status(403).json({ message: 'Không có quyền xem danh sách đơn hàng.' });
+            }
             filter.customer = userId;
         }
+
+        const allowedLocIds = await getManagerAllowedLocationIds(userId);
 
         const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue } = req.query;
         const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
@@ -706,13 +723,58 @@ export const getOrders = async (req, res) => {
                     message: 'Chưa có chi nhánh hoạt động để xác định kho đơn online (cấu hình chi nhánh bán online).',
                 });
             }
+            if (allowedLocIds !== null) {
+                const onlineIdStr = String(onlineLoc._id);
+                if (!allowedLocIds.length || !allowedLocIds.includes(onlineIdStr)) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            orders: [],
+                            pagination: {
+                                page: Math.max(1, parseInt(page)),
+                                limit: limitNum,
+                                total: 0,
+                                totalPages: 0,
+                            },
+                        },
+                    });
+                }
+            }
             filter.location = onlineLoc._id;
         } else {
             if (status) filter.status = status;
             if (paymentStatus) filter.paymentStatus = paymentStatus;
         }
-        if (canViewAll && locationId && mongoose.Types.ObjectId.isValid(locationId) && !useWarehouseQueue) {
-            filter.location = locationId;
+        if (canViewAll && !useWarehouseQueue) {
+            if (allowedLocIds !== null) {
+                if (!allowedLocIds.length) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            orders: [],
+                            pagination: {
+                                page: Math.max(1, parseInt(page)),
+                                limit: limitNum,
+                                total: 0,
+                                totalPages: 0,
+                            },
+                        },
+                    });
+                }
+                const oidList = allowedLocIds
+                    .filter((lid) => mongoose.Types.ObjectId.isValid(lid))
+                    .map((lid) => new mongoose.Types.ObjectId(lid));
+                if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+                    if (!allowedLocIds.includes(String(locationId))) {
+                        return res.status(403).json({ message: 'Không có quyền xem chi nhánh này.' });
+                    }
+                    filter.location = locationId;
+                } else {
+                    filter.location = { $in: oidList };
+                }
+            } else if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+                filter.location = locationId;
+            }
         }
         if (isPreOrder !== undefined && isPreOrder !== '') {
             filter.isPreOrder = isPreOrder === 'true' ? true : { $ne: true };
@@ -890,8 +952,8 @@ export const getRefundTransferQrForOrder = async (req, res) => {
         if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
         }
-        const staff = await canViewAllOrders(userId);
-        if (!staff) {
+        const okRefund = await canProcessRefundTransfer(userId);
+        if (!okRefund) {
             return res.status(403).json({ message: 'Chỉ nhân viên cửa hàng mới xem được mã QR hoàn tiền.' });
         }
         const order = await Order.findById(id).lean();
@@ -948,8 +1010,8 @@ export const confirmOrderRefundTransfer = async (req, res) => {
         if (!userId || !mongoose.Types.ObjectId.isValid(userId) || !id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
         }
-        const staff = await canViewAllOrders(userId);
-        if (!staff) {
+        const okRefund = await canProcessRefundTransfer(userId);
+        if (!okRefund) {
             return res.status(403).json({ message: 'Bạn không có quyền xác nhận hoàn tiền.' });
         }
         const order = await Order.findById(id);
@@ -1111,6 +1173,19 @@ export const getOrderById = async (req, res) => {
 
         if (!canViewAll && order.customer?._id?.toString() !== userId.toString()) {
             return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+        }
+
+        if (canViewAll) {
+            const allowedLocIds = await getManagerAllowedLocationIds(userId);
+            if (allowedLocIds !== null) {
+                const locId =
+                    order.location?._id != null
+                        ? String(order.location._id)
+                        : String(order.location || '');
+                if (!allowedLocIds.length || !allowedLocIds.includes(locId)) {
+                    return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+                }
+            }
         }
 
         return res.status(200).json({

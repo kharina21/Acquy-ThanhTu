@@ -15,8 +15,9 @@ import { getCheckoutPreview } from '@/services/orderService';
 const ProfilePage = () => {
     const { user, logout } = useAuthStore();
     const { fetchActivityLogs } = useLogStore();
-    const { isAdmin, isManager, isSeller, isStaff, isWarehouseManager } = useUserRole();
-    const isInternalUser = isAdmin || isManager || isSeller || isStaff || isWarehouseManager;
+    const { isAdmin, isManager, isSeller, isStaff, isWarehouseManager, isBranchManager } = useUserRole();
+    const isInternalUser =
+        isAdmin || isManager || isSeller || isStaff || isWarehouseManager || isBranchManager;
 
     const [membershipPreview, setMembershipPreview] = useState({
         loading: true,

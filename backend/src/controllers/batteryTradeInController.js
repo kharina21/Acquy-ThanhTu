@@ -4,6 +4,17 @@ import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import Location from '../models/Location.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
+import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+
+/** Admin: luôn được. Các role theo chi nhánh: chỉ khi đã hẹn cơ sở và trùng chi nhánh được phân. */
+async function assertUserCanAccessTradeInDoc(userId, doc) {
+    if (!doc) return false;
+    const allowedIds = await getManagerAllowedLocationIds(userId);
+    if (allowedIds === null) return true;
+    if (!allowedIds.length) return false;
+    const aid = doc.appointmentLocationId ? String(doc.appointmentLocationId) : '';
+    return Boolean(aid && allowedIds.includes(aid));
+}
 
 function getFrontendBaseUrl() {
     return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -423,6 +434,10 @@ export const getBatteryTradeInById = async (req, res) => {
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
         }
+        const can = await assertUserCanAccessTradeInDoc(req.user._id, doc);
+        if (!can) {
+            return res.status(403).json({ success: false, message: 'Không có quyền xem yêu cầu này.' });
+        }
         return res.status(200).json({
             success: true,
             data: { request: doc },
@@ -459,6 +474,28 @@ export const getBatteryTradeInList = async (req, res) => {
                 { address: { $regex: search, $options: 'i' } },
                 { batteryName: { $regex: search, $options: 'i' } },
             ];
+        }
+
+        const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+        if (allowedIds !== null) {
+            if (!allowedIds.length) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        requests: [],
+                        pagination: {
+                            page,
+                            limit,
+                            total: 0,
+                            totalPages: 1,
+                        },
+                    },
+                });
+            }
+            const oids = allowedIds
+                .filter((lid) => mongoose.Types.ObjectId.isValid(lid))
+                .map((lid) => new mongoose.Types.ObjectId(lid));
+            query.appointmentLocationId = { $in: oids };
         }
 
         const [requests, total] = await Promise.all([
@@ -572,6 +609,17 @@ export const updateBatteryTradeInStatus = async (req, res) => {
             });
         }
 
+        const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+        if (allowedIds !== null) {
+            const can = await assertUserCanAccessTradeInDoc(req.user._id, existing);
+            if (!can) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Không có quyền thao tác yêu cầu này.',
+                });
+            }
+        }
+
         if (['completed', 'cancelled'].includes(existing.status) && status !== existing.status) {
             return res.status(400).json({
                 success: false,
@@ -626,6 +674,12 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                     return res.status(400).json({
                         success: false,
                         message: 'Chi nhánh không tồn tại hoặc đã ngừng hoạt động.',
+                    });
+                }
+                if (allowedIds !== null && !allowedIds.includes(String(appointmentLocationId))) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Không được hẹn tại chi nhánh ngoài phạm vi được phân công.',
                     });
                 }
                 update = {
@@ -692,6 +746,12 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     message: 'Chi nhánh không tồn tại hoặc đã ngừng hoạt động.',
+                });
+            }
+            if (allowedIds !== null && !allowedIds.includes(String(locationId))) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Không được ghi nhận hoàn tất tại chi nhánh ngoài phạm vi được phân công.',
                 });
             }
             const productLabel = String(completedProductName || '').trim();
@@ -880,12 +940,18 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
         if (!existing) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu thu cũ.' });
         }
+        const canDoc = await assertUserCanAccessTradeInDoc(req.user._id, existing);
+        if (!canDoc) {
+            return res.status(403).json({ success: false, message: 'Không có quyền sửa yêu cầu này.' });
+        }
         if (existing.status === 'cancelled') {
             return res.status(400).json({
                 success: false,
                 message: 'Không thể sửa đơn đã hủy.',
             });
         }
+
+        const allowedIdsPatch = await getManagerAllowedLocationIds(req.user._id);
 
         const parsed = parseBatteryTradeInBody(req.body, { skipImages: true });
         if (!parsed.ok) {
@@ -919,6 +985,15 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
             }
         }
 
+        if (allowedIdsPatch !== null && setDoc.appointmentLocationId) {
+            if (!allowedIdsPatch.includes(String(setDoc.appointmentLocationId))) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Không được đặt lịch tại chi nhánh ngoài phạm vi được phân công.',
+                });
+            }
+        }
+
         if (existing.status === 'completed') {
             const { completedAmount, completedProductName, locationId, completedNote } = req.body;
             const amt = Number(completedAmount);
@@ -943,6 +1018,12 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     message: 'Chi nhánh không tồn tại hoặc đã ngừng hoạt động.',
+                });
+            }
+            if (allowedIdsPatch !== null && !allowedIdsPatch.includes(String(locationId))) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Không được ghi nhận chi nhánh hoàn tất ngoài phạm vi được phân công.',
                 });
             }
             setDoc.completedAmount = Math.round(amt);

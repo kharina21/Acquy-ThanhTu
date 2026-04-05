@@ -13,7 +13,7 @@ const router = express.Router();
 
 // Tất cả routes đều cần authenticate và có role admin hoặc manager
 router.use(authenticate);
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'));
 
 router.get('/', getAllUsageDevices);
 router.get('/:id', getUsageDeviceById);

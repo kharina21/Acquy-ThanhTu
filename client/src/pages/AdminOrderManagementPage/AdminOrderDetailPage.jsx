@@ -25,6 +25,13 @@ const PAYMENT_STATUS_LABELS = {
     refunded: 'Đã hoàn tiền',
 };
 
+/** Khớp backend getRefundTransferQr: cần BIN ≥6 số và STK ≥6 số (số). */
+function hasRefundBankForVietQr(order) {
+    const bin = String(order?.refundBankBin || '').replace(/\D/g, '');
+    const acc = String(order?.refundBankAccount || '').replace(/\D/g, '');
+    return bin.length >= 6 && acc.length >= 6;
+}
+
 export default function AdminOrderDetailPage() {
     const { id } = useParams();
     const { hasAnyRole } = useUserRole();
@@ -39,7 +46,14 @@ export default function AdminOrderDetailPage() {
     const [confirmingRefund, setConfirmingRefund] = useState(false);
 
     const canConfirmWarehouse = hasAnyRole('admin', 'manager', 'warehouse_manager');
-    const canProcessRefund = hasAnyRole('admin', 'manager', 'seller');
+    const canProcessRefund = hasAnyRole(
+        'admin',
+        'manager',
+        'Quản lý chi nhánh',
+        'seller',
+        'staff',
+        'Nhân viên bán hàng',
+    );
 
     const fetchOrder = async () => {
         if (!id) return;
@@ -299,11 +313,11 @@ export default function AdminOrderDetailPage() {
                                     </div>
                                 )}
                             {order.status === 'cancelled' &&
-                                (order.refundBankName || order.refundBankAccount || order.refundAccountHolder) && (
+                                (order.paymentStatus === 'paid' || order.paymentStatus === 'refunded') && (
                                     <div className="pt-2 mt-2 border-t border-base-300 space-y-3">
                                         <div className="flex flex-wrap items-center justify-between gap-2">
                                             <p className="text-sm font-medium text-base-content/80">
-                                                Hoàn tiền (đơn đã thanh toán, khách đã hủy)
+                                                Hoàn tiền cho khách (đơn đã hủy)
                                             </p>
                                             {order.paymentStatus === 'paid' && (
                                                 <span className="badge badge-warning badge-sm">Chờ hoàn tiền</span>
@@ -313,26 +327,40 @@ export default function AdminOrderDetailPage() {
                                             )}
                                         </div>
                                         <div className="space-y-1 text-sm rounded-lg bg-base-200/60 px-3 py-2">
-                                            {order.refundBankName && (
-                                                <p>
-                                                    <span className="text-base-content/60">Ngân hàng:</span>{' '}
-                                                    {order.refundBankName}
-                                                </p>
-                                            )}
-                                            {order.refundBankBin && (
-                                                <p>
-                                                    <span className="text-base-content/60">Mã BIN:</span> {order.refundBankBin}
-                                                </p>
-                                            )}
-                                            {order.refundBankAccount && (
-                                                <p>
-                                                    <span className="text-base-content/60">Số TK:</span>{' '}
-                                                    <span className="font-mono">{order.refundBankAccount}</span>
-                                                </p>
-                                            )}
-                                            {order.refundAccountHolder && (
-                                                <p>
-                                                    <span className="text-base-content/60">Chủ TK:</span> {order.refundAccountHolder}
+                                            {order.refundBankName ||
+                                            order.refundBankBin ||
+                                            order.refundBankAccount ||
+                                            order.refundAccountHolder ? (
+                                                <>
+                                                    {order.refundBankName && (
+                                                        <p>
+                                                            <span className="text-base-content/60">Ngân hàng:</span>{' '}
+                                                            {order.refundBankName}
+                                                        </p>
+                                                    )}
+                                                    {order.refundBankBin && (
+                                                        <p>
+                                                            <span className="text-base-content/60">Mã BIN:</span>{' '}
+                                                            {order.refundBankBin}
+                                                        </p>
+                                                    )}
+                                                    {order.refundBankAccount && (
+                                                        <p>
+                                                            <span className="text-base-content/60">Số TK:</span>{' '}
+                                                            <span className="font-mono">{order.refundBankAccount}</span>
+                                                        </p>
+                                                    )}
+                                                    {order.refundAccountHolder && (
+                                                        <p>
+                                                            <span className="text-base-content/60">Chủ TK:</span>{' '}
+                                                            {order.refundAccountHolder}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <p className="text-warning text-sm">
+                                                    Chưa có thông tin tài khoản nhận hoàn tiền trên đơn. Cần khách cung
+                                                    cấp (hoặc cập nhật đơn) trước khi tạo VietQR.
                                                 </p>
                                             )}
                                             <p>
@@ -344,10 +372,16 @@ export default function AdminOrderDetailPage() {
                                         </div>
                                         {canProcessRefund && order.paymentStatus === 'paid' && (
                                             <div className="space-y-2">
+                                                {!hasRefundBankForVietQr(order) && (
+                                                    <p className="text-xs text-warning">
+                                                        Để mở mã QR VietQR cần đủ mã BIN ngân hàng (6 số) và số tài
+                                                        khoản khách trên đơn.
+                                                    </p>
+                                                )}
                                                 <button
                                                     type="button"
                                                     className="btn btn-primary btn-sm"
-                                                    disabled={refundQrLoading}
+                                                    disabled={refundQrLoading || !hasRefundBankForVietQr(order)}
                                                     onClick={handleOpenRefundQr}
                                                 >
                                                     {refundQrLoading ? (

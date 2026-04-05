@@ -2,6 +2,8 @@
  * Use Cases - Single source of truth.
  * Update this file when adding or removing features.
  * The UseCasesPage and USE_CASES.md should stay in sync with this data.
+ *
+ * Optional `mark`: 'planned' (🟡) = kế hoạch/đặc biệt; 'warehouse' (🔵) = kho & báo cáo đã triển khai.
  */
 export const USE_CASES = [
     { id: 1, module: 'Auth', useCase: 'Login', description: 'User signs in with credentials' },
@@ -118,15 +120,15 @@ export const USE_CASES = [
     { id: 108, module: 'Payment (PayOS)', useCase: 'Sync Payment Status', description: 'Check and sync payment status from PayOS API' },
     { id: 109, module: 'Locations', useCase: 'Set Online Location', description: 'Set branch that receives online orders (isOnlineLocation)' },
     { id: 110, module: 'Locations', useCase: 'Assign Manager Locations', description: 'Assign branches to manager (Employee.locations)' },
-    // === Đánh dấu vàng: Hoàn tiền, Chat AI, Đặt hàng, Feedback ===
-    { id: 118, module: 'Orders', useCase: 'Refund Order', description: 'Hoàn tiền khi hủy đơn đã thanh toán (cập nhật refundBankName, refundBankAccount)', highlight: true },
-    { id: 119, module: 'Chat AI', useCase: 'Chat AI Support', description: 'Hỗ trợ khách hàng hỏi đáp về cửa hàng, sản phẩm', highlight: true },
-    { id: 120, module: 'Orders', useCase: 'Create Pre-Order', description: 'Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder)', highlight: true },
-    { id: 121, module: 'Feedback', useCase: 'Submit Feedback', description: 'Người dùng gửi phản hồi, đánh giá', highlight: true },
-    { id: 122, module: 'Feedback', useCase: 'Manage Feedback', description: 'Quản lý cửa hàng xem và phản hồi feedback từ khách', highlight: true },
-    { id: 123, module: 'Orders', useCase: 'Confirm Warehouse Outbound (Online)', description: 'Đơn online giữ chỗ tồn; admin/kho xác nhận xuất kho mới trừ quantity và tạo phiếu xuất' },
-    { id: 124, module: 'Warehouse', useCase: 'Stock Out (Phiếu xuất)', description: 'Tạo phiếu xuất nháp, xác nhận trừ tồn (xuất điều chỉnh / nội bộ); đơn online có phiếu từ xác nhận kho' },
-    { id: 125, module: 'Warehouse', useCase: 'NXT Inventory Report', description: 'Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho)' },
-    { id: 126, module: 'Warehouse', useCase: 'Stock In Lines Report', description: 'Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel' },
-    { id: 127, module: 'Warehouse', useCase: 'Stock Out Lines Report', description: 'Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel' },
+    // mark: planned = kế hoạch / đặc biệt (vàng); warehouse = kho & báo cáo triển khai (xanh sky)
+    { id: 118, module: 'Orders', useCase: 'Refund Order', description: 'Hoàn tiền khi hủy đơn đã thanh toán (cập nhật refundBankName, refundBankAccount)', mark: 'planned' },
+    { id: 119, module: 'Chat AI', useCase: 'Chat AI Support', description: 'Hỗ trợ khách hàng hỏi đáp về cửa hàng, sản phẩm', mark: 'planned' },
+    { id: 120, module: 'Orders', useCase: 'Create Pre-Order', description: 'Khách tới đặt hàng, nhân viên thêm vào bảng đặt hàng (isPreOrder)', mark: 'planned' },
+    { id: 121, module: 'Feedback', useCase: 'Submit Feedback', description: 'Người dùng gửi phản hồi, đánh giá', mark: 'planned' },
+    { id: 122, module: 'Feedback', useCase: 'Manage Feedback', description: 'Quản lý cửa hàng xem và phản hồi feedback từ khách', mark: 'planned' },
+    { id: 123, module: 'Orders', useCase: 'Confirm Warehouse Outbound (Online)', description: 'Đơn online giữ chỗ tồn; admin/kho xác nhận xuất kho mới trừ quantity và tạo phiếu xuất', mark: 'warehouse' },
+    { id: 124, module: 'Warehouse', useCase: 'Stock Out (Phiếu xuất)', description: 'Tạo phiếu xuất nháp, xác nhận trừ tồn (xuất điều chỉnh / nội bộ); đơn online có phiếu từ xác nhận kho', mark: 'warehouse' },
+    { id: 125, module: 'Warehouse', useCase: 'NXT Inventory Report', description: 'Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho)', mark: 'warehouse' },
+    { id: 126, module: 'Warehouse', useCase: 'Stock In Lines Report', description: 'Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel', mark: 'warehouse' },
+    { id: 127, module: 'Warehouse', useCase: 'Stock Out Lines Report', description: 'Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel', mark: 'warehouse' },
 ];

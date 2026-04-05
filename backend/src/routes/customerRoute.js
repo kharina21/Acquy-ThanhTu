@@ -14,7 +14,9 @@ import { hasRole } from '../middlewares/rbac.js';
 const router = express.Router();
 
 router.use(authenticate);
-router.use(hasRole('admin', 'manager', 'seller'));
+router.use(
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+);
 
 router.get('/search', searchCustomersByPhone);
 router.get('/', getAllCustomers);

@@ -32,11 +32,16 @@ export const useUserRole = () => {
     const isAdmin = useMemo(() => userRoles.includes('admin'), [userRoles]);
     const isCustomer = useMemo(() => userRoles.includes('customer'), [userRoles]);
     const isUser = useMemo(() => userRoles.includes('user') || userRoles.includes('customer'), [userRoles]);
-    const isSeller = useMemo(() => userRoles.includes('seller'), [userRoles]);
+    /** Bán hàng / POS: seller, staff cũ, hoặc tên role tiếng Việt */
+    const isSeller = useMemo(
+        () => ['seller', 'staff', 'Nhân viên bán hàng'].some((r) => userRoles.includes(r)),
+        [userRoles]
+    );
     const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
     const isWarehouseManager = useMemo(() => userRoles.includes('warehouse_manager'), [userRoles]);
     /** @deprecated Dùng isSeller. Giữ để tương thích user cũ có role staff */
     const isStaff = useMemo(() => userRoles.includes('staff'), [userRoles]);
+    const isBranchManager = useMemo(() => userRoles.includes('Quản lý chi nhánh'), [userRoles]);
 
     return {
         userRoles,
@@ -50,5 +55,6 @@ export const useUserRole = () => {
         isManager,
         isWarehouseManager,
         isStaff,
+        isBranchManager,
     };
 };

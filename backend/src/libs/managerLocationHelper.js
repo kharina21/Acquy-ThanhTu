@@ -1,18 +1,29 @@
 import User from '../models/User.js';
 import Employee from '../models/Employee.js';
 
+/** Role có phạm vi chi nhánh theo bản ghi Employee (không phải admin toàn hệ thống). */
+const BRANCH_SCOPED_ROLE_NAMES = [
+    'manager',
+    'Quản lý chi nhánh',
+    'warehouse_manager',
+    'seller',
+    'staff',
+    'Nhân viên bán hàng',
+];
+
 /**
- * Lấy danh sách location ID mà manager được phép truy cập (từ Employee.primaryLocation + locations).
- * Admin trả về null = tất cả. Manager không có Employee hoặc chưa phân công trả về [].
+ * Lấy danh sách location ID được phép (Employee.primaryLocation + locations).
+ * Admin trả về null = tất cả chi nhánh.
+ * Các role kho/chi nhánh/bán hàng: theo Employee; không có Employee → [].
+ * User không thuộc nhóm trên → [].
  */
 export const getManagerAllowedLocationIds = async (userId) => {
     const user = await User.findById(userId).populate('roles', 'name').lean();
     const roleNames = user?.roles?.map((r) => r.name) || [];
-    const isAdmin = roleNames.includes('admin');
-    if (isAdmin) return null;
+    if (roleNames.includes('admin')) return null;
 
-    const isManager = roleNames.includes('manager');
-    if (!isManager) return [];
+    const needsEmployeeScope = BRANCH_SCOPED_ROLE_NAMES.some((r) => roleNames.includes(r));
+    if (!needsEmployeeScope) return [];
 
     const emp = await Employee.findOne({ user: userId, isDeleted: { $ne: true } }).lean();
     if (!emp) return [];

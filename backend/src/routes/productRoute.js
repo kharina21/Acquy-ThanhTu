@@ -68,7 +68,7 @@ router.get('/:id', getProductById);
 
 // Tất cả routes đều cần đăng nhập và role admin hoặc manager
 router.use(authenticate);
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'));
 
 router.get('/', getAllProducts);
 router.get('/options', getProductOptions);

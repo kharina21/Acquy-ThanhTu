@@ -1,6 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { USE_CASES } from '@/data/useCases';
 
+const MARK_ROW_CLASS = {
+    planned: 'bg-amber-100/85 border-l-4 border-amber-400',
+    warehouse: 'bg-sky-100/85 border-l-4 border-sky-500',
+};
+
+const MARK_LABEL = {
+    planned: '🟡',
+    warehouse: '🔵',
+};
+
 const UseCasesPage = () => {
     const [filterModule, setFilterModule] = useState('');
     const [search, setSearch] = useState('');
@@ -71,19 +81,23 @@ const UseCasesPage = () => {
                                 {filtered.map((uc) => (
                                     <tr
                                         key={uc.id}
-                                        className={`hover:bg-base-200/60 transition-colors font-light ${uc.highlight ? 'bg-yellow-100/80' : ''}`}
+                                        className={`hover:bg-base-200/60 transition-colors font-light ${uc.mark ? MARK_ROW_CLASS[uc.mark] ?? '' : ''}`}
                                     >
                                         <td className="py-3 font-mono">{uc.id}</td>
                                         <td className="py-3 font-medium">{uc.module}</td>
                                         <td className="py-3">{uc.useCase}</td>
                                         <td className="py-3 text-base-content/80">{uc.description}</td>
-                                        <td className="py-3 text-center">{uc.highlight ? '🏷️' : ''}</td>
+                                        <td className="py-3 text-center">{uc.mark ? MARK_LABEL[uc.mark] ?? '' : ''}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
                 </div>
+
+                <p className="text-xs text-base-content/60">
+                    Chú thích: 🟡 kế hoạch / đặc biệt (hoàn tiền, Chat AI, đặt hàng, feedback) · 🔵 kho và báo cáo đã triển khai (xuất kho, NXT, báo cáo dòng phiếu).
+                </p>
 
                 <p className="text-xs text-base-content/50">
                     Nguồn: <code className="bg-base-300 px-1 rounded">client/src/data/useCases.js</code>

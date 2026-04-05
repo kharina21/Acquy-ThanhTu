@@ -11,8 +11,8 @@ import { hasRole } from '../middlewares/rbac.js';
 const router = express.Router();
 
 router.use(authenticate);
-// Chỉ admin và manager được quản lý hạng thành viên
-router.use(hasRole('admin', 'manager'));
+// Chỉ admin quản lý hạng thành viên
+router.use(hasRole('admin'));
 
 router.get('/', getAllMemberPolicies);
 router.post('/', createMemberPolicy);

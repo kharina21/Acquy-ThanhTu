@@ -21,13 +21,22 @@ router.get('/active', getActiveLocations);
 // Chi nhánh bán online (cho frontend)
 router.get('/online', getOnlineLocationHandler);
 
-router.use(hasRole('admin', 'manager'));
+const locationReaders = hasRole(
+    'admin',
+    'manager',
+    'warehouse_manager',
+    'Quản lý chi nhánh',
+    'seller',
+    'staff',
+    'Nhân viên bán hàng',
+);
 
-router.get('/', getAllLocations);
-router.get('/:id', getLocationById);
-router.post('/', createLocation);
-router.put('/:id/set-online', setOnlineLocation);
-router.put('/:id', updateLocation);
-router.delete('/:id', deleteLocation);
+router.get('/', locationReaders, getAllLocations);
+router.get('/:id', locationReaders, getLocationById);
+
+router.post('/', hasRole('admin', 'manager'), createLocation);
+router.put('/:id/set-online', hasRole('admin', 'manager'), setOnlineLocation);
+router.put('/:id', hasRole('admin', 'manager'), updateLocation);
+router.delete('/:id', hasRole('admin', 'manager'), deleteLocation);
 
 export default router;

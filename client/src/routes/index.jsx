@@ -125,7 +125,20 @@ export const AppRoutes = () => {
                 </Route>
 
                 {/* Trang Bán hàng - layout riêng, full màn hình */}
-                <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller']} />}>
+                <Route
+                    element={
+                        <RoleProtectedRoute
+                            allowedRoles={[
+                                'admin',
+                                'manager',
+                                'Quản lý chi nhánh',
+                                'seller',
+                                'staff',
+                                'Nhân viên bán hàng',
+                            ]}
+                        />
+                    }
+                >
                     <Route
                         path='/sales'
                         element={
@@ -143,7 +156,7 @@ export const AppRoutes = () => {
                         element={<ProfilePage />}
                     />
 
-                    {/* Admin + Manager: trang quản lý chung */}
+                    {/* Tổng quan */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
                         <Route
                             path='/admin'
@@ -158,6 +171,24 @@ export const AppRoutes = () => {
                                 />
                             }
                         />
+                    </Route>
+
+                    {/* Hồ sơ cửa hàng / tạo chi nhánh — không có trong sidebar; cần cho lần đầu thiết lập */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
+                        <Route
+                            path='/admin/store-profile'
+                            element={<StoreProfilePage />}
+                        />
+                    </Route>
+
+                    {/* Sản phẩm & danh mục (gồm quản lý kho) */}
+                    <Route
+                        element={
+                            <RoleProtectedRoute
+                                allowedRoles={['admin', 'manager', 'Quản lý chi nhánh', 'warehouse_manager']}
+                            />
+                        }
+                    >
                         <Route
                             path='/admin/products'
                             element={<ProductManagementPage />}
@@ -174,6 +205,9 @@ export const AppRoutes = () => {
                             path='/admin/usage-devices'
                             element={<UsageDeviceManagementPage />}
                         />
+                    </Route>
+
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
                         <Route
                             path='/users'
                             element={<UserManagementPage />}
@@ -187,33 +221,47 @@ export const AppRoutes = () => {
                             element={<StaffManagementPage />}
                         />
                         <Route
-                            path='/admin/customers'
-                            element={<CustomersPage />}
-                        />
-                        <Route
                             path='/admin/member-policies'
                             element={<MemberPolicyPage />}
                         />
+                    </Route>
+
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
                         <Route
-                            path='/admin/store-profile'
-                            element={<StoreProfilePage />}
+                            path='/admin/customers'
+                            element={<CustomersPage />}
                         />
                     </Route>
 
-                    {/* Use Cases: chỉ admin */}
                     <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
                         <Route
                             path='/admin/use-cases'
                             element={<UseCasesPage />}
                         />
+                    </Route>
+
+                    <Route
+                        element={
+                            <RoleProtectedRoute
+                                allowedRoles={[
+                                    'admin',
+                                    'manager',
+                                    'Quản lý chi nhánh',
+                                    'seller',
+                                    'staff',
+                                    'Nhân viên bán hàng',
+                                ]}
+                            />
+                        }
+                    >
                         <Route
                             path='/admin/battery-trade-in'
                             element={<AdminBatteryTradeInPage />}
                         />
                     </Route>
 
-                    {/* Quản lý đơn hàng cửa hàng: admin, manager, seller */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'seller', 'warehouse_manager']} />}>
+                    {/* Đơn hàng cửa hàng — không mở cho NV kho / NV bán hàng */}
+                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
                         <Route
                             path='/admin/orders/pre-orders'
                             element={<AdminOrderManagementPage key="pre-orders" type="pre-orders" />}
@@ -240,8 +288,14 @@ export const AppRoutes = () => {
                         />
                     </Route>
 
-                    {/* Warehouse manager: kho hàng (kiểm kho, nhập hàng, nhà cung cấp) */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'warehouse_manager']} />}>
+                    {/* Kho hàng */}
+                    <Route
+                        element={
+                            <RoleProtectedRoute
+                                allowedRoles={['admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh']}
+                            />
+                        }
+                    >
                         <Route
                             path='/admin/warehouses'
                             element={

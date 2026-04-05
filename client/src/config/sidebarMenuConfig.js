@@ -1,10 +1,29 @@
-import { BadgePercent, Boxes, LayoutDashboard, Package, Receipt, RotateCw, UserRound, UserRoundPen, UsersRound } from 'lucide-react';
+import {
+    BadgePercent,
+    Boxes,
+    LayoutDashboard,
+    Package,
+    Receipt,
+    RotateCw,
+    ShoppingCart,
+    UserRound,
+    UserRoundPen,
+    UsersRound,
+} from 'lucide-react';
 
 /**
- * Cấu hình menu sidebar - RBAC theo vai trò.
- * allowedRoles: mảng tên role được phép xem. null = luôn hiển thị (vd: Tài khoản).
- * subItems: dropdown con (dùng khi có children)
+ * Menu sidebar — RBAC theo vai trò.
+ * allowedRoles: null = luôn hiển thị (vd: Tài khoản).
+ *
+ * Phạm vi tóm tắt:
+ * - admin: toàn bộ; chọn mọi chi nhánh (scope all ở layout).
+ * - manager: tổng quan, bán hàng, sản phẩm, thu cũ, đơn, khách, kho, tài khoản (theo chi nhánh được phân).
+ * - Quản lý chi nhánh: tổng quan, khách, kho, sản phẩm, thu cũ (lịch theo cơ sở), đơn hàng, bán hàng.
+ * - warehouse_manager: chỉ sản phẩm + kho hàng.
+ * - seller / staff / Nhân viên bán hàng: bán hàng, thu cũ (theo cơ sở), tài khoản.
  */
+const SELLER_ROLES = ['seller', 'staff', 'Nhân viên bán hàng'];
+
 export const SIDEBAR_MENU_ITEMS = [
     {
         id: 'dashboard',
@@ -16,11 +35,20 @@ export const SIDEBAR_MENU_ITEMS = [
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
     },
     {
+        id: 'pos-sales',
+        to: '/sales',
+        icon: ShoppingCart,
+        label: 'Bán hàng',
+        ariaLabel: 'Bán hàng tại quầy',
+        activePaths: ['/sales'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
+    },
+    {
         id: 'products',
         icon: Package,
         label: 'Sản phẩm',
         ariaLabel: 'Quản lý sản phẩm',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', 'warehouse_manager'],
         subItems: [
             { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
             { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
@@ -34,7 +62,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UsersRound,
         label: 'Người dùng',
         ariaLabel: 'Quản lý người dùng',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin'],
     },
     {
         id: 'staffs',
@@ -42,7 +70,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UserRoundPen,
         label: 'Nhân viên',
         ariaLabel: 'Quản lý nhân viên',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin'],
         activePaths: ['/admin/staffs'],
     },
     {
@@ -52,14 +80,14 @@ export const SIDEBAR_MENU_ITEMS = [
         label: 'Thu cũ acquy',
         ariaLabel: 'Quản lý yêu cầu thu cũ acquy',
         activePaths: ['/admin/battery-trade-in'],
-        allowedRoles: ['admin'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
     },
     {
         id: 'orders',
         icon: Receipt,
         label: 'Đơn hàng',
         ariaLabel: 'Quản lý đơn hàng cửa hàng',
-        allowedRoles: ['admin', 'manager', 'seller', 'warehouse_manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
         activePaths: ['/admin/orders'],
         subItems: [
             { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },
@@ -74,7 +102,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: UsersRound,
         label: 'Khách hàng',
         ariaLabel: 'Quản lý khách hàng',
-        allowedRoles: ['admin', 'manager', 'seller', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
     },
     {
         id: 'member-policies',
@@ -82,7 +110,7 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: BadgePercent,
         label: 'Chính sách khách hàng',
         ariaLabel: 'Chính sách hạng / ưu đãi khách hàng',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin'],
     },
     {
         id: 'warehouses',

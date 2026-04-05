@@ -29,42 +29,50 @@ router.post('/', hasRole('user', 'customer'), createOrder);
 router.get('/checkout-preview', hasRole('user', 'customer'), checkoutPreview);
 router.get(
     '/:id/generate-vietqr',
-    hasRole('user', 'customer', 'admin', 'manager', 'seller'),
+    hasRole('user', 'customer', 'admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     generateVietQRForOrder,
 );
 router.get(
     '/:id/refund-transfer-qr',
-    hasRole('admin', 'manager', 'seller'),
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     getRefundTransferQrForOrder,
 );
 router.post(
     '/:id/confirm-refund-transfer',
-    hasRole('admin', 'manager', 'seller'),
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     confirmOrderRefundTransfer,
 );
-router.get('/:id/sync-payment', hasRole('user', 'customer', 'admin', 'manager', 'seller'), syncPaymentFromPayOS);
+router.get(
+    '/:id/sync-payment',
+    hasRole('user', 'customer', 'admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    syncPaymentFromPayOS,
+);
 router.post('/:id/cancel', hasRole('user', 'customer'), cancelOrderByCustomer);
 router.post(
     '/:id/confirm-warehouse-outbound',
-    hasRole('admin', 'manager', 'warehouse_manager'),
+    hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'),
     confirmWarehouseOutbound,
 );
 router.post(
     '/:id/warehouse-pack-line',
-    hasRole('admin', 'manager', 'warehouse_manager'),
+    hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'),
     packWarehouseOrderLine,
 );
 router.patch('/:id', hasRole('user', 'customer'), updateOrderByCustomer);
 
-// Bán tại quầy (admin, manager, seller)
-router.post('/from-items', hasRole('admin', 'manager', 'seller'), createOrderFromItems);
+// Bán tại quầy
+router.post(
+    '/from-items',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    createOrderFromItems,
+);
 
-// Báo cáo (admin, manager)
-router.get('/report', hasRole('admin', 'manager'), getOrderReport);
+// Báo cáo đơn hàng
+router.get('/report', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getOrderReport);
 
 router.post(
     '/warehouse/lookup-online-order',
-    hasRole('admin', 'manager', 'warehouse_manager'),
+    hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'),
     lookupOnlineOrderForPacking,
 );
 
@@ -72,7 +80,11 @@ router.post(
 router.get('/', getOrders);
 router.get('/:id', getOrderById);
 
-// Cập nhật đơn (xác nhận, thanh toán) - admin, manager, seller
-router.put('/:id', hasRole('admin', 'manager', 'seller'), updateOrder);
+// Cập nhật đơn (xác nhận, thanh toán)
+router.put(
+    '/:id',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    updateOrder,
+);
 
 export default router;

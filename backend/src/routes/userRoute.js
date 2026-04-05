@@ -25,7 +25,7 @@ const router = express.Router();
 
 // Tất cả routes đều cần authenticate và có role admin hoặc manager
 router.use(authenticate);
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin'));
 
 // Lấy danh sách tất cả roles (để hiển thị trong dropdown)
 router.get('/roles', getAllRoles);

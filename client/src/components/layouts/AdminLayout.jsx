@@ -13,16 +13,24 @@ export default function AdminLayout({ children }) {
     const { locations, fetchLocations } = useBranchStore();
     const user = useAuthStore((s) => s.user);
 
-    const needsBranch = hasAnyRole('admin', 'manager', 'warehouse_manager');
+    const needsBranch = hasAnyRole(
+        'admin',
+        'manager',
+        'warehouse_manager',
+        'seller',
+        'Quản lý chi nhánh',
+        'staff',
+        'Nhân viên bán hàng'
+    );
     const showCreateBranchFirst =
         needsBranch && locations.length === 0 && pathname !== '/admin/store-profile';
 
     useEffect(() => {
         if (user && needsBranch) {
-            const scope = hasAnyRole('manager') && !hasAnyRole('admin') ? 'mine' : 'all';
+            const scope = hasAnyRole('admin') ? 'all' : 'mine';
             fetchLocations({ scope });
         }
-    }, [user, needsBranch, fetchLocations]);
+    }, [user, needsBranch, hasAnyRole, fetchLocations]);
 
     return (
         <div className="drawer lg:drawer-open h-screen overflow-hidden">

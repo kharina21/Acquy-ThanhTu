@@ -45,7 +45,7 @@ router.get('/mine', authenticate, getMyBatteryTradeIns);
 
 // Admin/Manager - Lấy danh sách và cập nhật trạng thái
 router.use(authenticate);
-router.use(hasRole('admin', 'manager'));
+router.use(hasRole('admin', 'manager', 'Quản lý chi nhánh', 'seller'));
 
 router.get('/', getBatteryTradeInList);
 router.get('/:id', getBatteryTradeInById);
