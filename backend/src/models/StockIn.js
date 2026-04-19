@@ -6,6 +6,11 @@ const stockInItemSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 1 },
         unitPrice: { type: Number, default: 0 },
         totalPrice: { type: Number, default: 0 }, // quantity * unitPrice
+        /**
+         * Danh sách seri/IMEI cho từng sản phẩm trong phiếu nhập.
+         * Optional để giữ tương thích dữ liệu cũ.
+         */
+        serials: { type: [String], default: [] },
     },
     { _id: true }
 );

@@ -1,7 +1,94 @@
+import crypto from 'crypto';
 import StockIn from '../models/StockIn.js';
 import StockReturn from '../models/StockReturn.js';
 import ProductStock from '../models/ProductStock.js';
+import Product from '../models/Product.js';
 import { generateStockInCode } from '../utils/stockInCode.js';
+
+/** Gom và kiểm tra seri không trùng trong payload và không trùng với phiếu khác / mã SKU sản phẩm. */
+async function assertSerialsAllowed(processedItems, excludeStockInId) {
+    const flat = [];
+    for (const it of processedItems) {
+        for (const s of it.serials || []) {
+            const v = String(s || '').trim();
+            if (v) flat.push(v);
+        }
+    }
+    if (flat.length === 0) return;
+
+    const seen = new Set();
+    for (const s of flat) {
+        if (seen.has(s)) {
+            throw Object.assign(new Error(`Seri "${s}" bị trùng trong cùng phiếu`), { statusCode: 400 });
+        }
+        seen.add(s);
+    }
+
+    const skuHit = await Product.findOne({ sku: { $in: flat } }).select('sku').lean();
+    if (skuHit) {
+        throw Object.assign(
+            new Error(`Seri trùng với mã SKU sản phẩm "${skuHit.sku}" — đổi seri khác`),
+            { statusCode: 400 },
+        );
+    }
+
+    const filter = { items: { $elemMatch: { serials: { $in: flat } } } };
+    if (excludeStockInId) filter._id = { $ne: excludeStockInId };
+    const conflict = await StockIn.findOne(filter).select('code').lean();
+    if (conflict) {
+        throw Object.assign(
+            new Error(`Seri đã tồn tại trên phiếu nhập khác (${conflict.code})`),
+            { statusCode: 400 },
+        );
+    }
+}
+
+/**
+ * POST /stock-ins/generate-serials
+ * Sinh N mã seri số (đủ chữ số cho barcode), không trùng trong DB và không trùng excludeSerials.
+ */
+export const generateStockInSerials = async (req, res) => {
+    try {
+        const qty = Math.min(500, Math.max(1, parseInt(req.body?.quantity, 10) || 0));
+        const exclude = Array.isArray(req.body?.excludeSerials)
+            ? [...new Set(req.body.excludeSerials.map((s) => String(s || '').trim()).filter(Boolean))]
+            : [];
+        const used = new Set(exclude);
+        const out = [];
+        let attempts = 0;
+        const maxAttempts = qty * 100;
+
+        while (out.length < qty && attempts < maxAttempts) {
+            attempts += 1;
+            const buf = crypto.randomBytes(14);
+            let s = '';
+            for (let j = 0; j < 14; j += 1) s += String(buf[j] % 10);
+            if (used.has(s) || out.includes(s)) continue;
+
+            const existsSku = await Product.exists({ sku: s });
+            if (existsSku) continue;
+
+            const dup = await StockIn.findOne({
+                items: { $elemMatch: { serials: s } },
+            })
+                .select('_id')
+                .lean();
+            if (dup) continue;
+
+            out.push(s);
+            used.add(s);
+        }
+
+        if (out.length < qty) {
+            return res.status(500).json({ message: 'Không tạo đủ mã seri duy nhất, thử lại sau' });
+        }
+
+        res.status(200).json({ success: true, data: { serials: out } });
+    } catch (error) {
+        console.error('generateStockInSerials error:', error.message);
+        res.status(500).json({ message: 'Lỗi khi tạo seri', error: error.message });
+    }
+};
 
 export const getNextCode = async (req, res) => {
     try {
@@ -61,7 +148,7 @@ export const getStockInById = async (req, res) => {
             .populate('supplier', 'code name phone')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku')
+            .populate('items.product', 'name sku barcode')
             .lean();
 
         if (!stockIn) {
@@ -105,13 +192,26 @@ export const createStockIn = async (req, res) => {
         const processedItems = items.map((it) => {
             const qty = Math.max(1, parseInt(it.quantity, 10) || 0);
             const price = parseFloat(it.unitPrice) || 0;
+            const serials = Array.isArray(it.serials)
+                ? it.serials
+                      .map((s) => String(s || '').trim())
+                      .filter(Boolean)
+                : [];
             return {
                 product: it.product,
                 quantity: qty,
                 unitPrice: price,
                 totalPrice: qty * price,
+                serials,
             };
         });
+
+        try {
+            await assertSerialsAllowed(processedItems, null);
+        } catch (e) {
+            const status = e.statusCode || 400;
+            return res.status(status).json({ message: e.message });
+        }
 
         const totalAmount = processedItems.reduce((sum, it) => sum + it.totalPrice, 0);
 
@@ -132,7 +232,7 @@ export const createStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku')
+            .populate('items.product', 'name sku barcode')
             .lean();
 
         res.status(201).json({
@@ -144,6 +244,9 @@ export const createStockIn = async (req, res) => {
         console.error('createStockIn error:', error.message);
         if (error.code === 11000) {
             return res.status(400).json({ message: 'Mã phiếu nhập đã tồn tại' });
+        }
+        if (error.statusCode === 400) {
+            return res.status(400).json({ message: error.message });
         }
         res.status(500).json({ message: 'Lỗi khi tạo phiếu nhập', error: error.message });
     }
@@ -176,13 +279,26 @@ export const updateStockIn = async (req, res) => {
         const processedItems = items.map((it) => {
             const qty = Math.max(1, parseInt(it.quantity, 10) || 0);
             const price = parseFloat(it.unitPrice) || 0;
+            const serials = Array.isArray(it.serials)
+                ? it.serials
+                      .map((s) => String(s || '').trim())
+                      .filter(Boolean)
+                : [];
             return {
                 product: it.product,
                 quantity: qty,
                 unitPrice: price,
                 totalPrice: qty * price,
+                serials,
             };
         });
+
+        try {
+            await assertSerialsAllowed(processedItems, id);
+        } catch (e) {
+            const status = e.statusCode || 400;
+            return res.status(status).json({ message: e.message });
+        }
 
         const totalAmount = processedItems.reduce((sum, it) => sum + it.totalPrice, 0);
 
@@ -197,7 +313,7 @@ export const updateStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku')
+            .populate('items.product', 'name sku barcode')
             .lean();
 
         res.status(200).json({
@@ -207,6 +323,9 @@ export const updateStockIn = async (req, res) => {
         });
     } catch (error) {
         console.error('updateStockIn error:', error.message);
+        if (error.statusCode === 400) {
+            return res.status(400).json({ message: error.message });
+        }
         res.status(500).json({ message: 'Lỗi khi cập nhật phiếu nhập', error: error.message });
     }
 };
@@ -298,7 +417,7 @@ export const confirmStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku')
+            .populate('items.product', 'name sku barcode')
             .lean();
 
         res.status(200).json({

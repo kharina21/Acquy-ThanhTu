@@ -126,6 +126,7 @@
 | 125 | Warehouse | NXT Inventory Report | Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho) | 🔵 |
 | 126 | Warehouse | Stock In Lines Report | Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel | 🔵 |
 | 127 | Warehouse | Stock Out Lines Report | Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel | 🔵 |
+| 128 | Warehouse | Auto-generate stock-in serials | Nhập kho: sinh seri số tự động theo số lượng (mỗi cái một mã), không trùng seri phiếu khác và không trùng mã SKU sản phẩm | 🔵 |
 
 ---
 

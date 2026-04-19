@@ -35,7 +35,11 @@ const stockOutSchema = new mongoose.Schema(
 stockOutSchema.index({ createdAt: -1 });
 stockOutSchema.index({ location: 1 });
 stockOutSchema.index({ location: 1, saleChannel: 1 });
-stockOutSchema.index({ order: 1 }, { unique: true, sparse: true });
+/** Mỗi đơn tối đa một phiếu xuất; phiếu xuất tay không có order — không dùng sparse+null vì null vẫn bị index và trùng unique. */
+stockOutSchema.index(
+    { order: 1 },
+    { unique: true, partialFilterExpression: { order: { $type: 'objectId' } } }
+);
 
 const StockOut = mongoose.model('StockOut', stockOutSchema);
 

@@ -116,7 +116,6 @@ export const createStockOut = async (req, res) => {
             note: note?.trim() || '',
             status: 'draft',
             reasonType: reasonType === 'sale_order' ? 'other' : reasonType,
-            order: null,
             items: processedItems,
             totalAmount,
         });
@@ -136,7 +135,14 @@ export const createStockOut = async (req, res) => {
     } catch (error) {
         console.error('createStockOut error:', error.message);
         if (error.code === 11000) {
-            return res.status(400).json({ message: 'Mã phiếu xuất đã tồn tại' });
+            const dupKey = error.keyPattern && Object.keys(error.keyPattern)[0];
+            const message =
+                dupKey === 'order'
+                    ? 'Đơn đã có phiếu xuất kho'
+                    : dupKey === 'code'
+                      ? 'Mã phiếu xuất đã tồn tại'
+                      : 'Dữ liệu phiếu xuất bị trùng';
+            return res.status(400).json({ message });
         }
         res.status(500).json({ message: 'Lỗi khi tạo phiếu xuất', error: error.message });
     }
