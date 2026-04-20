@@ -56,8 +56,13 @@ const AdminDashboard = () => {
     }
 
     const { revenue, paidOrderCount, pendingCount, totalCustomers, totalProducts, topCustomers, topProducts } = stats;
+    const grossSales = revenue?.grossSales ?? revenue?.revenueOrders ?? 0;
+    const tradeInExpense = revenue?.tradeInExpense ?? revenue?.revenueBatteryTradeIn ?? 0;
+    const netSales = revenue?.netSales ?? (grossSales - tradeInExpense);
 
     const hasBreakdown =
+        revenue?.grossSales != null ||
+        revenue?.tradeInExpense != null ||
         revenue?.revenueOrders != null ||
         revenue?.revenueBatteryTradeIn != null;
 
@@ -119,13 +124,13 @@ const AdminDashboard = () => {
                                 </div>
                                 <div>
                                     <p className='text-sm font-medium text-base-content/70'>
-                                        Tổng doanh thu ({revenue?.period || 'tháng này'})
+                                        Doanh thu thuần ({revenue?.period || 'tháng này'})
                                     </p>
                                     <p className='text-3xl sm:text-4xl font-bold text-primary tracking-tight mt-1'>
-                                        {formatVND(revenue?.total ?? 0)}
+                                        {formatVND(netSales)}
                                     </p>
                                     <p className='text-xs text-base-content/50 mt-1'>
-                                        Gồm đơn đã thanh toán và các phiên thu cũ đã hoàn tất
+                                        Doanh thu bán hàng trừ chi thu cũ hoàn tất
                                     </p>
                                 </div>
                             </div>
@@ -150,7 +155,7 @@ const AdminDashboard = () => {
                                     <div className='min-w-0 flex-1'>
                                         <p className='text-xs font-semibold uppercase tracking-wide text-base-content/60'>Bán hàng</p>
                                         <p className='text-xl font-bold text-secondary mt-0.5'>
-                                            {formatVND(revenue?.revenueOrders ?? 0)}
+                                            {formatVND(grossSales)}
                                         </p>
                                         <p className='text-[11px] text-base-content/50 mt-1'>Đơn hàng đã thanh toán</p>
                                     </div>
@@ -166,12 +171,12 @@ const AdminDashboard = () => {
                                     <div className='min-w-0 flex-1'>
                                         <div className='flex items-center justify-between gap-2'>
                                             <p className='text-xs font-semibold uppercase tracking-wide text-base-content/60'>
-                                                Thu cũ đổi mới
+                                                Chi thu cũ đổi mới
                                             </p>
                                             <ChevronRight className='w-4 h-4 text-accent opacity-70 group-hover:translate-x-0.5 transition-transform' />
                                         </div>
                                         <p className='text-xl font-bold text-accent mt-0.5'>
-                                            {formatVND(revenue?.revenueBatteryTradeIn ?? 0)}
+                                            -{formatVND(tradeInExpense)}
                                         </p>
                                         <p className='text-[11px] text-base-content/50 mt-1'>Quản lý yêu cầu →</p>
                                     </div>

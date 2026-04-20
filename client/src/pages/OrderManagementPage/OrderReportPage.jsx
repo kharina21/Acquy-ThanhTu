@@ -18,7 +18,9 @@ const OrderReportPage = () => {
     const currentLocation = locations?.find((l) => l._id === currentLocationId);
     const [items, setItems] = useState([]);
     const [summary, setSummary] = useState({
-        totalRevenue: 0,
+        grossSales: 0,
+        tradeInExpense: 0,
+        netSales: 0,
         totalOrders: 0,
         revenueOrders: 0,
         revenueBatteryTradeIn: 0,
@@ -43,7 +45,9 @@ const OrderReportPage = () => {
             setItems(data?.items ?? data?.orders ?? []);
             setSummary(
                 data?.summary || {
-                    totalRevenue: 0,
+                    grossSales: 0,
+                    tradeInExpense: 0,
+                    netSales: 0,
                     totalOrders: 0,
                     revenueOrders: 0,
                     revenueBatteryTradeIn: 0,
@@ -85,9 +89,13 @@ const OrderReportPage = () => {
     };
 
     const getRowAmount = (row) => {
-        if (row.type === 'battery_trade_in') return row.completedAmount ?? 0;
+        if (row.type === 'battery_trade_in') return -(row.completedAmount ?? 0);
         return row.totalAmount;
     };
+
+    const grossSales = summary.grossSales ?? summary.revenueOrders ?? 0;
+    const tradeInExpense = summary.tradeInExpense ?? summary.revenueBatteryTradeIn ?? 0;
+    const netSales = summary.netSales ?? summary.totalRevenue ?? (grossSales - tradeInExpense);
 
     const getRowLocation = (row) => {
         if (row.type === 'battery_trade_in') return row.locationId?.name || row.locationId?.code || '—';
@@ -109,7 +117,7 @@ const OrderReportPage = () => {
                 </div>
 
                 <p className="text-base-content/70 mb-6">
-                    Thống kê doanh thu: đơn hàng đã thanh toán + thu cũ đổi mới đã hoàn thành thu mua (trong kỳ lọc).
+                    Thống kê theo mô hình chuẩn: doanh thu bán hàng, chi thu cũ đổi mới và doanh thu thuần (trong kỳ lọc).
                     {currentLocation && (
                         <span className="block mt-1 font-medium text-primary">
                             Đang xem: {currentLocation.code} - {currentLocation.name}
@@ -118,15 +126,25 @@ const OrderReportPage = () => {
                 </p>
 
                 {/* Tổng quan */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     <div className="stats shadow bg-base-100 w-full">
                         <div className="stat">
                             <div className="stat-figure text-primary">
                                 <DollarSign className="w-10 h-10" />
                             </div>
-                            <div className="stat-title">Tổng doanh thu</div>
-                            <div className="stat-value text-primary">{formatVND(summary.totalRevenue)}</div>
-                            <div className="stat-desc">Bán hàng + thu cũ</div>
+                            <div className="stat-title">Doanh thu thuần</div>
+                            <div className="stat-value text-primary">{formatVND(netSales)}</div>
+                            <div className="stat-desc">Bán hàng - chi thu cũ</div>
+                        </div>
+                    </div>
+                    <div className="stats shadow bg-base-100 w-full">
+                        <div className="stat">
+                            <div className="stat-figure text-info">
+                                <DollarSign className="w-10 h-10" />
+                            </div>
+                            <div className="stat-title">Doanh thu bán hàng</div>
+                            <div className="stat-value text-info">{formatVND(grossSales)}</div>
+                            <div className="stat-desc">Đơn đã thanh toán</div>
                         </div>
                     </div>
                     <div className="stats shadow bg-base-100 w-full">
@@ -146,7 +164,7 @@ const OrderReportPage = () => {
                             </div>
                             <div className="stat-title">Thu cũ hoàn thành</div>
                             <div className="stat-value text-accent">{summary.batteryTradeInCount ?? 0}</div>
-                            <div className="stat-desc">{formatVND(summary.revenueBatteryTradeIn ?? 0)}</div>
+                            <div className="stat-desc">-{formatVND(tradeInExpense)}</div>
                         </div>
                     </div>
                 </div>
@@ -218,7 +236,7 @@ const OrderReportPage = () => {
                                             <th>Khách hàng</th>
                                             <th>Ngày</th>
                                             <th>Chi nhánh</th>
-                                            <th className="text-right">Số tiền</th>
+                                            <th className="text-right">Giá trị (+/-)</th>
                                             <th className="w-12"></th>
                                         </tr>
                                     </thead>
@@ -247,8 +265,14 @@ const OrderReportPage = () => {
                                                 <td>{getRowCustomer(row)}</td>
                                                 <td>{getRowDate(row)}</td>
                                                 <td>{getRowLocation(row)}</td>
-                                                <td className="text-right font-medium text-primary">
-                                                    {formatVND(getRowAmount(row))}
+                                                <td
+                                                    className={`text-right font-medium ${
+                                                        row.type === 'battery_trade_in' ? 'text-error' : 'text-primary'
+                                                    }`}
+                                                >
+                                                    {row.type === 'battery_trade_in'
+                                                        ? `-${formatVND(Math.abs(getRowAmount(row)))}`
+                                                        : formatVND(getRowAmount(row))}
                                                 </td>
                                                 <td>
                                                     <Link

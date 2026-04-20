@@ -234,18 +234,19 @@ export const getDashboardStats = async (req, res) => {
         const revenueOnline = isOnlineBranch && revenueByChannel[0] ? (revenueByChannel[0][0]?.total ?? 0) : null;
         const revenueOffline = isOnlineBranch && revenueByChannel[1] ? (revenueByChannel[1][0]?.total ?? 0) : null;
 
-        const orderRevenueCurr = revenueCurr[0]?.total ?? 0;
-        const orderRevenuePrev = revenuePrev[0]?.total ?? 0;
-        const revenueBatteryTradeIn = batteryCurr[0]?.total ?? 0;
-        const revenueBatteryTradeInPrev = batteryPrev[0]?.total ?? 0;
+        const grossSalesCurr = revenueCurr[0]?.total ?? 0;
+        const grossSalesPrev = revenuePrev[0]?.total ?? 0;
+        const tradeInExpenseCurr = batteryCurr[0]?.total ?? 0;
+        const tradeInExpensePrev = batteryPrev[0]?.total ?? 0;
 
-        const totalCurr = orderRevenueCurr + revenueBatteryTradeIn;
-        const totalPrev = orderRevenuePrev + revenueBatteryTradeInPrev;
+        /** Thu cũ là khoản chi mua lại ắc quy cũ từ khách => trừ khỏi doanh thu bán hàng để ra doanh thu thuần. */
+        const netSalesCurr = grossSalesCurr - tradeInExpenseCurr;
+        const netSalesPrev = grossSalesPrev - tradeInExpensePrev;
         const paidOrderCount = revenueCurr[0]?.count ?? 0;
         let changePercent = 0;
-        if (totalPrev > 0) {
-            changePercent = Math.round(((totalCurr - totalPrev) / totalPrev) * 1000) / 10;
-        } else if (totalCurr > 0) {
+        if (netSalesPrev > 0) {
+            changePercent = Math.round(((netSalesCurr - netSalesPrev) / netSalesPrev) * 1000) / 10;
+        } else if (netSalesCurr > 0) {
             changePercent = 100;
         }
 
@@ -276,11 +277,14 @@ export const getDashboardStats = async (req, res) => {
             data: {
                 locationId: locationId || null,
                 revenue: {
-                    total: totalCurr,
+                    total: netSalesCurr,
                     period: periodLabel,
                     changePercent,
-                    revenueOrders: orderRevenueCurr,
-                    revenueBatteryTradeIn,
+                    grossSales: grossSalesCurr,
+                    tradeInExpense: tradeInExpenseCurr,
+                    netSales: netSalesCurr,
+                    revenueOrders: grossSalesCurr,
+                    revenueBatteryTradeIn: tradeInExpenseCurr,
                     ...(isOnlineBranch && {
                         revenueOnline: revenueOnline ?? 0,
                         revenueOffline: revenueOffline ?? 0,
