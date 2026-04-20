@@ -43,6 +43,7 @@ import BatteryTradeInPage from '../pages/BatteryTradeInPage';
 import BatteryTradeInLookupPage from '../pages/BatteryTradeInLookupPage';
 import BatteryTradeInMinePage from '../pages/BatteryTradeInMinePage';
 import ProductDetailPage from '../pages/ProductDetailPage';
+import ContactPage from '../pages/ContactPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -100,6 +101,10 @@ export const AppRoutes = () => {
             <Route
                 path='/product/:id'
                 element={<ProductDetailPage />}
+            />
+            <Route
+                path='/contact'
+                element={<ContactPage />}
             />
             <Route
                 path='/battery-trade-in'

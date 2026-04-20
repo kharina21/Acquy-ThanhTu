@@ -45,7 +45,7 @@ export function Footer() {
               <li><Link to="/listproduct" className="text-primary-content/90 hover:text-primary-content hover:underline transition-colors">Sản phẩm</Link></li>
               <li><Link to="/" className="text-primary-content/90 hover:text-primary-content hover:underline transition-colors">Trang chủ</Link></li>
               <li><a href="#" className="text-primary-content/90 hover:text-primary-content hover:underline transition-colors">Thu mua ắc quy cũ</a></li>
-              <li><a href="#" className="text-primary-content/90 hover:text-primary-content hover:underline transition-colors">Liên hệ</a></li>
+              <li><Link to="/contact" className="text-primary-content/90 hover:text-primary-content hover:underline transition-colors">Liên hệ</Link></li>
             </ul>
           </div>
 
@@ -92,7 +92,7 @@ export function Footer() {
         <div className="container mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-primary-content/80">
           <div className="flex gap-6">
             <Link to="/listproduct" className="hover:text-primary-content transition-colors">Sản phẩm</Link>
-            <a href="#" className="hover:text-primary-content transition-colors">Liên hệ</a>
+            <Link to="/contact" className="hover:text-primary-content transition-colors">Liên hệ</Link>
           </div>
           <p className="text-primary-content/60">© 2026 acquyhanoi.vn</p>
         </div>
