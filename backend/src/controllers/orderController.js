@@ -1669,7 +1669,7 @@ export const getOrderReport = async (req, res) => {
             Order.aggregate([{ $match: filter }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
             BatteryTradeIn.aggregate([
                 { $match: batteryFilter },
-                { $group: { _id: null, totalRevenue: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+                { $group: { _id: null, totalExpense: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
             ]),
             Order.aggregate([
                 { $match: filter },
@@ -1697,8 +1697,10 @@ export const getOrderReport = async (req, res) => {
         ]);
 
         const orderSummary = revenueAgg[0] || { totalRevenue: 0, count: 0 };
-        const batterySummary = batteryAgg[0] || { totalRevenue: 0, count: 0 };
-        const revenueBattery = batterySummary.totalRevenue ?? 0;
+        const batterySummary = batteryAgg[0] || { totalExpense: 0, count: 0 };
+        const tradeInExpense = batterySummary.totalExpense ?? 0;
+        const grossSales = orderSummary.totalRevenue ?? 0;
+        const netSales = grossSales - tradeInExpense;
 
         const orderIds = idRows.filter((r) => r.type === 'order').map((r) => r._id);
         const batteryIds = idRows.filter((r) => r.type === 'battery_trade_in').map((r) => r._id);
@@ -1739,10 +1741,13 @@ export const getOrderReport = async (req, res) => {
             data: {
                 items,
                 summary: {
-                    totalRevenue: (orderSummary.totalRevenue ?? 0) + revenueBattery,
+                    totalRevenue: netSales,
+                    grossSales,
+                    tradeInExpense,
+                    netSales,
                     totalOrders: orderSummary.count,
-                    revenueOrders: orderSummary.totalRevenue ?? 0,
-                    revenueBatteryTradeIn: revenueBattery,
+                    revenueOrders: grossSales,
+                    revenueBatteryTradeIn: tradeInExpense,
                     batteryTradeInCount: batterySummary.count ?? 0,
                 },
                 pagination: {

@@ -10,7 +10,7 @@ import { getProducts } from '@/services/productService';
 const navLinks = [
     { label: 'Trang chủ', to: '/' },
     { label: 'Sản phẩm', to: '/listproduct' },
-    { label: 'Liên hệ', to: '#' },
+    { label: 'Liên hệ', to: '/contact' },
 ];
 
 export function Header({ user, onLogout }) {
@@ -177,24 +177,15 @@ export function Header({ user, onLogout }) {
             <nav className="bg-gradient-to-r from-primary to-primary/90 text-primary-content">
                 <div className="container mx-auto px-4 lg:px-6">
                     <div className="hidden lg:flex items-center gap-1 py-2.5">
-                        {navLinks.map(({ label, to }) =>
-                            to === '#' ? (
-                                <span
-                                    key={label}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium opacity-90 hover:opacity-100 hover:bg-white/10 transition-all cursor-pointer"
-                                >
-                                    {label}
-                                </span>
-                            ) : (
-                                <Link
-                                    key={label}
-                                    to={to}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium opacity-90 hover:opacity-100 hover:bg-white/10 transition-all"
-                                >
-                                    {label}
-                                </Link>
-                            )
-                        )}
+                        {navLinks.map(({ label, to }) => (
+                            <Link
+                                key={label}
+                                to={to}
+                                className="px-4 py-2 rounded-lg text-sm font-medium opacity-90 hover:opacity-100 hover:bg-white/10 transition-all"
+                            >
+                                {label}
+                            </Link>
+                        ))}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <button
@@ -247,22 +238,16 @@ export function Header({ user, onLogout }) {
                 }`}
             >
                 <div className="container mx-auto px-4 py-4 space-y-1">
-                    {navLinks.map(({ label, to }) =>
-                        to === '#' ? (
-                            <span key={label} className="block px-4 py-3 text-gray-600 font-medium rounded-lg">
-                                {label}
-                            </span>
-                        ) : (
-                            <Link
-                                key={label}
-                                to={to}
-                                onClick={() => setMobileNavOpen(false)}
-                                className="block px-4 py-3 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                {label}
-                            </Link>
-                        )
-                    )}
+                    {navLinks.map(({ label, to }) => (
+                        <Link
+                            key={label}
+                            to={to}
+                            onClick={() => setMobileNavOpen(false)}
+                            className="block px-4 py-3 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            {label}
+                        </Link>
+                    ))}
                     <div className="px-4 pt-1 pb-2">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Thu mua ắc quy</p>
                         <div className="space-y-0.5 pl-2 border-l-2 border-primary/30">
