@@ -40,6 +40,7 @@ export function rowToProduct(row, index) {
     const sku = row['Mã hàng'] != null ? String(row['Mã hàng']).trim() : '';
     const barcode = row['Mã vạch'] != null ? String(row['Mã vạch']).trim() : '';
     const name = row['Tên hàng'] != null ? String(row['Tên hàng']).trim() : '';
+    const series = row['Series'] != null ? String(row['Series']).trim() : '';
     const capacity = row['Dung lượng (Ah)'] != null ? String(row['Dung lượng (Ah)']).trim() : '';
     const costPrice = parsePrice(row['Đơn giá nhập (VNĐ)']);
     const price = parsePrice(row['Đơn giá bán (VNĐ)']);
@@ -67,6 +68,7 @@ export function rowToProduct(row, index) {
         sku: sku || `IM-${index + 1}`,
         barcode: barcode || '',
         name: name || `Sản phẩm ${index + 1}`,
+        series: series || '',
         capacity: capacity || '',
         costPrice,
         price,

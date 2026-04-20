@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet, Barcode, FolderDown, ImageIcon } from 'lucide-react';
-import JsBarcode from 'jsbarcode';
+import {
+    buildLabelCellInnerHtml,
+    buildProductBarcodePrintDocumentHtml,
+    buildSheetsFromCellInnerHtmls,
+    createBarcodeDataUrl,
+    normalizeBarcodeValueForCode128,
+} from '@/utils/productBarcodePrint';
 import { getProducts, createProduct, updateProduct, deleteProduct, importProductsFromExcel, generateSampleExcelBlob, uploadProductImage } from '@/services/productService';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/services/categoryService';
 import { getBrands, createBrand, updateBrand, deleteBrand } from '@/services/brandService';
@@ -27,6 +33,7 @@ const emptyProductForm = () => ({
     name: '',
     usageDevice: null,
     capacity: '',
+    series: '',
     costPrice: 0,
     price: 0,
     images: [],
@@ -255,6 +262,7 @@ const ProductListTab = () => {
             name: selectedProduct.name ?? '',
             usageDevice: selectedProduct.usageDevice?._id || selectedProduct.usageDevice || null,
             capacity: selectedProduct.capacity ?? '',
+            series: selectedProduct.series ?? '',
             costPrice: selectedProduct.costPrice ?? 0,
             price: selectedProduct.price ?? 0,
             images: selectedProduct.images?.length ? selectedProduct.images : selectedProduct.image ? [selectedProduct.image] : [],
@@ -309,44 +317,41 @@ const ProductListTab = () => {
     };
 
     /**
-     * In tem mã vạch 35×22mm (2 cell/hàng).
-     * - Khổ giấy: 70×22mm = 1 hàng, chia 2 cell (mỗi cell 35×22mm).
-     * - Chẵn (2,4,6...): in cả 2 cell mỗi hàng. Lẻ: hàng cuối chỉ cell trái.
+     * In tem mã vạch: khổ 70×22mm / hàng, 2 cell ngang (mỗi cell 35×22mm).
+     * Số lượng chẵn: mỗi hàng đủ 2 tem. Lẻ: hàng cuối chỉ tem trái, ô phải để trống (vẫn 70mm để preset máy in khớp).
      */
     const handlePrintBarcode = () => {
         if (!selectedProduct) return;
-        const barcodeValue = (selectedProduct.barcode || selectedProduct.sku || '').toString().replace(/[^\w\s-]/g, '');
+        const barcodeValue = normalizeBarcodeValueForCode128(
+            selectedProduct.barcode || selectedProduct.sku || '',
+        );
         if (!barcodeValue) {
             toast.error('Sản phẩm chưa có mã vạch hoặc mã hàng');
             return;
         }
 
-        // Khôi phục cách in tem mã "cũ": mở cửa sổ mới và in trực tiếp (ổn định hơn iframe/beforeprint trên một số máy)
         const qty = Math.min(500, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
-        const canvas = document.createElement('canvas');
+        let barcodeDataUrl;
         try {
-            JsBarcode(canvas, barcodeValue, { format: 'CODE128', width: 2, height: 40, displayValue: true });
+            barcodeDataUrl = createBarcodeDataUrl(barcodeValue);
         } catch (e) {
             toast.error('Không tạo được mã vạch. Kiểm tra mã không chứa ký tự đặc biệt.');
             return;
         }
 
-        const barcodeDataUrl = canvas.toDataURL('image/png');
         const priceStr = barcodeShowPrice && selectedProduct.price != null ? formatVND(selectedProduct.price) : '';
         const name = (selectedProduct.name || selectedProduct.sku || '').toString();
-
-        const labelHtml = Array(qty)
-            .fill(0)
-            .map(
-                () => `
-          <div class="barcode-label" style="border:1px solid #ddd;padding:8px;margin:4px;page-break-inside:avoid;display:inline-block;text-align:center;min-width:35mm;">
-            <div style="font-size:11px;font-weight:bold;margin-bottom:2px;">${name}</div>
-            <img src="${barcodeDataUrl}" alt="barcode" style="max-width:100%;height:40px;" />
-            ${priceStr ? `<div style="font-size:11px;">${priceStr}</div>` : ''}
-          </div>
-        `,
-            )
-            .join('');
+        const cellInner = buildLabelCellInnerHtml({
+            name,
+            series: selectedProduct.series,
+            capacity: selectedProduct.capacity,
+            sku: selectedProduct.sku,
+            barcodeValue,
+            barcodeDataUrl,
+            priceStr,
+            serialLine: null,
+        });
+        const sheetsHtml = buildSheetsFromCellInnerHtmls(Array.from({ length: qty }, () => cellInner));
 
         const win = window.open('', '_blank');
         if (!win) {
@@ -354,33 +359,28 @@ const ProductListTab = () => {
             return;
         }
 
-        win.document.write(`
-          <!DOCTYPE html><html><head><title>In tem mã - ${selectedProduct.sku || ''}</title>
-          <meta charset="utf-8">
-          <style>
-            body{font-family:Arial,sans-serif;padding:12px;}
-            @media print{.barcode-label{break-inside:avoid;}}
-          </style></head>
-          <body>${labelHtml}</body></html>
-        `);
+        win.document.write(
+            buildProductBarcodePrintDocumentHtml(`In tem mã - ${selectedProduct.sku || ''}`, sheetsHtml),
+        );
         win.document.close();
         win.focus();
         setTimeout(() => {
             win.print();
             win.close();
-        }, 300);
+        }, 400);
     };
 
     const handleExportBarcodeExcel = () => {
         if (!selectedProduct) return;
         try {
-            const headers = ['Mã hàng', 'Mã vạch', 'Tên sản phẩm', 'Giá (VNĐ)', 'Số thứ tự'];
+            const headers = ['Mã hàng', 'Mã vạch', 'Tên sản phẩm', 'Series', 'Giá (VNĐ)', 'Số thứ tự'];
             const priceVal = barcodeShowPrice && selectedProduct.price != null ? selectedProduct.price : '';
             const qty = Math.min(5000, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
             const rows = Array.from({ length: qty }, (_, i) => [
                 selectedProduct.sku || '',
                 selectedProduct.barcode || selectedProduct.sku || '',
                 selectedProduct.name || '',
+                (selectedProduct.series || '').toString(),
                 priceVal,
                 i + 1,
             ]);
@@ -696,6 +696,7 @@ const ProductListTab = () => {
                         brand: p.brand?._id || p.brand || null,
                         usageDevice: p.usageDevice?._id || p.usageDevice || null,
                         capacity: p.capacity,
+                        series: p.series ?? '',
                         costPrice: p.costPrice,
                         price: p.price,
                         images: p.images || (p.image ? [p.image] : []),
@@ -928,6 +929,7 @@ const ProductListTab = () => {
                                         <th className='font-medium text-neutral text-xs'>Tên hàng</th>
                                         <th className='font-medium text-neutral text-xs'>Thiết bị sử dụng</th>
                                         <th className='font-medium text-neutral text-xs'>Thương hiệu</th>
+                                        <th className='font-medium text-neutral text-xs'>Series</th>
                                         <th className='font-medium text-neutral text-xs'>Dung lượng (Ah)</th>
                                         <th className='text-right font-medium text-neutral text-xs'>Đơn giá nhập</th>
                                         <th className='text-right font-medium text-neutral text-xs'>Đơn giá bán</th>
@@ -959,6 +961,7 @@ const ProductListTab = () => {
                                             <td>{p.name}</td>
                                             <td>{p.usageDevice?.name || p.usageDevice || '...'}</td>
                                             <td>{p.brand?.name || '...'}</td>
+                                            <td>{p.series || '—'}</td>
                                             <td>{p.capacity || '...'}</td>
                                             <td className='text-right'>{formatVND(p.costPrice)}</td>
                                             <td className='text-right'>{formatVND(p.price)}</td>
@@ -1107,6 +1110,10 @@ const ProductListTab = () => {
                                                 <span>{selectedProduct.usageDevice?.name || selectedProduct.usageDevice || '—'}</span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Series</span>
+                                                <span>{selectedProduct.series || '—'}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Dung lượng (Ah)</span>
                                                 <span>{selectedProduct.capacity || '—'}</span>
                                             </div>
@@ -1214,7 +1221,7 @@ const ProductListTab = () => {
                                 id='barcode-modal-title'
                                 className='font-bold text-lg'
                             >
-                                In tem mã vạch 35×22mm
+                                In tem mã (70×22mm — 2 tem/hàng)
                             </h3>
                             <button
                                 type='button'
@@ -1280,13 +1287,11 @@ const ProductListTab = () => {
                                     <Barcode className='w-4 h-4' />
                                     Xem bản in
                                 </button>
-                                <p className='text-[11px] text-amber-600 font-medium text-center'>
-                                    Chọn <strong>70×22mm</strong> trong hộp thoại in
-                                </p>
+                                <p className='text-[11px] text-amber-600 font-medium text-center'>(70x22mm)</p>
                             </div>
                         </div>
                         <div className='mt-4 text-[11px] text-base-content/50 bg-base-200/50 rounded-lg px-2.5 py-2'>
-                            In tối đa 500 tem/lần. Mã không chứa ký tự đặc biệt.
+                            Mỗi hàng 70mm = 2 tem 35mm; tem hiển thị dung lượng (Ah) nếu sản phẩm có nhập. In tối đa 500 tem/lần.
                         </div>
                     </div>
                     <form
@@ -1555,17 +1560,31 @@ const ProductListTab = () => {
                                                     required
                                                 />
                                             </div>
-                                            <div>
-                                                <label className='label py-0'>
-                                                    <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
-                                                </label>
-                                                <input
-                                                    type='text'
-                                                    className='input input-bordered input-sm w-full'
-                                                    value={editFormData.capacity}
-                                                    onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })}
-                                                    placeholder='VD: 100'
-                                                />
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Series</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.series}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, series: e.target.value })}
+                                                        placeholder='VD: MF, AGM, DIN…'
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.capacity}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })}
+                                                        placeholder='VD: 100'
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </section>
@@ -1945,17 +1964,31 @@ const ProductListTab = () => {
                                                     required
                                                 />
                                             </div>
-                                            <div>
-                                                <label className='label py-0'>
-                                                    <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
-                                                </label>
-                                                <input
-                                                    type='text'
-                                                    className='input input-bordered input-sm w-full'
-                                                    value={createFormData.capacity}
-                                                    onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
-                                                    placeholder='VD: 100'
-                                                />
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Series</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.series}
+                                                        onChange={(e) => setCreateFormData({ ...createFormData, series: e.target.value })}
+                                                        placeholder='VD: MF, AGM, DIN…'
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.capacity}
+                                                        onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
+                                                        placeholder='VD: 100'
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </section>

@@ -148,7 +148,7 @@ export const getStockInById = async (req, res) => {
             .populate('supplier', 'code name phone')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode')
+            .populate('items.product', 'name sku barcode series capacity price')
             .lean();
 
         if (!stockIn) {
@@ -232,7 +232,7 @@ export const createStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode')
+            .populate('items.product', 'name sku barcode series capacity price')
             .lean();
 
         res.status(201).json({
@@ -313,7 +313,7 @@ export const updateStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode')
+            .populate('items.product', 'name sku barcode series capacity price')
             .lean();
 
         res.status(200).json({
@@ -417,7 +417,7 @@ export const confirmStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode')
+            .populate('items.product', 'name sku barcode series capacity price')
             .lean();
 
         res.status(200).json({

@@ -24,6 +24,8 @@ const productSchema = new mongoose.Schema(
             default: null,
         }, // Thiết bị sử dụng
         capacity: { type: String, default: '' },
+        /** Dòng / series sản phẩm (VD: MF, AGM, DIN…) — hiển thị chi tiết & tem */
+        series: { type: String, default: '', trim: true },
         costPrice: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
         image: { type: String, default: '' },

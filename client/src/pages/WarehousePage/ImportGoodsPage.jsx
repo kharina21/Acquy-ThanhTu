@@ -19,7 +19,13 @@ import ConfirmationModal from '@/components/common/ConfirmationModal';
 import SupplierSelect from '@/components/common/SupplierSelect';
 import SupplierModal from './SupplierModal';
 import { toast } from 'sonner';
-import JsBarcode from 'jsbarcode';
+import {
+    buildLabelCellInnerHtml,
+    buildProductBarcodePrintDocumentHtml,
+    buildSheetsFromCellInnerHtmls,
+    createBarcodeDataUrl,
+    normalizeBarcodeValueForCode128,
+} from '@/utils/productBarcodePrint';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '—';
@@ -48,142 +54,39 @@ const parseSerialText = (raw) => {
     return out;
 };
 
-const digitsOnly = (v) => String(v || '').replace(/\D/g, '');
-
-/**
- * Giá trị barcode in trên tem:
- * - Ưu tiên giữ nguyên `product.barcode` như cũ (có thể chứa cả chữ/số).
- * - Fallback: lấy chữ số từ barcode; nếu vẫn rỗng thì tạo mã ổn định từ productId / hash.
- */
-const resolveProductBarcodeValue = (productBarcode, productId) => {
-    const raw = String(productBarcode || '').trim();
-    if (raw) return raw;
-
-    const d = digitsOnly(productBarcode);
-    if (d) return d;
-
-    const idHex = String(productId || '').replace(/[^a-f0-9]/gi, '');
-    if (idHex.length >= 6) {
-        const n = parseInt(idHex.slice(-6), 16) % 100000;
-        return String(n).padStart(5, '0');
+/** HTML in tem nhập hàng — cùng layout/CSS với in tem ở chi tiết sản phẩm (70×22mm, 2 ô, có series). */
+const buildStockInPrintHtml = ({ product, serials }) => {
+    const name = product?.name || '';
+    const sku = product?.sku || '';
+    const raw = (product?.barcode || product?.sku || '').toString().trim();
+    if (!raw) {
+        throw new Error('MISSING_CODE');
     }
-    let h = 0;
-    const str = String(productBarcode || 'BARCODE');
-    for (let i = 0; i < str.length; i += 1) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-    const n = Math.abs(h) % 100000;
-    return String(n).padStart(5, '0');
-};
+    const barcodeValue = normalizeBarcodeValueForCode128(raw);
+    if (!barcodeValue) {
+        throw new Error('INVALID_CODE');
+    }
+    const barcodeDataUrl = createBarcodeDataUrl(barcodeValue);
+    const priceStr = product?.price != null && !Number.isNaN(Number(product.price)) ? formatVND(product.price) : '';
 
-const buildStockInLabelHtml = ({ productName, sku, productBarcode, serials, productId }) => {
-    const labelItems = serials.map((serial) => {
-        const serialValue = String(serial || '').trim();
-        if (!serialValue) {
+    const cellInners = serials.map((serial) => {
+        const serialLine = String(serial || '').trim();
+        if (!serialLine) {
             throw new Error('Seri/IMEI không được để trống');
         }
-        const barcodeValue = resolveProductBarcodeValue(productBarcode, productId);
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        JsBarcode(svg, barcodeValue, {
-            format: 'CODE128',
-            displayValue: false, // barcode đã có sẵn; tem sẽ hiển thị text riêng cho dễ đọc
-            // Làm barcode "mỏng" hơn để dễ quét trên tem 35x22mm
-            width: 1,
-            height: 42,
-            margin: 0,
-        });
-        return {
-            productName,
+        return buildLabelCellInnerHtml({
+            name,
+            series: product?.series,
+            capacity: product?.capacity,
             sku,
-            productBarcode,
-            serial: serialValue,
             barcodeValue,
-            svgHtml: svg.outerHTML,
-        };
+            barcodeDataUrl,
+            priceStr,
+            serialLine,
+        });
     });
-
-    const labelCss = `
-        @page { size: 70mm 22mm; margin: 0; }
-        html, body { width: 70mm; height: 22mm; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; color: #111; }
-
-        /* 2 tem / 1 trang: 2 cell 35x22mm */
-        .sheet { width: 70mm; }
-        .page {
-            width: 70mm;
-            height: 22mm;
-            display: grid;
-            grid-template-columns: 35mm 35mm;
-            grid-template-rows: 22mm;
-        }
-        .label {
-            width: 35mm;
-            height: 22mm;
-            box-sizing: border-box;
-            padding: 1.2mm 1.6mm;
-            overflow: hidden;
-        }
-        .label.right { border-left: 0.2mm dashed #bbb; }
-
-        .row { display: flex; justify-content: space-between; gap: 1.2mm; align-items: flex-start; }
-        .name { font-size: 7.5px; font-weight: 700; line-height: 1.05; }
-        .mono {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: 6.6px;
-            line-height: 1.1;
-        }
-        .muted { color: #444; }
-
-        .barcode { margin-top: .8mm; }
-        .barcode svg { width: 100%; height: 9mm; }
-        .barcodeValue { margin-top: .4mm; font-size: 6.4px; letter-spacing: .15px; }
-
-        .serialLine { margin-top: .5mm; font-size: 7px; }
-        .pageBreak { break-after: page; }
-    `;
-
-    const oneCell = (it, sideClass = '') => {
-        if (!it) return `<div class="label ${sideClass}"></div>`;
-        return `
-            <div class="label ${sideClass}">
-                <div class="row">
-                    <div>
-                        <div class="name">${String(it.productName || '')}</div>
-                        <div class="mono muted">${String(it.productBarcode || '')}</div>
-                    </div>
-                </div>
-                <div class="barcode">${it.svgHtml}</div>
-                <div class="mono muted barcodeValue">${String(it.barcodeValue || '')}</div>
-                <div class="mono serialLine">Seri/IMEI: <strong>${String(it.serial || '')}</strong></div>
-            </div>
-        `;
-    };
-
-    const pages = [];
-    for (let i = 0; i < labelItems.length; i += 2) {
-        const left = labelItems[i];
-        const right = labelItems[i + 1] || null;
-        pages.push(`
-            <div class="page ${i + 2 < labelItems.length ? 'pageBreak' : ''}">
-                ${oneCell(left, 'left')}
-                ${oneCell(right, 'right')}
-            </div>
-        `);
-    }
-
-    const labelHtml = pages.join('\n');
-
-    return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Tem phiếu nhập</title>
-    <style>${labelCss}</style>
-  </head>
-  <body>
-    <div class="sheet">
-      ${labelHtml}
-    </div>
-  </body>
-</html>`;
+    const sheetsHtml = buildSheetsFromCellInnerHtmls(cellInners);
+    return buildProductBarcodePrintDocumentHtml(`Tem nhập hàng - ${sku}`, sheetsHtml);
 };
 
 const ImportGoodsPage = () => {
@@ -889,13 +792,11 @@ const ImportGoodsPage = () => {
     };
 
     const printLabelsForRow = (row) => {
-        const sku = row.product?.sku || '';
-        const productBarcode = row.product?.barcode || '';
-        const name = row.product?.name || '';
         const qty = Number(row.quantity || 0);
         const serials = Array.isArray(row.serials) ? row.serials : [];
-        if (!productBarcode) {
-            toast.error('Thiếu barcode sản phẩm để in tem');
+        const raw = (row.product?.barcode || row.product?.sku || '').toString().trim();
+        if (!raw) {
+            toast.error('Sản phẩm thiếu mã vạch hoặc mã hàng để in tem');
             return;
         }
         if (!serials.length) {
@@ -907,16 +808,16 @@ const ImportGoodsPage = () => {
             return;
         }
         try {
-            const html = buildStockInLabelHtml({
-                productName: name,
-                sku,
-                productBarcode,
-                serials,
-                productId: row.product?._id,
-            });
+            const html = buildStockInPrintHtml({ product: row.product, serials });
             setPrintSrcDoc(stampPrintHtml(html));
         } catch (e) {
-            toast.error(e?.message || 'Không tạo được barcode theo format 5 số + 5–7 số');
+            toast.error(
+                e?.message === 'MISSING_CODE'
+                    ? 'Thiếu mã vạch hoặc mã hàng'
+                    : e?.message === 'INVALID_CODE'
+                      ? 'Mã không hợp lệ để tạo vạch (ký tự đặc biệt)'
+                      : e?.message || 'Không tạo được tem in',
+            );
             return;
         }
         setTimeout(() => {
@@ -926,13 +827,11 @@ const ImportGoodsPage = () => {
     };
 
     const printLabelsForStockInItem = (it, rowIdx) => {
-        const sku = it?.product?.sku || '';
-        const productBarcode = it?.product?.barcode || '';
-        const name = it?.product?.name || '';
         const qty = Number(it?.quantity || 0);
         const serials = getSerialsForDetailItem(it, rowIdx);
-        if (!productBarcode) {
-            toast.error('Thiếu barcode sản phẩm để in tem');
+        const raw = (it?.product?.barcode || it?.product?.sku || '').toString().trim();
+        if (!raw) {
+            toast.error('Sản phẩm thiếu mã vạch hoặc mã hàng để in tem');
             return;
         }
         if (!serials.length) {
@@ -945,16 +844,16 @@ const ImportGoodsPage = () => {
             return;
         }
         try {
-            const html = buildStockInLabelHtml({
-                productName: name,
-                sku,
-                productBarcode,
-                serials,
-                productId: it.product?._id,
-            });
+            const html = buildStockInPrintHtml({ product: it.product, serials });
             setPrintSrcDoc(stampPrintHtml(html));
         } catch (e) {
-            toast.error(e?.message || 'Không tạo được barcode theo format 5 số + 5–7 số');
+            toast.error(
+                e?.message === 'MISSING_CODE'
+                    ? 'Thiếu mã vạch hoặc mã hàng'
+                    : e?.message === 'INVALID_CODE'
+                      ? 'Mã không hợp lệ để tạo vạch (ký tự đặc biệt)'
+                      : e?.message || 'Không tạo được tem in',
+            );
         }
     };
 
@@ -1569,9 +1468,9 @@ const ImportGoodsPage = () => {
                             )}
                             <div className='mt-4 space-y-2'>
                                 <p className='text-sm text-base-content/70'>
-                                    Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong>. Khi in tem, hệ thống sẽ tạo barcode theo dạng:
-                                    <span className='font-mono'> 5 số đầu (chữ số trong SKU, pad 0 nếu thiếu; SKU không số thì dùng mã nội bộ từ ID sản phẩm) + 5–7 số sau (từ seri/IMEI)</span>{' '}
-                                    (IMEI dài sẽ lấy 7 số cuối).
+                                    Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong>. In tem dùng cùng khổ và layout với{' '}
+                                    <strong>chi tiết sản phẩm</strong> (70×22mm, 2 tem/hàng): mã vạch CODE128 từ mã vạch hoặc mã hàng
+                                    sản phẩm; mỗi tem ghi thêm một dòng seri tương ứng.
                                 </p>
                                 <textarea
                                     className='textarea textarea-bordered w-full min-h-56 font-mono text-sm'

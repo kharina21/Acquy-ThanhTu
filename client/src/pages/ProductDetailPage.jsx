@@ -233,6 +233,10 @@ const ProductDetailPage = () => {
                                                 <span className="font-medium text-gray-900">{product.sku || 'N/A'}</span>
                                             </div>
                                             <div className="flex flex-col">
+                                                <span className="text-gray-500">Series</span>
+                                                <span className="font-medium text-gray-900">{product.series || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex flex-col">
                                                 <span className="text-gray-500">Dung lượng (Ah)</span>
                                                 <span className="font-medium text-gray-900">{product.capacity || 'N/A'}</span>
                                             </div>

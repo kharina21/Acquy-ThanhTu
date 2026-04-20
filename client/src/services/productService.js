@@ -3,8 +3,7 @@ import api from '@/lib/axios';
 
 /**
  * Service quản lý sản phẩm.
- * Format Excel: 14 cột - Loại hàng, Thiết bị sử dụng, Thương hiệu, Mã hàng, Mã vạch, Tên hàng, Dung lượng (Ah),
- * Đơn giá nhập (VNĐ), Đơn giá bán (VNĐ), Tồn kho, Hình ảnh, Đang kinh doanh, Bảo hành, Ghi chú.
+ * File mẫu có thêm cột tùy chọn "Series" (sau Tên hàng). Import Excel: 14 cột bắt buộc như cũ; có thêm cột "Series" thì được đọc.
  */
 
 const HEADERS = [
@@ -14,6 +13,7 @@ const HEADERS = [
     'Mã hàng',
     'Mã vạch',
     'Tên hàng',
+    'Series',
     'Dung lượng (Ah)',
     'Đơn giá nhập (VNĐ)',
     'Đơn giá bán (VNĐ)',
@@ -25,14 +25,14 @@ const HEADERS = [
 ];
 
 /**
- * Tạo file Excel mẫu (blob) đúng format 13 cột.
+ * Tạo file Excel mẫu (blob) đúng format cột (có Series tùy chọn).
  */
 export const generateSampleExcelBlob = () => {
     const sampleData = [
         HEADERS,
-        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'Xpro 90', '', 'Ắc Quy X-PRO 90AH', '90Ah', 1550000, 1750000, 35, '', 1, '12 tháng', ''],
-        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'N45LS', '', 'Ắc Quy ATLASBX N45LS (Cọc Thuận)', '45Ah', 780000, 980000, 25, '', 1, '12 tháng', ''],
-        ['Ắc quy', 'Ô tô con, Xe du lịch', 'PINACO', 'NS40', '', 'Ắc Quy PINACO NS40', '40Ah', 800000, 1000000, 16, '', 1, '30 ngày', 'Ắc quy nắp liền (Miễn bảo dưỡng)'],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'Xpro 90', '', 'Ắc Quy X-PRO 90AH', 'MF', '90Ah', 1550000, 1750000, 35, '', 1, '12 tháng', ''],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'ATLASBX', 'N45LS', '', 'Ắc Quy ATLASBX N45LS (Cọc Thuận)', '', '45Ah', 780000, 980000, 25, '', 1, '12 tháng', ''],
+        ['Ắc quy', 'Ô tô con, Xe du lịch', 'PINACO', 'NS40', '', 'Ắc Quy PINACO NS40', 'AGM', '40Ah', 800000, 1000000, 16, '', 1, '30 ngày', 'Ắc quy nắp liền (Miễn bảo dưỡng)'],
     ];
     const ws = XLSX.utils.aoa_to_sheet(sampleData);
     const wb = XLSX.utils.book_new();
