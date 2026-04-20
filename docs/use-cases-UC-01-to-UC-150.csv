@@ -1,0 +1,148 @@
+﻿Mã UC,Module,Tên use case,Tác nhân,Mô tả ngắn,Ghi chú
+UC-01,Xác thực & phiên đăng nhập,Đăng nhập,"Người dùng, Khách hàng","Nhập username và mật khẩu để vào hệ thống, nhận access token và refresh token.",Đã triển khai
+UC-02,Xác thực & phiên đăng nhập,Đăng ký tài khoản,"Khách hàng, Người dùng mới","Tạo tài khoản mới với thông tin cơ bản (username, email, mật khẩu, …).",Đã triển khai
+UC-03,Xác thực & phiên đăng nhập,Quên mật khẩu,"Người dùng","Yêu cầu gửi email chứa link hoặc token để đặt lại mật khẩu.",Đã triển khai
+UC-04,Xác thực & phiên đăng nhập,Đặt lại mật khẩu (theo link/token email),"Người dùng","Nhập mật khẩu mới khi có token hợp lệ từ email (self-service, không qua admin).",Đã triển khai — khác UC-20 (admin reset user)
+UC-05,Xác thực & phiên đăng nhập,Đăng xuất,Người dùng đã đăng nhập,"Hủy phiên làm việc, xóa refresh token cookie và session phía server khi có.",Đã triển khai
+UC-06,Xác thực & phiên đăng nhập,Làm mới access token,Người dùng đã đăng nhập,"Dùng refresh token trong cookie để cấp access token mới khi hết hạn.",Đã triển khai
+UC-07,Xác thực & phiên đăng nhập,Xem thông tin tài khoản hiện tại,Người dùng đã đăng nhập,"Trả về profile người dùng đang đăng nhập (kèm vai trò khi có).",Đã triển khai
+UC-08,Xác thực & phiên đăng nhập,Cập nhật hồ sơ cá nhân,Người dùng đã đăng nhập,"Sửa họ tên, email, SĐT, địa chỉ; có thể đặt lại trạng thái xác thực email nếu đổi email.",Đã triển khai
+UC-09,Xác thực & phiên đăng nhập,Gửi mã xác thực email,Người dùng đã đăng nhập,"Tạo và gửi mã OTP xác thực tới email đăng ký.",Đã triển khai
+UC-10,Xác thực & phiên đăng nhập,Xác thực email bằng mã,Người dùng đã đăng nhập,"Nhập mã OTP để xác minh email và cập nhật trạng thái isVerified.",Đã triển khai
+UC-11,Xác thực & phiên đăng nhập,Đổi mật khẩu,Người dùng đã đăng nhập,"Đổi mật khẩu khi biết mật khẩu hiện tại (khác quên mật khẩu).",Đã triển khai
+UC-12,Quản lý người dùng (Admin),Xem danh sách người dùng,Quản trị viên,"Danh sách có phân trang, lọc theo vai trò / loại tài khoản / trạng thái / khoảng ngày.",Đã triển khai
+UC-13,Quản lý người dùng (Admin),Tìm kiếm / lọc người dùng,Quản trị viên,"Tìm theo username, email, họ tên hoặc từ khóa liên quan vai trò.",Đã triển khai
+UC-14,Quản lý người dùng (Admin),Xem chi tiết người dùng,Quản trị viên,"Xem đầy đủ thông tin một user (theo id).",Đã triển khai
+UC-15,Quản lý người dùng (Admin),Tạo người dùng,Quản trị viên,"Tạo user mới và gán thông tin cơ bản (có thể gán vai trò).",Đã triển khai
+UC-16,Quản lý người dùng (Admin),Cập nhật người dùng,Quản trị viên,"Sửa thông tin user (không nhất thiết đổi mật khẩu).",Đã triển khai
+UC-17,Quản lý người dùng (Admin),Xóa người dùng,Quản trị viên,"Vô hiệu hóa / xóa logic user theo quy tắc nghiệp vụ.",Đã triển khai
+UC-18,Quản lý người dùng (Admin),Gán vai trò cho người dùng,Quản trị viên,"Gán một hoặc nhiều role cho user.",Đã triển khai
+UC-19,Quản lý người dùng (Admin),Gỡ vai trò khỏi người dùng,Quản trị viên,"Xóa role khỏi user khi không còn phù hợp.",Đã triển khai
+UC-20,Quản lý người dùng (Admin),Đặt lại mật khẩu người dùng (admin),Quản trị viên,"Admin đặt mật khẩu mới cho user (khác đặt lại qua email của chính user).",Đã triển khai — đối chiếu UC-04
+UC-21,Quản lý người dùng (Admin),Xem danh sách vai trò (dropdown),Quản trị viên,"Lấy danh sách role để hiển thị khi tạo/sửa user.",Đã triển khai
+UC-22,Phân quyền (Vai trò),Xem danh sách vai trò,Quản trị viên,"Liệt kê tất cả role trong hệ thống.",Đã triển khai
+UC-23,Phân quyền (Vai trò),Xem chi tiết vai trò,Quản trị viên,"Xem thông tin một role cụ thể.",Đã triển khai
+UC-27,Quản lý nhân viên,Xem danh sách nhân viên,"Quản trị viên, Quản lý","Danh sách nhân viên theo chi nhánh / trạng thái.",Đã triển khai
+UC-28,Quản lý nhân viên,Tìm kiếm / lọc nhân viên,"Quản trị viên, Quản lý","Tìm theo tên, SĐT hoặc điều kiện lọc trên API.",Đã triển khai
+UC-29,Quản lý nhân viên,Xem chi tiết nhân viên,"Quản trị viên, Quản lý","Xem hồ sơ nhân viên theo id.",Đã triển khai
+UC-30,Quản lý nhân viên,Tạo nhân viên,Quản trị viên,"Thêm bản ghi nhân viên và liên kết user / chi nhánh khi có.",Đã triển khai
+UC-31,Quản lý nhân viên,Cập nhật nhân viên,Quản trị viên,"Sửa thông tin nhân viên.",Đã triển khai
+UC-32,Quản lý nhân viên,Xóa nhân viên,Quản trị viên,"Xóa hoặc vô hiệu hóa nhân viên.",Đã triển khai
+UC-33,Quản lý sản phẩm,Xem danh sách sản phẩm,"Nhân viên bán hàng, Quản lý, Quản trị viên","Danh sách có phân trang và điều kiện lọc theo catalog.",Đã triển khai
+UC-34,Quản lý sản phẩm,Tìm kiếm / lọc sản phẩm,"Nhân viên bán hàng, Quản lý","Tra theo SKU, barcode, tên hoặc bộ lọc danh mục.",Đã triển khai
+UC-35,Quản lý sản phẩm,Xem chi tiết sản phẩm,"Nhân viên bán hàng, Khách (kênh xem)","Xem thuộc tính đầy đủ một sản phẩm.",Đã triển khai
+UC-36,Quản lý sản phẩm,Tạo sản phẩm,Quản trị viên / Quản lý kho (theo RBAC),"Thêm sản phẩm mới vào danh mục.",Đã triển khai
+UC-37,Quản lý sản phẩm,Cập nhật sản phẩm,Quản trị viên / Quản lý,"Sửa giá, mô tả, SKU, barcode, ảnh đại diện, v.v.",Đã triển khai
+UC-38,Quản lý sản phẩm,Xóa sản phẩm (soft delete nếu có),Quản trị viên,"Ẩn hoặc xóa sản phẩm khỏi vận hành.",Đã triển khai
+UC-39,Quản lý sản phẩm,Upload ảnh sản phẩm,Quản trị viên,"Tải lên một hoặc nhiều ảnh cho sản phẩm.",Đã triển khai
+UC-40,Quản lý sản phẩm,Nhập sản phẩm từ Excel,Quản trị viên,"Import hàng loạt từ file Excel (SKU, barcode, tên, …).",Đã triển khai
+UC-41,Quản lý sản phẩm,Cập nhật giá hàng loạt,Quản trị viên,"Bulk update giá theo danh sách hoặc quy tắc.",Đã triển khai
+UC-42,Quản lý sản phẩm,In tem mã vạch / xuất Excel mã vạch,Quản trị viên / Nhân viên kho,"In nhãn CODE128 và xuất dữ liệu barcode ra Excel (thường xử lý phía client).","Đã triển khai (một phần UI)"
+UC-43,Danh mục sản phẩm,Xem danh sách danh mục,"Nhân viên bán hàng, Quản lý","Liệt kê nhóm hàng hóa.",Đã triển khai
+UC-44,Danh mục sản phẩm,Tìm / lọc danh mục trên giao diện,"Nhân viên bán hàng, Quản lý","Lọc theo tên sau khi tải danh sách (không bắt buộc API search riêng).",Đã triển khai / Một phần
+UC-45,Danh mục sản phẩm,Tạo danh mục,Quản trị viên,"Thêm nhóm sản phẩm mới.",Đã triển khai
+UC-46,Danh mục sản phẩm,Cập nhật danh mục,Quản trị viên,"Sửa tên hoặc mô tả nhóm.",Đã triển khai
+UC-47,Danh mục sản phẩm,Xóa danh mục,Quản trị viên,"Xóa nhóm khi không còn sản phẩm phụ thuộc hoặc theo quy tắc.",Đã triển khai
+UC-48,Thương hiệu,Xem danh sách thương hiệu,"Nhân viên bán hàng, Quản lý","Liệt kê các nhãn hiệu sản phẩm.",Đã triển khai
+UC-49,Thương hiệu,Tìm / lọc thương hiệu trên giao diện,"Nhân viên bán hàng, Quản lý","Lọc theo tên trên client nếu không có endpoint search.",Một phần
+UC-50,Thương hiệu,Tạo thương hiệu,Quản trị viên,"Thêm brand mới.",Đã triển khai
+UC-51,Thương hiệu,Cập nhật thương hiệu,Quản trị viên,"Sửa thông tin brand.",Đã triển khai
+UC-52,Thương hiệu,Xóa thương hiệu,Quản trị viên,"Xóa brand khi cho phép.",Đã triển khai
+UC-53,Thiết bị sử dụng (Compatibility),Xem danh sách thiết bị,Nhân viên bán hàng,"Danh sách loại thiết bị/phương tiện gắn ắc quy.",Đã triển khai
+UC-54,Thiết bị sử dụng (Compatibility),Tạo thiết bị,Quản trị viên,"Thêm mã thiết bị/pin phù hợp.",Đã triển khai
+UC-55,Thiết bị sử dụng (Compatibility),Cập nhật thiết bị,Quản trị viên,"Sửa mô tả thiết bị.",Đã triển khai
+UC-56,Thiết bị sử dụng (Compatibility),Xóa thiết bị,Quản trị viên,"Xóa khi không còn dùng.",Đã triển khai
+UC-57,Kiểm kê kho,Xem danh sách phiếu kiểm kê,"Quản lý kho, Quản lý chi nhánh","Theo dõi các đợt kiểm kê.",Đã triển khai
+UC-58,Kiểm kê kho,Xem chi tiết phiếu kiểm kê,"Quản lý kho, Quản lý chi nhánh","Xem từng dòng lệch tồn.",Đã triển khai
+UC-59,Kiểm kê kho,Tạo phiếu kiểm kê,"Quản lý kho, Quản lý chi nhánh","Khởi tạo phiên kiểm kê tại chi nhánh.",Đã triển khai
+UC-60,Kiểm kê kho,Xác nhận kiểm kê (ghi nhận điều chỉnh),"Quản lý kho, Quản lý chi nhánh","Xác nhận và cập nhật tồn kho theo kết quả kiểm.",Đã triển khai
+UC-61,Nhập kho (Stock In),Xem danh sách phiếu nhập,"Quản lý kho, Quản lý chi nhánh","Lọc theo mã, nhà cung cấp, ngày.",Đã triển khai
+UC-62,Nhập kho (Stock In),Xem chi tiết phiếu nhập,"Quản lý kho, Quản lý chi nhánh","Xem dòng hàng và trạng thái phiếu.",Đã triển khai
+UC-63,Nhập kho (Stock In),Tạo phiếu nhập nháp,"Quản lý kho, Quản lý chi nhánh","Thêm dòng từ sản phẩm tìm bằng SKU/barcode/tên.",Đã triển khai
+UC-64,Nhập kho (Stock In),Cập nhật phiếu nhập nháp,"Quản lý kho, Quản lý chi nhánh","Sửa số lượng, giá nhập trước khi xác nhận.",Đã triển khai
+UC-65,Nhập kho (Stock In),Xác nhận nhập kho (cộng tồn),"Quản lý kho, Quản lý chi nhánh","Xác nhận phiếu và cập nhật tồn thực tế.",Đã triển khai
+UC-66,Nhập kho (Stock In),Hủy / xóa phiếu nhập chưa hoàn tất,"Quản lý kho, Quản lý chi nhánh","Hủy bản nháp hoặc xóa theo API (Cancel theo nghiệp vụ).",Đã triển khai
+UC-67,Trả hàng nhà cung cấp,Xem danh sách phiếu trả hàng,"Quản lý kho, Quản lý chi nhánh","Liệt kê phiếu trả gắn với phiếu nhập.",Đã triển khai
+UC-68,Trả hàng nhà cung cấp,Xem chi tiết phiếu trả hàng,"Quản lý kho, Quản lý chi nhánh","Xem dòng trả và trạng thái.",Đã triển khai
+UC-69,Trả hàng nhà cung cấp,Tạo phiếu trả (từ nhập đã xác nhận),"Quản lý kho, Quản lý chi nhánh","Trả lại hàng cho NCC theo nghiệp vụ.",Đã triển khai
+UC-70,Trả hàng nhà cung cấp,Hủy phiếu trả,"Quản lý kho, Quản lý chi nhánh","Hủy và khôi phục tồn theo luồng hệ thống.",Đã triển khai
+UC-71,Xuất kho (Stock Out),Xem danh sách phiếu xuất,"Quản lý kho, Quản lý chi nhánh","Theo dõi xuất điều chỉnh / nội bộ / liên quan đơn online.",Đã triển khai
+UC-72,Xuất kho (Stock Out),Xem chi tiết phiếu xuất,"Quản lý kho, Quản lý chi nhánh","Xem từng dòng xuất.",Đã triển khai
+UC-73,Xuất kho (Stock Out),Tạo phiếu xuất nháp,"Quản lý kho, Quản lý chi nhánh","Khởi tạo phiếu xuất trước khi xác nhận.",Đã triển khai
+UC-74,Xuất kho (Stock Out),Cập nhật phiếu xuất nháp,"Quản lý kho, Quản lý chi nhánh","Sửa dòng xuất khi chưa confirm.",Đã triển khai
+UC-75,Xuất kho (Stock Out),Xác nhận xuất kho (trừ tồn),"Quản lý kho, Quản lý chi nhánh","Xác nhận và trừ tồn kho.",Đã triển khai
+UC-76,Báo cáo kho,Báo cáo xuất nhập tồn (NXT),"Quản lý, Quản trị viên","Theo kỳ và chi nhánh, xuất Excel nếu có.",Đã triển khai
+UC-77,Báo cáo kho,Báo cáo dòng phiếu nhập,"Quản lý, Kế toán kho","Chi tiết nhập theo dòng, xuất file.",Đã triển khai
+UC-78,Báo cáo kho,Báo cáo dòng phiếu xuất,"Quản lý, Kế toán kho","Chi tiết xuất theo dòng đơn/phiếu.",Đã triển khai
+UC-79,Nhà cung cấp,Xem danh sách nhà cung cấp,"Quản lý kho, Quản lý chi nhánh","Danh sách NCC theo mã và trạng thái.",Đã triển khai
+UC-80,Nhà cung cấp,Tìm kiếm nhà cung cấp,"Quản lý kho, Quản lý chi nhánh","Theo mã, tên, SĐT qua query.",Đã triển khai
+UC-81,Nhà cung cấp,Xem chi tiết nhà cung cấp,"Quản lý kho, Quản lý chi nhánh","Xem hồ sơ NCC.",Đã triển khai
+UC-82,Nhà cung cấp,Tạo nhà cung cấp,Quản trị viên / Quản lý kho,"Thêm NCC mới.",Đã triển khai
+UC-83,Nhà cung cấp,Cập nhật nhà cung cấp,Quản trị viên / Quản lý kho,"Sửa thông tin NCC.",Đã triển khai
+UC-84,Nhà cung cấp,Xóa nhà cung cấp,Quản trị viên / Quản lý kho,"Xóa khi không còn phát sinh.",Đã triển khai
+UC-85,Chi nhánh / địa điểm,Xem danh sách chi nhánh,"Quản lý, Quản trị viên","Các kho/cửa hàng trên hệ thống.",Đã triển khai
+UC-86,Chi nhánh / địa điểm,Tạo chi nhánh,Quản trị viên,"Thêm địa điểm mới.",Đã triển khai
+UC-87,Chi nhánh / địa điểm,Cập nhật chi nhánh,Quản trị viên,"Sửa tên, địa chỉ, cấu hình.",Đã triển khai
+UC-88,Chi nhánh / địa điểm,Xóa chi nhánh,Quản trị viên,"Xóa khi đủ điều kiện nghiệp vụ.",Đã triển khai
+UC-89,Chi nhánh / địa điểm,Đặt chi nhánh nhận đơn online (online location),Quản trị viên,"Chỉ định chi nhánh isOnlineLocation để định tuyến đơn web.",Đã triển khai
+UC-90,Tồn kho theo sản phẩm,Xem tồn theo chi nhánh,"Quản lý kho, Quản lý chi nhánh","Bảng tồn theo location và SKU.",Đã triển khai
+UC-91,Tồn kho theo sản phẩm,Cập nhật tồn thủ công,"Quản lý kho, Quản trị viên","Điều chỉnh số lượng khi được phép.",Đã triển khai
+UC-92,Tồn kho theo sản phẩm,Cập nhật tồn hàng loạt,"Quản lý kho, Quản trị viên","Bulk set nhiều dòng tồn.",Đã triển khai
+UC-93,Khách hàng (CRM),Xem danh sách khách hàng,"Nhân viên bán hàng, Quản lý","Danh sách có lọc theo loại khách.",Đã triển khai
+UC-94,Khách hàng (CRM),Tìm kiếm khách hàng,"Nhân viên bán hàng, Quản lý","Theo SĐT hoặc tên (API search).",Đã triển khai
+UC-95,Khách hàng (CRM),Xem chi tiết khách hàng,"Nhân viên bán hàng, Quản lý","Hồ sơ khách.",Đã triển khai
+UC-96,Khách hàng (CRM),Tạo khách hàng,"Nhân viên bán hàng, Quản lý","Thêm khách walk-in / retail.",Đã triển khai
+UC-97,Khách hàng (CRM),Cập nhật khách hàng,"Nhân viên bán hàng, Quản lý","Sửa thông tin liên hệ.",Đã triển khai
+UC-98,Khách hàng (CRM),Xóa / khôi phục khách hàng,"Quản lý, Quản trị viên","Soft delete và restore khi có API restore.",Đã triển khai
+UC-99,Chính sách thành viên,Xem danh sách chính sách,Quản trị viên,"Các gói ưu đãi / điểm / hạng.",Đã triển khai
+UC-100,Chính sách thành viên,Tạo chính sách,Quản trị viên,"Thêm policy mới.",Đã triển khai
+UC-101,Chính sách thành viên,Cập nhật chính sách,Quản trị viên,"Sửa điều kiện policy.",Đã triển khai
+UC-102,Chính sách thành viên,Xóa chính sách,Quản trị viên,"Ngừng áp dụng policy.",Đã triển khai
+UC-103,Hồ sơ cửa hàng & thanh toán,Xem hồ sơ cửa hàng,"Quản lý, Quản trị viên","Thông tin hiển thị và cấu hình chi nhánh.",Đã triển khai
+UC-104,Hồ sơ cửa hàng & thanh toán,Cập nhật hồ sơ cửa hàng,"Quản lý, Quản trị viên","Sửa tên, liên hệ, logo (nếu có).",Đã triển khai
+UC-105,Hồ sơ cửa hàng & thanh toán,Quản lý tài khoản ngân hàng theo chi nhánh,"Quản lý, Quản trị viên","Thêm/sửa/xóa TK nhận chuyển khoản.",Đã triển khai
+UC-106,Hồ sơ cửa hàng & thanh toán,Xem TK ngân hàng chi nhánh khác (nếu được phân quyền),Quản lý,"Hỗ trợ thanh toán liên chi nhánh.",Đã triển khai
+UC-107,Giỏ hàng,Xem giỏ hàng,Khách hàng / Người dùng,"Liệt kê item, số lượng, chọn mua.",Đã triển khai
+UC-108,Giỏ hàng,Thêm sản phẩm vào giỏ,Khách hàng / Người dùng,"Thêm line vào giỏ session/user.",Đã triển khai
+UC-109,Giỏ hàng,Cập nhật số lượng / chọn mua dòng,Khách hàng / Người dùng,"Sửa quantity và cờ chọn checkout.",Đã triển khai
+UC-110,Giỏ hàng,Xóa dòng khỏi giỏ,Khách hàng / Người dùng,"Remove theo productId.",Đã triển khai
+UC-111,Giỏ hàng,Xóa toàn bộ giỏ,Khách hàng / Người dùng,"Clear cart.",Đã triển khai
+UC-112,Địa chỉ giao hàng,Xem danh sách địa chỉ,Khách hàng đã đăng nhập,"Địa chỉ giao của tài khoản.",Đã triển khai
+UC-113,Địa chỉ giao hàng,Thêm địa chỉ,Khách hàng đã đăng nhập,"Tạo địa chỉ mới.",Đã triển khai
+UC-114,Địa chỉ giao hàng,Cập nhật / xóa địa chỉ,Khách hàng đã đăng nhập,"Sửa hoặc xóa địa chỉ.",Đã triển khai
+UC-115,Địa chỉ giao hàng,Đặt địa chỉ mặc định,Khách hàng đã đăng nhập,"Chọn default cho checkout.",Đã triển khai
+UC-116,Đơn hàng & thanh toán,Tạo đơn từ giỏ (checkout),Khách hàng / Người dùng,"Đặt hàng online, chọn thanh toán và chi nhánh nhận.",Đã triển khai
+UC-117,Đơn hàng & thanh toán,Xem preview thanh toán trước khi đặt,Khách hàng / Người dùng,"Checkout preview (tổng tiền, phương thức).",Đã triển khai
+UC-118,Đơn hàng & thanh toán,Tạo đơn đặt trước (pre-order),Nhân viên bán hàng / Quản lý,"Tạo đơn có cờ isPreOrder (hẹn giao / giữ chỗ).",Đã triển khai
+UC-119,Đơn hàng & thanh toán,Xem danh sách đơn của tôi,Khách hàng / Người dùng,"Lịch sử đơn cá nhân.",Đã triển khai
+UC-120,Đơn hàng & thanh toán,Xem chi tiết đơn (Khách hàng),Khách hàng / Người dùng,"Theo dõi trạng thái, sản phẩm, thanh toán.",Đã triển khai
+UC-121,Đơn hàng & thanh toán,Cập nhật đơn (phía khách trong phạm vi cho phép),Khách hàng / Người dùng,"PATCH đơn trước khi cửa hàng xử lý (theo luồng).",Đã triển khai
+UC-122,Đơn hàng & thanh toán,Hủy đơn (khách hàng),Khách hàng / Người dùng,"Hủy khi chính sách cho phép.",Đã triển khai
+UC-123,Đơn hàng & thanh toán,Tạo hóa đơn bán tại quầy (từ danh sách line),Nhân viên bán hàng / Quản lý,"POST from-items — POS.",Đã triển khai
+UC-124,Đơn hàng & thanh toán,Xem danh sách đơn (quản trị cửa hàng),"Quản lý, Nhân viên bán hàng","Lọc theo trạng thái, loại đơn, pre-order, kho.",Đã triển khai
+UC-125,Đơn hàng & thanh toán,Cập nhật đơn (xác nhận, thanh toán, giao hàng),"Quản lý, Nhân viên bán hàng","PUT đơn — đổi trạng thái nghiệp vụ.",Đã triển khai
+UC-126,Đơn hàng & thanh toán,Báo cáo đơn hàng (theo ngày/chi nhánh),"Quản lý, Quản trị viên","Order report.",Đã triển khai
+UC-127,Đơn hàng & thanh toán,Tạo mã QR VietQR thanh toán,"Khách hàng, Nhân viên bán hàng","Generate VietQR cho đơn.",Đã triển khai
+UC-128,Đơn hàng & thanh toán,Đồng bộ trạng thái thanh toán từ PayOS,"Khách hàng, Hệ thống","Sync payment từ PayOS API.",Đã triển khai
+UC-129,Đơn hàng & thanh toán,Hoàn tiền — mã QR chuyển khoản hoàn & xác nhận,"Quản lý, Nhân viên bán hàng","getRefundTransferQr / confirmRefundTransfer.",Đã triển khai
+UC-130,Đơn hàng & thanh toán,Xác nhận xuất kho cho đơn online / đóng gói,"Quản lý kho, Quản lý chi nhánh","confirm outbound, pack line, lookup đơn online.",Đã triển khai
+UC-131,Đơn hàng & thanh toán,Quản lý đổi trả / đơn hoàn (màn hình admin),"Quản lý, Nhân viên bán hàng","Trang Customer Returns — theo luồng đơn.",Đã triển khai
+UC-132,Cổng thanh toán (PayOS),Webhook cập nhật trạng thái thanh toán,Hệ thống PayOS,"POST /api/payments/webhook — callback.",Đã triển khai
+UC-133,Cổng thanh toán (PayOS),Kiểm tra sức khỏe webhook (health),Hệ thống / DevOps,"GET webhook health nếu có.",Đã triển khai
+UC-134,Tiện ích thanh toán,Xem danh sách ngân hàng VietQR (public),Khách hàng / Người dùng,"Chọn ngân hàng hiển thị QR / form.",Đã triển khai
+UC-135,Báo cáo điều hành,Xem thống kê dashboard,"Quản lý, Quản trị viên","Doanh thu, đơn đã thanh toán, top SP/KH, lọc chi nhánh.",Đã triển khai
+UC-136,Báo cáo điều hành,Chọn chi nhánh hoặc toàn hệ thống trên dashboard,"Quản lý, Quản trị viên","Filter locationId / tất cả chi nhánh.",Đã triển khai
+UC-137,Báo cáo điều hành,Chuyển ngữ cảnh chi nhánh (switch branch) trên UI,"Quản lý, Quản trị viên","Thao tác UI để xem số liệu theo chi nhánh.",Đã triển khai — chủ yếu client
+UC-138,Nhật ký hoạt động,Xem nhật ký hệ thống (admin),Quản trị viên,"Audit log toàn hệ thống.",Đã triển khai
+UC-139,Nhật ký hoạt động,Tìm kiếm / lọc nhật ký,Quản trị viên,"Theo mô tả, hành động, resource.",Đã triển khai
+UC-140,Nhật ký hoạt động,Xem nhật ký của chính mình,Người dùng đăng nhập,"GET /me logs.",Đã triển khai
+UC-141,Nhật ký hoạt động,Xóa bản ghi nhật ký,Quản trị viên,"DELETE log khi cho phép.",Đã triển khai
+UC-142,Đổi pin (Battery trade-in),Gửi yêu cầu đổi pin,Khách hàng / Người hoặc không đăng nhập,"Submit form trade-in.",Đã triển khai
+UC-143,Đổi pin (Battery trade-in),Upload ảnh minh chứng,Khách hàng,"Upload ảnh pin cũ.",Đã triển khai
+UC-144,Đổi pin (Battery trade-in),Tra cứu / cập nhật theo mã lookup,Khách hàng,"Lookup và PATCH theo lookup code.",Đã triển khai
+UC-145,Đổi pin (Battery trade-in),Xem danh sách yêu cầu (admin),Quản trị viên / Quản lý,"Danh sách trade-in.",Đã triển khai
+UC-146,Đổi pin (Battery trade-in),Xem chi tiết & cập nhật trạng thái / chi tiết admin,Quản trị viên,"PATCH status và details.",Đã triển khai
+UC-147,Đổi pin (Battery trade-in),Xem yêu cầu đổi pin của tôi,Khách đăng nhập,"GET /mine.",Đã triển khai
+UC-148,Hỗ trợ (kế hoạch),Chat hỗ trợ AI,Khách hàng,"Hỏi đáp về cửa hàng và sản phẩm qua chatbot.",Kế hoạch — chưa có API đầy đủ trong repo
+UC-149,Phản hồi (kế hoạch),Gửi phản hồi / đánh giá,Khách hàng,"Gửi feedback sau mua hàng.",Kế hoạch
+UC-150,Phản hồi (kế hoạch),Quản lý phản hồi (cửa hàng),Quản lý,"Xem, trả lời, cập nhật trạng thái feedback.",Kế hoạch

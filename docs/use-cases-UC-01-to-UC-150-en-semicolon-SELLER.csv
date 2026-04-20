@@ -1,0 +1,148 @@
+UC No.;Use case name;Actor;Brief description
+UC-01;Sign in;User, Customer;Enter credentials to obtain access and refresh tokens.
+UC-02;Register account;Guest, New user;Create a new account with basic profile data.
+UC-03;Forgot password;User;Request an email with a link or token to reset the password.
+UC-04;Reset password (email token);User;Set a new password using a valid token from email (self-service).
+UC-05;Sign out;Authenticated user;"End session; clear refresh cookie and server session when applicable."
+UC-06;Refresh access token;Authenticated user;Use refresh token in cookie to issue a new access token.
+UC-07;Get current user profile;Authenticated user;Return the logged-in profile including roles when available.
+UC-08;Update own profile;Authenticated user;"Edit name, email, phone, address; may reset email verification if email changes."
+UC-09;Send email verification code;Authenticated user;Generate and send an OTP to the registered email.
+UC-10;Verify email with code;Authenticated user;Submit OTP to verify email and update verification status.
+UC-11;Change password;Authenticated user;Change password with current password (not forgot-password flow).
+UC-12;List users;Administrator;Paginated list with filters by role, account type, status, and date range.
+UC-13;Search / filter users;Administrator;Search by username, email, name, or role-related keywords.
+UC-14;View user detail;Administrator;View full information for one user by id.
+UC-15;Create user;Administrator;Create a new user and basic profile (optionally assign roles).
+UC-16;Update user;Administrator;Edit user data without necessarily changing password.
+UC-17;Delete user;Administrator;Deactivate or logically delete a user per business rules.
+UC-18;Assign roles to user;Administrator;Attach one or more roles to a user.
+UC-19;Remove roles from user;Administrator;Detach roles from a user.
+UC-20;Reset user password (admin);Administrator;Set a new password for a user (different from email self-reset).
+UC-21;List roles for dropdown;Administrator;Fetch roles for display when creating or editing users.
+UC-22;List roles;Administrator;List all roles in the system.
+UC-23;View role detail;Administrator;View information for one role.
+UC-27;List employees;Administrator, Manager;List employees filtered by branch and status.
+UC-28;Search / filter employees;Administrator, Manager;Search by name, phone, or API filters.
+UC-29;View employee detail;Administrator, Manager;View one employee record by id.
+UC-30;Create employee;Administrator;Add employee and link user or branch when applicable.
+UC-31;Update employee;Administrator;Edit employee information.
+UC-32;Delete employee;Administrator;Remove or deactivate an employee.
+UC-33;List products;Seller, Manager, Administrator;Paginated product list with catalog filters.
+UC-34;Search / filter products;Seller, Manager;Search by SKU, barcode, name, or category filters.
+UC-35;View product detail;Seller, Customer (browse);View full attributes of one product.
+UC-36;Create product;Administrator, Warehouse manager (RBAC);Add a new product to the catalog.
+UC-37;Update product;Administrator, Manager;Edit price, description, SKU, barcode, images, etc.
+UC-38;Delete product;Administrator;Soft-delete or remove product from operations.
+UC-39;Upload product images;Administrator;Upload one or many images for a product.
+UC-40;Import products from Excel;Administrator;Bulk import from spreadsheet (SKU, barcode, name, …).
+UC-41;Bulk update prices;Administrator;Update many prices by list or rule.
+UC-42;Print barcode labels / export barcode Excel;Administrator, Warehouse staff;Print CODE128 labels and export barcode data (mainly client-side).
+UC-43;List categories;Seller, Manager;List product category groups.
+UC-44;Filter categories in UI;Seller, Manager;Filter by name after loading list (optional client-only filter).
+UC-45;Create category;Administrator;Add a new product group.
+UC-46;Update category;Administrator;Edit category name or description.
+UC-47;Delete category;Administrator;Delete group when dependencies allow.
+UC-48;List brands;Seller, Manager;List product brands.
+UC-49;Filter brands in UI;Seller, Manager;Filter by name on client if no dedicated search API.
+UC-50;Create brand;Administrator;Add a new brand.
+UC-51;Update brand;Administrator;Edit brand information.
+UC-52;Delete brand;Administrator;Delete brand when allowed.
+UC-53;List usage devices;Seller;List vehicle/device compatibility entries for batteries.
+UC-54;Create usage device;Administrator;Add a new compatibility entry.
+UC-55;Update usage device;Administrator;Edit compatibility description.
+UC-56;Delete usage device;Administrator;Delete when no longer used.
+UC-57;List stock checks;Warehouse manager, Branch manager;List stock-taking sessions.
+UC-58;View stock check detail;Warehouse manager, Branch manager;View variance lines for one session.
+UC-59;Create stock check;Warehouse manager, Branch manager;Open a stock-taking session for a branch.
+UC-60;Confirm stock check;Warehouse manager, Branch manager;Post adjustments and update stock from count results.
+UC-61;List stock-in documents;Warehouse manager, Branch manager;Filter by code, supplier, date.
+UC-62;View stock-in detail;Warehouse manager, Branch manager;View lines and document status.
+UC-63;Create draft stock in;Warehouse manager, Branch manager;Add lines by SKU / barcode / name search.
+UC-64;Update draft stock in;Warehouse manager, Branch manager;Edit quantities and cost before confirm.
+UC-65;Confirm stock in;Warehouse manager, Branch manager;Post receipt and increase on-hand stock.
+UC-66;Cancel / delete incomplete stock in;Warehouse manager, Branch manager;Cancel draft or delete per API rules.
+UC-67;List supplier returns;Warehouse manager, Branch manager;List return notes linked to stock in.
+UC-68;View supplier return detail;Warehouse manager, Branch manager;View lines and status.
+UC-69;Create supplier return;Warehouse manager, Branch manager;Return goods to supplier from confirmed receipt.
+UC-70;Cancel supplier return;Warehouse manager, Branch manager;Cancel return and restore stock per workflow.
+UC-71;List stock-out documents;Warehouse manager, Branch manager;Track adjustments, internal issues, online-related out.
+UC-72;View stock-out detail;Warehouse manager, Branch manager;View outbound lines.
+UC-73;Create draft stock out;Warehouse manager, Branch manager;Create outbound draft before confirmation.
+UC-74;Update draft stock out;Warehouse manager, Branch manager;Edit lines before confirm.
+UC-75;Confirm stock out;Warehouse manager, Branch manager;Post issue and decrease on-hand stock.
+UC-76;NXT inventory report;Manager, Administrator;"Period and branch NXT; export Excel when available."
+UC-77;Stock-in line report;Manager, Warehouse accountant;"Inbound detail by line; export file."
+UC-78;Stock-out line report;Manager, Warehouse accountant;Outbound detail by order or voucher line.
+UC-79;List suppliers;Warehouse manager, Branch manager;List suppliers by code and status.
+UC-80;Search suppliers;Warehouse manager, Branch manager;Search by code, name, phone via query.
+UC-81;View supplier detail;Warehouse manager, Branch manager;View supplier master data.
+UC-82;Create supplier;Administrator, Warehouse manager;Add a new supplier.
+UC-83;Update supplier;Administrator, Warehouse manager;Edit supplier data.
+UC-84;Delete supplier;Administrator, Warehouse manager;Delete when no open dependencies.
+UC-85;List locations / branches;Manager, Administrator;List stores or warehouses.
+UC-86;Create location;Administrator;Add a new branch.
+UC-87;Update location;Administrator;Edit name, address, configuration.
+UC-88;Delete location;Administrator;Delete when business rules allow.
+UC-89;Set online order branch;Administrator;Mark which branch receives web orders (online location).
+UC-90;View product stock by branch;Warehouse manager, Branch manager;On-hand by location and SKU.
+UC-91;Manual stock adjustment;Warehouse manager, Administrator;Adjust quantity when permitted.
+UC-92;Bulk stock update;Warehouse manager, Administrator;Batch update many stock rows.
+UC-93;List customers;Seller, Manager;List with filters by customer type.
+UC-94;Search customers;Seller, Manager;Search by phone or name via API.
+UC-95;View customer detail;Seller, Manager;View customer profile.
+UC-96;Create customer;Seller, Manager;Add walk-in or retail customer.
+UC-97;Update customer;Seller, Manager;Edit contact information.
+UC-98;Delete / restore customer;Manager, Administrator;Soft delete or restore customer record.
+UC-99;List member policies;Administrator;List loyalty or membership policies.
+UC-100;Create member policy;Administrator;Add a new policy.
+UC-101;Update member policy;Administrator;Edit policy rules.
+UC-102;Delete member policy;Administrator;Retire a policy.
+UC-103;View store profile;Manager, Administrator;View branch display and settings.
+UC-104;Update store profile;Manager, Administrator;Edit store name, contact, logo when applicable.
+UC-105;Manage branch bank accounts;Manager, Administrator;Create, update, delete receiving bank accounts.
+UC-106;View bank accounts from other branches;Manager;Cross-branch accounts for payment workflows when authorized.
+UC-107;View shopping cart;Customer, User;List items, quantities, selection flags.
+UC-108;Add item to cart;Customer, User;Add a line to session or user cart.
+UC-109;Update cart line / selection;Customer, User;Change quantity and checkout selection.
+UC-110;Remove cart line;Customer, User;Remove line by product id.
+UC-111;Clear cart;Customer, User;Empty entire cart.
+UC-112;List shipping addresses;Logged-in customer;Addresses saved on the account.
+UC-113;Add shipping address;Logged-in customer;Create a new delivery address.
+UC-114;Update / delete shipping address;Logged-in customer;Edit or remove an address.
+UC-115;Set default shipping address;Logged-in customer;Mark default for checkout.
+UC-116;Create order from cart (checkout);Customer, User;Place web order with payment and receiving branch.
+UC-117;Checkout payment preview;Customer, User;Preview totals and payment method before submit.
+UC-118;Create pre-order;Seller, Manager;Create order with isPreOrder flag (reservation / hold).
+UC-119;List my orders;Customer, User;Personal order history.
+UC-120;View order detail (customer);Customer, User;Track status, items, and payment.
+UC-121;Update order (customer scope);Customer, User;PATCH order before store processing when allowed.
+UC-122;Cancel order (customer);Customer, User;Customer cancel when policy allows.
+UC-123;Create POS invoice from lines;Seller, Manager;Counter sale via from-items endpoint.
+UC-124;List orders (store back office);Manager, Seller;Filter by status, type, pre-order, warehouse queue.
+UC-125;Update order (store);Manager, Seller;PUT order — confirm, payment, fulfillment states.
+UC-126;Order report;Manager, Administrator;Report by date range and branch.
+UC-127;Generate VietQR payment QR;Customer, Seller;Payment QR for an order.
+UC-128;Sync payment from PayOS;Customer, System;Poll PayOS API for payment status.
+UC-129;Refund transfer QR and confirm;Manager, Seller;Seller refund QR and confirm bank transfer completion.
+UC-130;Online order warehouse confirm / pack;Warehouse manager, Branch manager;Outbound confirm, pack line, warehouse lookup.
+UC-131;Manage returns / refunds (admin UI);Manager, Seller;Customer returns screen tied to orders.
+UC-132;PayOS payment webhook;PayOS system;POST webhook callback updates payment status.
+UC-133;PayOS webhook health check;DevOps, System;GET health endpoint for webhook route.
+UC-134;List VietQR banks (public);Customer, User;Public bank list for QR or bank selection UI.
+UC-135;View dashboard stats;Manager, Administrator;Revenue, paid orders, top products/customers, branch filter.
+UC-136;Filter dashboard by branch or all;Manager, Administrator;All branches vs one locationId.
+UC-137;Switch branch context on dashboard UI;Manager, Administrator;UI context switch for branch-scoped metrics (client-heavy).
+UC-138;List activity logs (admin);Administrator;System-wide audit log.
+UC-139;Search / filter activity logs;Administrator;Filter by description, action, resource.
+UC-140;List my activity logs;Authenticated user;Own log entries (e.g. /me).
+UC-141;Delete activity log record;Administrator;Delete log entry when allowed.
+UC-142;Submit battery trade-in request;Customer, Guest;Submit trade-in form.
+UC-143;Upload trade-in images;Customer;Upload photos of old battery.
+UC-144;Lookup / update by trade-in code;Customer;Lookup and update via lookup code.
+UC-145;List trade-in requests (admin);Administrator, Manager;Admin list of trade-ins.
+UC-146;View / update trade-in (admin);Administrator;"View detail; PATCH status and admin fields."
+UC-147;List my trade-in requests;Logged-in customer;Customer view of own submissions.
+UC-148;AI chat support (planned);Customer;"Planned: FAQ chatbot for store and products; not fully implemented in codebase."
+UC-149;Submit feedback (planned);Customer;Planned: post-purchase rating or feedback submission.
+UC-150;Manage customer feedback (planned);Manager;Planned: view replies and update feedback status in back office.

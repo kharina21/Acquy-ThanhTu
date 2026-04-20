@@ -1,0 +1,28 @@
+No,Entity Name,Short Description
+1,USER,System user account
+2,ROLE,Role for access control
+3,PERMISSION,Action permission by resource
+4,EMPLOYEE,Employee profile linked to user
+5,CUSTOMER,Customer information record
+6,MEMBER_POLICY,Member tier and discount policy
+7,LOCATION,Store branch or warehouse
+8,BANK_ACCOUNT,Bank account by location
+9,CATEGORY,Product category
+10,BRAND,Product brand
+11,USAGE_DEVICE,Supported device type
+12,SUPPLIER,Vendor/supplier information
+13,PRODUCT,Battery product information
+14,PRODUCT_STOCK,Stock per product and location
+15,CART,User shopping cart
+16,SHIPPING_ADDRESS,Saved delivery address
+17,ORDER,Sales order (online/offline)
+18,PAYMENT_LINK,Payment link mapped to order
+19,STOCK_IN,Inventory inbound receipt
+20,STOCK_OUT,Inventory outbound receipt
+21,STOCK_CHECK,Stock audit/check receipt
+22,STOCK_RETURN,Return receipt for stock-in
+23,BATTERY_TRADE_IN,Used battery buyback request
+24,SESSION,Login session/refresh token
+25,PASSWORD_RESET,Password reset token
+26,EMAIL_VERIFICATION,Email verification code
+27,ACTIVITY_LOG,User activity audit log
