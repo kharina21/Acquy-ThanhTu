@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router';
 import {
     getOrderById,
     updateOrder,
@@ -25,6 +25,8 @@ const PAYMENT_STATUS_LABELS = {
     refunded: 'Đã hoàn tiền',
 };
 
+const formatMoney = (n) => `${Number(n || 0).toLocaleString('vi-VN')}đ`;
+
 /** Khớp backend getRefundTransferQr: cần BIN ≥6 số và STK ≥6 số (số). */
 function hasRefundBankForVietQr(order) {
     const bin = String(order?.refundBankBin || '').replace(/\D/g, '');
@@ -34,6 +36,7 @@ function hasRefundBankForVietQr(order) {
 
 export default function AdminOrderDetailPage() {
     const { id } = useParams();
+    const [searchParams] = useSearchParams();
     const { hasAnyRole } = useUserRole();
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
@@ -54,6 +57,19 @@ export default function AdminOrderDetailPage() {
         'staff',
         'Nhân viên bán hàng',
     );
+
+    const backTo = useMemo(() => {
+        const raw = (searchParams.get('returnTo') || '').trim();
+        if (!raw) return null;
+        try {
+            const decoded = decodeURIComponent(raw);
+            // only allow internal paths
+            if (decoded.startsWith('/')) return decoded;
+        } catch {
+            // ignore
+        }
+        return null;
+    }, [searchParams]);
 
     const fetchOrder = async () => {
         if (!id) return;
@@ -168,7 +184,7 @@ export default function AdminOrderDetailPage() {
             <div className="container mx-auto max-w-2xl space-y-6">
                 <div className="flex items-center justify-between">
                     <Link
-                        to={order?.isPreOrder ? '/admin/orders/pre-orders' : '/admin/orders/invoices'}
+                        to={backTo || (order?.isPreOrder ? '/admin/orders/pre-orders' : '/admin/orders/invoices')}
                         className="btn btn-ghost btn-sm gap-1"
                     >
                         ← Quay lại
@@ -264,18 +280,7 @@ export default function AdminOrderDetailPage() {
                                     <span>{order.note}</span>
                                 </div>
                             )}
-                            {order.channel === 'online' && (
-                                <div className="flex justify-between items-center gap-2 pt-2 border-t border-base-200">
-                                    <span className="text-base-content/70">Kho (online)</span>
-                                    <span className="text-sm">
-                                        {order.warehouseReservationActive === true ? (
-                                            <span className="badge badge-warning">Chờ xuất kho — tồn đang giữ chỗ</span>
-                                        ) : (
-                                            <span className="badge badge-success">Đã xuất kho (trạng thái đơn: hoàn thành)</span>
-                                        )}
-                                    </span>
-                                </div>
-                            )}
+                            {/* Ẩn thông tin "Kho (online)" để UI báo cáo gọn và đồng bộ. */}
                             {canConfirmWarehouse &&
                                 order.channel === 'online' &&
                                 order.warehouseReservationActive === true &&
@@ -402,32 +407,82 @@ export default function AdminOrderDetailPage() {
                         </div>
 
                         <div className="bg-base-100 rounded-lg border border-base-300 overflow-hidden">
-                            <h2 className="px-4 py-3 font-semibold bg-base-200 border-b">
-                                Chi tiết sản phẩm
-                            </h2>
-                            <div className="divide-y divide-base-200">
-                                {order.items?.map((item, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="flex justify-between items-center px-4 py-3"
-                                    >
-                                        <div>
-                                            <p className="font-medium">{item.product?.name || 'Sản phẩm'}</p>
-                                            <p className="text-sm text-base-content/60">
-                                                {item.quantity} x {(item.price || 0).toLocaleString()}đ
-                                            </p>
-                                        </div>
-                                        <p className="font-medium">
-                                            {((item.quantity || 0) * (item.price || 0)).toLocaleString()}đ
-                                        </p>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="px-4 py-3 bg-base-200 border-t flex justify-between font-bold text-lg">
-                                <span>Tổng tiền</span>
-                                <span className="text-primary">
-                                    {(order.totalAmount || 0).toLocaleString()}đ
+                            <div className="px-4 py-3 font-semibold bg-base-200 border-b flex items-center justify-between gap-3">
+                                <h2>Chi tiết sản phẩm</h2>
+                                <span className="text-xs text-base-content/60">
+                                    {Array.isArray(order.items) ? order.items.length : 0} dòng
                                 </span>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="table table-sm w-full">
+                                    <thead className="bg-base-200/60">
+                                        <tr>
+                                            <th>Sản phẩm</th>
+                                            <th className="text-right">SL</th>
+                                            <th className="text-right">Đơn giá</th>
+                                            <th className="text-right">Thành tiền</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(order.items || []).map((item, idx) => {
+                                            const p = item.product || {};
+                                            const img = p.images?.[0] || p.image || '';
+                                            const qty = Number(item.quantity || 0);
+                                            const price = Number(item.price || 0);
+                                            const lineTotal = qty * price;
+                                            return (
+                                                <tr key={idx}>
+                                                    <td>
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <div className="w-10 h-10 rounded-lg bg-base-200 shrink-0 overflow-hidden flex items-center justify-center">
+                                                                {img ? (
+                                                                    <img src={img} alt="" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <span className="text-xs text-base-content/40">N/A</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="font-medium truncate">{p.name || 'Sản phẩm'}</div>
+                                                                <div className="text-xs text-base-content/60 font-mono truncate">
+                                                                    {p.sku ? `SKU ${p.sku}` : ''}
+                                                                    {p.barcode ? ` · BC ${p.barcode}` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="text-right font-medium">{qty}</td>
+                                                    <td className="text-right">{formatMoney(price)}</td>
+                                                    <td className="text-right font-semibold">{formatMoney(lineTotal)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="px-4 py-3 bg-base-200 border-t space-y-1">
+                                <div className="flex justify-between text-sm text-base-content/70">
+                                    <span>Tạm tính</span>
+                                    <span className="font-medium">
+                                        {formatMoney(
+                                            (order.items || []).reduce(
+                                                (s, it) => s + Number(it.quantity || 0) * Number(it.price || 0),
+                                                0
+                                            )
+                                        )}
+                                    </span>
+                                </div>
+                                {Number(order.discount || 0) > 0 && (
+                                    <div className="flex justify-between text-sm text-emerald-700">
+                                        <span>Chiết khấu</span>
+                                        <span className="font-medium">- {formatMoney(order.discount || 0)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between font-bold text-lg pt-1">
+                                    <span>Tổng tiền</span>
+                                    <span className="text-primary">{formatMoney(order.totalAmount || 0)}</span>
+                                </div>
                             </div>
                         </div>
                     </>

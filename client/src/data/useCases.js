@@ -131,4 +131,11 @@ export const USE_CASES = [
     { id: 125, module: 'Warehouse', useCase: 'NXT Inventory Report', description: 'Báo cáo xuất nhập tồn theo kỳ và chi nhánh (nhập, xuất phiếu, trả NCC, kiểm kho)', mark: 'warehouse' },
     { id: 126, module: 'Warehouse', useCase: 'Stock In Lines Report', description: 'Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel', mark: 'warehouse' },
     { id: 127, module: 'Warehouse', useCase: 'Stock Out Lines Report', description: 'Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel', mark: 'warehouse' },
+    {
+        id: 128,
+        module: 'Warehouse',
+        useCase: 'Auto-generate stock-in serials',
+        description: 'Nhập kho: sinh seri số tự động theo số lượng (mỗi cái một mã), không trùng seri phiếu khác và không trùng mã SKU sản phẩm',
+        mark: 'warehouse',
+    },
 ];

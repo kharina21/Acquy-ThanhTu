@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { getOrderReport } from '@/services/orderService';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ const formatVND = (num) => {
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—');
 
 const OrderReportPage = () => {
+    const location = useLocation();
     const { currentLocationId, locations } = useBranchStore();
     const currentLocation = locations?.find((l) => l._id === currentLocationId);
     const [items, setItems] = useState([]);
@@ -95,7 +96,8 @@ const OrderReportPage = () => {
 
     const getDetailTo = (row) => {
         if (row.type === 'battery_trade_in') return `/admin/battery-trade-in?detail=${row._id}`;
-        return `/admin/orders/${row._id}`;
+        const returnTo = encodeURIComponent(`${location.pathname}${location.search || ''}`);
+        return `/admin/orders/${row._id}?returnTo=${returnTo}`;
     };
 
     return (

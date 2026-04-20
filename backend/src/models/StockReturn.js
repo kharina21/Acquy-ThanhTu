@@ -5,6 +5,8 @@ const stockReturnItemSchema = new mongoose.Schema(
         product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
         quantity: { type: Number, required: true, min: 1 },
         reason: { type: String, default: '' },
+        /** Optional: trả theo seri/IMEI (mỗi dòng 1 seri). */
+        serials: { type: [String], default: [] },
     },
     { _id: true }
 );

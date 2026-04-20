@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import 'dotenv/config';
 import Customer from '../models/Customer.js';
+import StockOut from '../models/StockOut.js';
 
 const connectDB = async () => {
     try {
@@ -14,6 +15,8 @@ const connectDB = async () => {
             await Customer.create({ name: 'Khách vãng lai', phone: '', type: 'walkin' });
             console.log('✅ Customer "Khách vãng lai" đã được tạo');
         }
+
+        await StockOut.syncIndexes();
     } catch (error) {
         console.error('❌MongoDB connection error:', error);
         process.exit(1);

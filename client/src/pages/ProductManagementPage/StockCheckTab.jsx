@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { ClipboardList, Plus, Eye, CheckCircle, X } from 'lucide-react';
+import { ClipboardList, Plus, Eye, CheckCircle, X, Search } from 'lucide-react';
 import {
     getNextStockCheckCode,
     getStockChecks,
@@ -43,6 +43,7 @@ const StockCheckTab = () => {
     const [createRows, setCreateRows] = useState([]);
     const [productsForPick, setProductsForPick] = useState([]);
     const [showPickProduct, setShowPickProduct] = useState(false);
+    const [pickSearch, setPickSearch] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [detailStockCheck, setDetailStockCheck] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
@@ -123,6 +124,7 @@ const StockCheckTab = () => {
         const res = await getProducts({ page: 1, limit: 200, search: '', locationId: locId || undefined });
         if (res.success && res.data?.products) {
             setProductsForPick(res.data.products);
+            setPickSearch('');
             setShowPickProduct(true);
         }
     };
@@ -148,6 +150,19 @@ const StockCheckTab = () => {
         ]);
         setShowPickProduct(false);
     };
+
+    const filteredProductsForPick = useMemo(() => {
+        const needle = pickSearch.trim().toLowerCase();
+        const existsInRows = new Set(createRows.map((r) => String(r.product?._id)));
+        const list = (productsForPick || []).filter((p) => !existsInRows.has(String(p?._id)));
+        if (!needle) return list;
+        return list.filter((p) => {
+            const sku = String(p?.sku || '').toLowerCase();
+            const name = String(p?.name || '').toLowerCase();
+            const bc = String(p?.barcode || '').toLowerCase();
+            return sku.includes(needle) || name.includes(needle) || bc.includes(needle);
+        });
+    }, [productsForPick, pickSearch, createRows]);
 
     const updateRowCounted = (productId, value) => {
         if (value === '') {
@@ -725,20 +740,99 @@ const StockCheckTab = () => {
             {/* Modal chọn sản phẩm */}
             {showPickProduct && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true">
-                    <div className="modal-box max-w-2xl max-h-[80vh] overflow-y-auto">
-                        <h3 className="font-bold text-lg mb-4">Chọn sản phẩm</h3>
-                        <ul className="menu bg-base-200 rounded-lg">
-                            {productsForPick
-                                .filter((p) => !createRows.some((r) => r.product._id === p._id))
-                                .map((p) => (
-                                    <li key={p._id}>
-                                        <button type="button" onClick={() => addProductToRows(p)}>
-                                            <span className="font-medium">{p.sku}</span> — {p.name} (tồn sổ:{' '}
-                                            {p.physicalStockAtLocation ?? p.stockAtLocation ?? p.totalStock ?? 0})
-                                        </button>
-                                    </li>
-                                ))}
-                        </ul>
+                    <div className="modal-box max-w-5xl w-[min(1100px,96vw)] max-h-[88vh] p-0 overflow-hidden">
+                        <div className="px-6 pt-6 pb-4 border-b border-base-200 bg-base-100 sticky top-0 z-10">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-lg">Chọn sản phẩm</h3>
+                                    <p className="text-sm text-base-content/60 mt-1">
+                                        Tìm theo <span className="font-medium">mã hàng (SKU)</span>, <span className="font-medium">mã vạch</span> hoặc <span className="font-medium">tên sản phẩm</span>.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm btn-circle"
+                                    onClick={() => setShowPickProduct(false)}
+                                    aria-label="Đóng chọn sản phẩm"
+                                >
+                                    <X className="w-5 h-5" aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            <div className="mt-4">
+                                <label className="label py-0">
+                                    <span className="label-text text-sm font-medium">Tìm sản phẩm</span>
+                                </label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" aria-hidden="true" />
+                                    <input
+                                        type="text"
+                                        className="input input-bordered w-full pl-9"
+                                        placeholder="Nhập SKU, barcode hoặc tên…"
+                                        value={pickSearch}
+                                        onChange={(e) => setPickSearch(e.target.value)}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                    />
+                                </div>
+                                <p className="text-xs text-base-content/55 mt-2">
+                                    Hiển thị <span className="font-medium">{filteredProductsForPick.length}</span> sản phẩm
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="px-4 py-3 overflow-y-auto max-h-[calc(88vh-220px)] bg-base-100 overscroll-contain">
+                            {filteredProductsForPick.length === 0 ? (
+                                <div className="p-6 text-sm text-base-content/60 text-center">
+                                    Không có sản phẩm phù hợp.
+                                </div>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {filteredProductsForPick.map((p) => {
+                                        const stock = p.physicalStockAtLocation ?? p.stockAtLocation ?? p.totalStock ?? 0;
+                                        const img = p.images?.[0] || p.image || '';
+                                        return (
+                                            <li key={p._id}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addProductToRows(p)}
+                                                    className="w-full text-left rounded-xl border border-base-200 bg-base-100 hover:bg-base-200/50 hover:border-base-300 transition-colors px-3 py-2.5 flex items-center justify-between gap-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                                                >
+                                                    <span className="flex items-center gap-3 min-w-0">
+                                                        <span className="w-12 h-12 rounded-lg bg-base-200 shrink-0 overflow-hidden flex items-center justify-center">
+                                                            {img ? (
+                                                                <img
+                                                                    src={img}
+                                                                    alt=""
+                                                                    className="w-full h-full object-cover"
+                                                                    loading="lazy"
+                                                                    decoding="async"
+                                                                />
+                                                            ) : (
+                                                                <span className="text-xs text-base-content/40">N/A</span>
+                                                            )}
+                                                        </span>
+                                                        <span className="min-w-0">
+                                                            <span className="font-medium">{p.name}</span>
+                                                            <span className="block text-xs text-base-content/60 font-mono truncate mt-0.5">
+                                                                {p.sku ? `SKU ${p.sku}` : 'SKU —'}
+                                                                {p.barcode ? ` · BC ${p.barcode}` : ''}
+                                                            </span>
+                                                        </span>
+                                                    </span>
+                                                    <span className="shrink-0 text-right">
+                                                        <span className="text-xs text-base-content/55 block">Tồn sổ</span>
+                                                        <span className="badge badge-primary badge-sm font-mono tabular-nums">
+                                                            {stock}
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </div>
                         <div className="modal-action">
                             <button type="button" className="btn btn-ghost" onClick={() => setShowPickProduct(false)}>
                                 Đóng
