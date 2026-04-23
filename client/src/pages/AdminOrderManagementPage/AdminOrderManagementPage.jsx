@@ -114,6 +114,12 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
         return name || c.email || '—';
     };
 
+    const formatSeller = (order) => {
+        const s = order?.createdBy;
+        if (!s) return order?.channel === 'online' ? 'Web/khách tự đặt' : '—';
+        return [s.firstName, s.lastName].filter(Boolean).join(' ') || s.username || '—';
+    };
+
     return (
         <div className='flex-1 p-6 bg-base-200 overflow-y-auto'>
             <div className='container mx-auto space-y-4'>
@@ -195,6 +201,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                             <th className='font-medium text-neutral text-xs py-3'>Loại đơn</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Khách hàng</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Chi nhánh</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Nhân viên bán</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Tổng tiền</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Trạng thái</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Thanh toán</th>
@@ -224,6 +231,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         </td>
                                                         <td className='py-3'>{formatCustomer(order)}</td>
                                                         <td className='py-3'>{order.location?.name || '—'}</td>
+                                                        <td className='py-3'>{formatSeller(order)}</td>
                                                         <td className='font-semibold text-primary py-3'>{(order.totalAmount || 0).toLocaleString()}đ</td>
                                                         <td onClick={(e) => e.stopPropagation()}>
                                                             <select
@@ -273,7 +281,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                             className='bg-primary/5 border-b-2 border-base-300'
                                                         >
                                                             <td
-                                                                colSpan={9}
+                                                                colSpan={10}
                                                                 className='p-4 border-l-4 border-l-primary align-top'
                                                                 onClick={(e) => e.stopPropagation()}
                                                             >
@@ -284,6 +292,9 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                         </p>
                                                                         <p>
                                                                             <span className='font-medium text-base-content/70'>Chi nhánh:</span> {order.location?.name || '—'}
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className='font-medium text-base-content/70'>Nhân viên bán:</span> {formatSeller(order)}
                                                                         </p>
                                                                         <p>
                                                                             <span className='font-medium text-base-content/70'>Địa chỉ giao hàng:</span>{' '}

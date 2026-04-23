@@ -31,8 +31,12 @@ export const deleteUser = async (id) => {
 };
 
 // Gán roles cho user
-export const assignRoles = async (id, roles) => {
-    const response = await api.post(`/users/${id}/roles`, { roles });
+export const assignRoles = async (id, roles, locationId = null) => {
+    const payload = { roles };
+    if (locationId) {
+        payload.locationId = locationId;
+    }
+    const response = await api.post(`/users/${id}/roles`, payload);
     return response.data;
 };
 

@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Header from '../UserManagementPage/Header';
-import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/services/employeeService';
+import {
+    getEmployees,
+    createEmployee,
+    updateEmployee,
+    deleteEmployee,
+    getEmployeeMonthlySalesReport,
+} from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
 import { getUsers, updateUser, resetUserPassword } from '@/services/userService';
 import { toast } from 'sonner';
@@ -20,6 +26,15 @@ const StaffManagementPage = () => {
     const [filters, setFilters] = useState({
         status: '',
         locationId: '',
+    });
+    const [salesFilter, setSalesFilter] = useState({
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+    });
+    const [salesSummary, setSalesSummary] = useState({
+        totalRevenue: 0,
+        totalOrders: 0,
+        employeeCount: 0,
     });
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
@@ -97,6 +112,37 @@ const StaffManagementPage = () => {
         }
     };
 
+    const fetchEmployeeSales = async () => {
+        try {
+            const params = {
+                month: salesFilter.month,
+                year: salesFilter.year,
+            };
+            if (filters.locationId) params.locationId = filters.locationId;
+            const res = await getEmployeeMonthlySalesReport(params);
+            if (res.success) {
+                const rows = res?.data?.employees || [];
+                const salesMap = new Map(rows.map((row) => [row._id, row.sales || { revenue: 0, orderCount: 0, avgOrderValue: 0 }]));
+                setEmployees((prev) =>
+                    prev.map((emp) => ({
+                        ...emp,
+                        sales: salesMap.get(emp._id) || { revenue: 0, orderCount: 0, avgOrderValue: 0 },
+                    }))
+                );
+                setSalesSummary(
+                    res?.data?.summary || {
+                        totalRevenue: 0,
+                        totalOrders: 0,
+                        employeeCount: rows.length,
+                    }
+                );
+            }
+        } catch (error) {
+            console.error('Error fetching employee sales:', error);
+            toast.error(error.response?.data?.message || 'Không thể tải doanh thu theo nhân viên');
+        }
+    };
+
     useEffect(() => {
         fetchLocations();
         fetchStaffUsers();
@@ -106,6 +152,13 @@ const StaffManagementPage = () => {
         fetchEmployees();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pagination.page, pagination.limit, filters.status, filters.locationId]);
+
+    useEffect(() => {
+        if (employees.length > 0) {
+            fetchEmployeeSales();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [employees.length, salesFilter.month, salesFilter.year, filters.locationId]);
 
     const openCreateModal = () => {
         setEditingEmployee(null);
@@ -178,6 +231,8 @@ const StaffManagementPage = () => {
             return '-';
         }
     };
+
+    const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`;
 
     const handlePageChange = (newPage) => {
         if (newPage < 1 || newPage > pagination.totalPages) return;
@@ -397,6 +452,39 @@ const StaffManagementPage = () => {
                                         ))}
                                     </select>
                                 </div>
+                                <div className='flex flex-col'>
+                                    <label className="label">
+                                        <span className="label-text font-semibold text-sm">Tháng</span>
+                                    </label>
+                                    <select
+                                        className="select select-sm w-28 focus:outline-none focus:ring-0"
+                                        value={salesFilter.month}
+                                        onChange={(e) =>
+                                            setSalesFilter((prev) => ({ ...prev, month: Number(e.target.value) || 1 }))
+                                        }
+                                    >
+                                        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                                            <option key={m} value={m}>
+                                                Tháng {m}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className='flex flex-col'>
+                                    <label className="label">
+                                        <span className="label-text font-semibold text-sm">Năm</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={2000}
+                                        max={3000}
+                                        className="input input-sm w-28 focus:outline-none focus:ring-0"
+                                        value={salesFilter.year}
+                                        onChange={(e) =>
+                                            setSalesFilter((prev) => ({ ...prev, year: Number(e.target.value) || new Date().getFullYear() }))
+                                        }
+                                    />
+                                </div>
                                 <button
                                     type="button"
                                     className="btn btn-primary btn-sm gap-2"
@@ -405,6 +493,22 @@ const StaffManagementPage = () => {
                                     <Plus className="w-4 h-4" />
                                     Tạo nhân viên
                                 </button>
+                            </div>
+                        </div>
+                        <div className="bg-base-100 rounded-lg shadow-lg p-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div>
+                                    <span className="text-base-content/60">Doanh thu tháng</span>
+                                    <p className="font-semibold text-primary">{formatMoney(salesSummary.totalRevenue)}</p>
+                                </div>
+                                <div>
+                                    <span className="text-base-content/60">Số đơn đã thanh toán</span>
+                                    <p className="font-semibold">{(salesSummary.totalOrders || 0).toLocaleString('vi-VN')}</p>
+                                </div>
+                                <div>
+                                    <span className="text-base-content/60">Nhân viên trong báo cáo</span>
+                                    <p className="font-semibold">{(salesSummary.employeeCount || 0).toLocaleString('vi-VN')}</p>
+                                </div>
                             </div>
                         </div>
 
@@ -430,6 +534,8 @@ const StaffManagementPage = () => {
                                                     <th className="font-medium text-neutral text-xs">Nhân viên</th>
                                                     <th className="font-medium text-neutral text-xs">Chi nhánh làm việc</th>
                                                     <th className="font-medium text-neutral text-xs">Ngày vào làm</th>
+                                                    <th className="font-medium text-neutral text-xs">Đơn/tháng</th>
+                                                    <th className="font-medium text-neutral text-xs">Doanh thu/tháng</th>
                                                     <th className="font-medium text-neutral text-xs">Trạng thái</th>
                                                 </tr>
                                             </thead>
@@ -478,6 +584,8 @@ const StaffManagementPage = () => {
                                                                     </div>
                                                                 </td>
                                                                 <td>{formatDate(emp.hireDate)}</td>
+                                                                <td>{(emp.sales?.orderCount || 0).toLocaleString('vi-VN')}</td>
+                                                                <td className="font-semibold text-primary">{formatMoney(emp.sales?.revenue || 0)}</td>
                                                                 <td>
                                                                     <span
                                                                         className={`badge badge-sm ${emp.isActive ? 'badge-success' : 'badge-neutral'}`}
@@ -488,7 +596,7 @@ const StaffManagementPage = () => {
                                                             </tr>
                                                             {isExpanded && (
                                                                 <tr className="bg-primary/5">
-                                                                    <td colSpan={6} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
+                                                                    <td colSpan={8} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
                                                                         {(() => {
                                                                             const expEmp = employees.find((e) => e._id === expandedId);
                                                                             return (
@@ -529,6 +637,14 @@ const StaffManagementPage = () => {
                                                                                             <div>
                                                                                                 <span className="text-base-content/60">Trạng thái:</span>
                                                                                                 <p className="font-medium">{expandedEmpForm.isActive ? 'Đang làm' : 'Ngừng làm'}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Đơn ({salesFilter.month}/{salesFilter.year}):</span>
+                                                                                                <p className="font-medium">{(expEmp?.sales?.orderCount || 0).toLocaleString('vi-VN')}</p>
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="text-base-content/60">Doanh thu ({salesFilter.month}/{salesFilter.year}):</span>
+                                                                                                <p className="font-medium text-primary">{formatMoney(expEmp?.sales?.revenue || 0)}</p>
                                                                                             </div>
                                                                                             <div>
                                                                                                 <span className="text-base-content/60">Chi nhánh:</span>

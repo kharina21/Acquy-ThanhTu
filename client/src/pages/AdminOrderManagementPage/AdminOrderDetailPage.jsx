@@ -179,6 +179,12 @@ export default function AdminOrderDetailPage() {
         return name || c.email || '—';
     };
 
+    const formatSeller = (order) => {
+        const s = order?.createdBy;
+        if (!s) return order?.channel === 'online' ? 'Web/khách tự đặt' : '—';
+        return [s.firstName, s.lastName].filter(Boolean).join(' ') || s.username || '—';
+    };
+
     return (
         <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
             <div className="container mx-auto max-w-2xl space-y-6">
@@ -216,6 +222,10 @@ export default function AdminOrderDetailPage() {
                             <div className="flex justify-between">
                                 <span className="text-base-content/70">Chi nhánh</span>
                                 <span>{order.location?.name || '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-base-content/70">Nhân viên bán</span>
+                                <span>{formatSeller(order)}</span>
                             </div>
                             {order.channel === 'online' && (
                                 <p className="text-xs text-base-content/60 bg-base-200/80 rounded-lg px-3 py-2">

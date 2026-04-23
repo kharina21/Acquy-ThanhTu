@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import Role from '../models/Role.js';
 import Employee from '../models/Employee.js';
 import Order from '../models/Order.js';
+import Location from '../models/Location.js';
 import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
@@ -476,7 +477,7 @@ export const deleteUser = async (req, res) => {
 export const assignRoles = async (req, res) => {
     try {
         const { id } = req.params;
-        const { roles } = req.body; // Mảng role names, chỉ dùng phần tử đầu
+        const { roles, locationId } = req.body; // Mảng role names, chỉ dùng phần tử đầu
 
         if (!roles || !Array.isArray(roles) || roles.length === 0) {
             return res.status(400).json({ message: 'Vui lòng chọn một vai trò' });
@@ -532,6 +533,61 @@ export const assignRoles = async (req, res) => {
         user.roles = [role._id];
         await user.save();
 
+        // Xử lý Employee record cho seller/manager roles
+        const staffRoles = ['seller', 'manager'];
+        if (staffRoles.includes(roleName)) {
+            // Validate locationId
+            if (!locationId) {
+                return res.status(400).json({ message: 'Vui lòng chọn cơ sở cho nhân viên' });
+            }
+
+            // Verify location exists
+            const location = await Location.findById(locationId);
+            if (!location) {
+                return res.status(400).json({ message: 'Cơ sở không tồn tại' });
+            }
+
+            // Tìm hoặc tạo Employee record
+            let employee = await Employee.findOne({ user: user._id, isDeleted: false });
+
+            if (employee) {
+                // Cập nhật employee hiện có
+                employee.primaryLocation = locationId;
+                employee.locations = [locationId]; // Gán cơ sở làm việc
+                employee.isActive = true;
+                await employee.save();
+            } else {
+                // Tạo mới employee record
+                // Kiểm tra xem có record đã xóa mềm không
+                const deletedEmployee = await Employee.findOne({ user: user._id, isDeleted: true });
+                if (deletedEmployee) {
+                    // Khôi phục record đã xóa
+                    deletedEmployee.isDeleted = false;
+                    deletedEmployee.isActive = true;
+                    deletedEmployee.primaryLocation = locationId;
+                    deletedEmployee.locations = [locationId];
+                    await deletedEmployee.save();
+                    employee = deletedEmployee;
+                } else {
+                    // Tạo mới
+                    employee = await Employee.create({
+                        user: user._id,
+                        primaryLocation: locationId,
+                        locations: [locationId],
+                        isActive: true,
+                    });
+                }
+            }
+        } else {
+            // Nếu không phải staff role, xóa soft employee record (nếu có)
+            const employee = await Employee.findOne({ user: user._id, isDeleted: false });
+            if (employee) {
+                employee.isDeleted = true;
+                employee.isActive = false;
+                await employee.save();
+            }
+        }
+
         // Lấy lại user với roles đã populate
         const userWithRoles = await User.findById(id)
             .select('-password')
@@ -545,7 +601,7 @@ export const assignRoles = async (req, res) => {
             userId: req.user._id,
             action: 'assign_role',
             resource: 'user',
-            description: `Admin ${req.user.username} đã gán vai trò ${roleName} cho user: ${user.username}`,
+            description: `Admin ${req.user.username} đã gán vai trò ${roleName} cho user: ${user.username}${locationId ? ` tại cơ sở ${locationId}` : ''}`,
             ipAddress: getClientIp(req),
             userAgent: getUserAgent(req),
             status: 'success',

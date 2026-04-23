@@ -25,3 +25,8 @@ export const deleteEmployee = async (id) => {
     return res.data;
 };
 
+export const getEmployeeMonthlySalesReport = async (params = {}) => {
+    const res = await api.get('/employees/sales-report/monthly', { params });
+    return res.data;
+};
+

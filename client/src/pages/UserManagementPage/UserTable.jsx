@@ -6,10 +6,12 @@ import {
     assignRoles,
     resetUserPassword,
 } from '@/services/userService';
+import { getLocations } from '@/services/locationService';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { TableSkeleton } from '@/components/common/SkeletonLoader';
+import { useBranchStore } from '@/stores/useBranchStore';
 
 const UserTable = ({
     setSelectedUser,
@@ -31,6 +33,9 @@ const UserTable = ({
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [users, setUsers] = useState([]);
+    const [locations, setLocations] = useState([]);
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const { fetchLocations } = useBranchStore();
 
 
 
@@ -87,9 +92,22 @@ const UserTable = ({
             toast.error('Vui lòng chọn một vai trò');
             return;
         }
+
+        // Validate branch selection for seller/manager roles
+        const rolesRequiringBranch = ['seller', 'manager'];
+        if (rolesRequiringBranch.includes(newRole) && !selectedLocationId) {
+            toast.error('Vui lòng chọn cơ sở cho nhân viên');
+            return;
+        }
+
         setSubmitting(true);
         try {
-            const addRes = await assignRoles(selectedUser._id, [newRole]);
+            const payload = { roles: [newRole] };
+            // Only include locationId for seller/manager roles
+            if (rolesRequiringBranch.includes(newRole)) {
+                payload.locationId = selectedLocationId;
+            }
+            const addRes = await assignRoles(selectedUser._id, [newRole], payload.locationId);
             if (!addRes.success) {
                 toast.error(addRes.message || 'Cập nhật vai trò thất bại');
                 setSubmitting(false);
@@ -97,6 +115,7 @@ const UserTable = ({
             }
             setShowRoleModal(false);
             resetForm();
+            setSelectedLocationId('');
             toast.success('Cập nhật vai trò thành công');
             fetchUsers();
         } catch (error) {
@@ -178,6 +197,7 @@ const UserTable = ({
             return;
         }
         setSelectedUser(user);
+        setSelectedLocationId(''); // Reset location when opening modal
         const allowedOptions = getAssignableRoleOptionsForUser(roles, user);
         const currentRole = user.roles?.[0]?.name;
         const isValidRole = allowedOptions.some((r) => r.name === currentRole);
@@ -315,6 +335,22 @@ const UserTable = ({
     useEffect(() => {
         fetchUsers();
     }, [pagination.page, filters, refreshKey]);
+
+    // Fetch locations for branch selection
+    const fetchLocationsData = async () => {
+        try {
+            const res = await getLocations();
+            if (res.success && res.data?.locations) {
+                setLocations(res.data.locations.filter((l) => l.isActive !== false));
+            }
+        } catch (error) {
+            console.error('Error fetching locations:', error);
+        }
+    };
+
+    useEffect(() => {
+        fetchLocationsData();
+    }, []);
 
 
     return (
@@ -497,12 +533,16 @@ const UserTable = ({
                         <form onSubmit={handleAssignRoles} className="space-y-4">
                             <div>
                                 <label className="label">
-                                    <span className="label-text font-semibold">Vai trò</span>
+                                    <span className="label-text font-semibold">Vai trò <span className='text-error'>*</span></span>
                                 </label>
                                 <select
                                     className="select select-bordered w-full"
                                     value={formData.roles?.[0] || ''}
-                                    onChange={(e) => setFormData({ ...formData, roles: e.target.value ? [e.target.value] : [] })}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, roles: e.target.value ? [e.target.value] : [] });
+                                        // Auto-reset location when role changes
+                                        setSelectedLocationId('');
+                                    }}
                                 >
                                     <option value="">-- Chọn vai trò --</option>
                                     {getAssignableRoleOptionsForUser(roles, selectedUser).map((role) => (
@@ -512,6 +552,34 @@ const UserTable = ({
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Branch selection for seller and manager roles */}
+                            {formData.roles?.[0] && ['seller', 'manager'].includes(formData.roles[0]) && (
+                                <div>
+                                    <label className="label">
+                                        <span className="label-text font-semibold">Cơ sở <span className='text-error'>*</span></span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={selectedLocationId}
+                                        onChange={(e) => setSelectedLocationId(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">-- Chọn cơ sở --</option>
+                                        {locations.map((location) => (
+                                            <option key={location._id} value={location._id}>
+                                                {location.name} ({location.code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <label className="label">
+                                        <span className="label-text-alt text-base-content/60">
+                                            Nhân viên sẽ được phân công làm việc tại cơ sở được chọn
+                                        </span>
+                                    </label>
+                                </div>
+                            )}
+
                             <div className="modal-action">
                                 <button
                                     type="button"
@@ -519,11 +587,20 @@ const UserTable = ({
                                     onClick={() => {
                                         setShowRoleModal(false);
                                         resetForm();
+                                        setSelectedLocationId('');
                                     }}
                                 >
                                     Hủy
                                 </button>
-                                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || !formData.roles?.[0]}>
+                                <button 
+                                    type="submit" 
+                                    className="btn btn-primary btn-sm" 
+                                    disabled={
+                                        submitting || 
+                                        !formData.roles?.[0] || 
+                                        (['seller', 'manager'].includes(formData.roles[0]) && !selectedLocationId)
+                                    }
+                                >
                                     {submitting ? (
                                         <>
                                             <span className="loading loading-spinner loading-sm"></span>
@@ -537,7 +614,7 @@ const UserTable = ({
                         </form>
                     </div>
                     <form method="dialog" className="modal-backdrop">
-                        <button onClick={() => resetForm()}>close</button>
+                        <button onClick={() => { resetForm(); setSelectedLocationId(''); }}>close</button>
                     </form>
                 </dialog>
             )}

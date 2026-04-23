@@ -366,6 +366,7 @@ export const createOrder = async (req, res) => {
             .populate('location', 'code name address')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(201).json({
@@ -665,6 +666,7 @@ export const createOrderFromItems = async (req, res) => {
             .populate('location', 'code name address')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(201).json({
@@ -789,6 +791,7 @@ export const getOrders = async (req, res) => {
                 .populate('location', 'code name')
                 .populate('customer', 'username email firstName lastName')
                 .populate('customerProfile', 'name phone type')
+                .populate('createdBy', 'username firstName lastName')
                 .lean(),
             Order.countDocuments(filter),
         ]);
@@ -1031,6 +1034,7 @@ export const confirmOrderRefundTransfer = async (req, res) => {
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
         return res.status(200).json({
             success: true,
@@ -1072,6 +1076,7 @@ export const syncPaymentFromPayOS = async (req, res) => {
                 .populate('location', 'code name')
                 .populate('customer', 'username email firstName lastName')
                 .populate('customerProfile', 'name phone type')
+                .populate('createdBy', 'username firstName lastName')
                 .lean();
             return res.status(200).json({ success: true, data: { order: populated } });
         }
@@ -1084,6 +1089,7 @@ export const syncPaymentFromPayOS = async (req, res) => {
                 .populate('location', 'code name')
                 .populate('customer', 'username email firstName lastName')
                 .populate('customerProfile', 'name phone type')
+                .populate('createdBy', 'username firstName lastName')
                 .lean();
             return res.status(200).json({ success: true, data: { order: populated } });
         }
@@ -1130,6 +1136,7 @@ export const syncPaymentFromPayOS = async (req, res) => {
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(200).json({ success: true, data: { order: populated } });
@@ -1163,6 +1170,7 @@ export const getOrderById = async (req, res) => {
             .populate('location', 'code name address phone')
             .populate('customer', 'username email firstName lastName phoneNumber')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         if (!order) {
@@ -1531,6 +1539,7 @@ async function executeOnlineWarehouseOutbound(orderRef, userId) {
         .populate('location', 'code name address')
         .populate('customer', 'username email firstName lastName')
         .populate('customerProfile', 'name phone type')
+        .populate('createdBy', 'username firstName lastName')
         .lean();
 
     return { order: populated, stockOutId: stockOutDoc?._id };
@@ -1839,6 +1848,7 @@ export const cancelOrderByCustomer = async (req, res) => {
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(200).json({
@@ -1933,6 +1943,7 @@ export const updateOrderByCustomer = async (req, res) => {
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(200).json({
@@ -2014,6 +2025,7 @@ export const updateOrder = async (req, res) => {
             .populate('location', 'code name')
             .populate('customer', 'username email firstName lastName')
             .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
             .lean();
 
         return res.status(200).json({

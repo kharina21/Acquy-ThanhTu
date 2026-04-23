@@ -1,6 +1,7 @@
 import Employee from '../models/Employee.js';
 import User from '../models/User.js';
 import Role from '../models/Role.js';
+import Order from '../models/Order.js';
 
 /** Chuẩn hóa mã NV: NV + 5 chữ số (NV00001). */
 const EMPCODE_REGEX = /^NV\d{5}$/i;
@@ -292,6 +293,99 @@ export const deleteEmployee = async (req, res) => {
     } catch (error) {
         console.error('deleteEmployee error:', error);
         res.status(500).json({ message: 'Lỗi khi xóa nhân viên', error: error.message });
+    }
+};
+
+// GET /api/employees/sales-report/monthly?month=1..12&year=2026&locationId=...
+export const getEmployeeMonthlySalesReport = async (req, res) => {
+    try {
+        const now = new Date();
+        const queryMonth = Number(req.query.month) || now.getMonth() + 1;
+        const queryYear = Number(req.query.year) || now.getFullYear();
+        const { locationId } = req.query;
+
+        if (!Number.isInteger(queryMonth) || queryMonth < 1 || queryMonth > 12) {
+            return res.status(400).json({ message: 'Tháng không hợp lệ (1-12)' });
+        }
+        if (!Number.isInteger(queryYear) || queryYear < 2000 || queryYear > 3000) {
+            return res.status(400).json({ message: 'Năm không hợp lệ' });
+        }
+
+        const from = new Date(queryYear, queryMonth - 1, 1, 0, 0, 0, 0);
+        const to = new Date(queryYear, queryMonth, 1, 0, 0, 0, 0);
+
+        const employeeQuery = { isDeleted: false };
+        if (locationId) {
+            employeeQuery.$or = [{ primaryLocation: locationId }, { locations: locationId }];
+        }
+
+        const employees = await Employee.find(employeeQuery)
+            .populate('user', 'username firstName lastName email')
+            .populate('primaryLocation', 'name code')
+            .populate('locations', 'name code')
+            .lean();
+
+        const orderMatch = {
+            channel: 'in_store',
+            paymentStatus: 'paid',
+            createdAt: { $gte: from, $lt: to },
+            createdBy: { $ne: null },
+        };
+        if (locationId) orderMatch.location = locationId;
+
+        const salesRows = await Order.aggregate([
+            { $match: orderMatch },
+            {
+                $group: {
+                    _id: '$createdBy',
+                    revenue: { $sum: { $ifNull: ['$totalAmount', 0] } },
+                    orderCount: { $sum: 1 },
+                },
+            },
+        ]);
+
+        const salesByUserId = new Map(
+            salesRows.map((r) => [String(r._id), { revenue: Number(r.revenue) || 0, orderCount: Number(r.orderCount) || 0 }]),
+        );
+
+        const reportRows = employees.map((emp) => {
+            const userId = String(emp.user?._id || '');
+            const stat = salesByUserId.get(userId) || { revenue: 0, orderCount: 0 };
+            return {
+                ...emp,
+                sales: {
+                    month: queryMonth,
+                    year: queryYear,
+                    revenue: stat.revenue,
+                    orderCount: stat.orderCount,
+                    avgOrderValue: stat.orderCount > 0 ? Math.round(stat.revenue / stat.orderCount) : 0,
+                },
+            };
+        });
+
+        const totalRevenue = reportRows.reduce((sum, row) => sum + (row.sales?.revenue || 0), 0);
+        const totalOrders = reportRows.reduce((sum, row) => sum + (row.sales?.orderCount || 0), 0);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                month: queryMonth,
+                year: queryYear,
+                locationId: locationId || null,
+                summary: {
+                    totalRevenue,
+                    totalOrders,
+                    employeeCount: reportRows.length,
+                },
+                employees: reportRows,
+            },
+        });
+    } catch (error) {
+        console.error('getEmployeeMonthlySalesReport error:', error);
+        return res.status(500).json({
+            message: 'Lỗi khi lấy báo cáo doanh thu nhân viên theo tháng',
+            error: error.message,
+        });
     }
 };
 
