@@ -1,7 +1,7 @@
 import Employee from '../models/Employee.js';
 import User from '../models/User.js';
-import Role from '../models/Role.js';
 import Order from '../models/Order.js';
+import { userHasAnyOfRoles } from '../utils/roleEquivalence.js';
 
 /** Chuẩn hóa mã NV: NV + 5 chữ số (NV00001). */
 const EMPCODE_REGEX = /^NV\d{5}$/i;
@@ -25,15 +25,8 @@ const getNextEmpCode = async () => {
 /** Kiểm tra mã NV hợp lệ (NV + 5 số). */
 const isValidEmpCode = (code) => code && typeof code === 'string' && EMPCODE_REGEX.test(code.trim().toUpperCase());
 
-// Helper: kiểm tra user có phải nhân viên (không phải customer thuần, không phải admin)
-const isStaffUser = async (userId) => {
-    const user = await User.findById(userId).populate('roles');
-    if (!user) return false;
-    const roleNames = user.roles.map((r) => r.name);
-    if (roleNames.includes('admin')) return false;
-    if (roleNames.includes('user') && roleNames.length === 1) return false;
-    return true;
-};
+/** Chỉ tài khoản seller / manager / warehouse (và tên tương đương) mới được gắn hồ sơ nhân viên. */
+const EMPLOYEE_ACCOUNT_ROLE_SLUGS = ['seller', 'manager', 'warehouse_manager'];
 
 // GET /api/employees
 export const getAllEmployees = async (req, res) => {
@@ -149,15 +142,20 @@ export const createEmployee = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng chọn ít nhất một chi nhánh làm việc cho nhân viên' });
         }
 
-        // Kiểm tra user tồn tại & là nhân viên
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).populate('roles', 'name');
         if (!user) {
             return res.status(404).json({ message: 'Không tìm thấy người dùng' });
         }
 
-        const isStaff = await isStaffUser(userId);
-        if (!isStaff) {
-            return res.status(400).json({ message: 'Chỉ tạo hồ sơ nhân viên cho tài khoản nhân viên' });
+        const roleNames = (user.roles || []).map((r) => r.name);
+        if (roleNames.includes('admin')) {
+            return res.status(400).json({ message: 'Không được tạo hồ sơ nhân viên cho tài khoản quản trị viên' });
+        }
+        if (!userHasAnyOfRoles(roleNames, EMPLOYEE_ACCOUNT_ROLE_SLUGS)) {
+            return res.status(400).json({
+                message:
+                    'Chỉ tạo hồ sơ nhân viên cho tài khoản có vai trò Nhân viên bán hàng, Quản lý chi nhánh hoặc Quản lý kho',
+            });
         }
 
         // Tìm bản ghi Employee theo user (kể cả đã soft delete) để tránh trùng và cho phép khôi phục

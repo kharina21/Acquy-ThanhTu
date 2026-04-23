@@ -26,6 +26,27 @@ const productSchema = new mongoose.Schema(
         capacity: { type: String, default: '' },
         /** Dòng / series sản phẩm (VD: MF, AGM, DIN…) — hiển thị chi tiết & tem */
         series: { type: String, default: '', trim: true },
+        /** Kiểu ắc quy: khô (MF/AGM…) hoặc nước (nước cất / flooded) */
+        batteryType: {
+            type: String,
+            default: null,
+            validate: {
+                validator: (v) => v == null || v === '' || v === 'dry' || v === 'wet',
+                message: 'batteryType phải dry, wet hoặc rỗng',
+            },
+        },
+        /** Kích thước từng cạnh (mm) */
+        dimensionLengthMm: { type: Number, default: null, min: 0 },
+        dimensionWidthMm: { type: Number, default: null, min: 0 },
+        dimensionHeightMm: { type: Number, default: null, min: 0 },
+        weightKg: { type: Number, default: null, min: 0 },
+        voltageV: { type: Number, default: null, min: 0 },
+        /** Tên quốc gia (tiếng Việt) — chọn từ danh sách có tìm kiếm */
+        originCountry: { type: String, default: '', trim: true, maxlength: 120 },
+        /** Dung tích nhớt (Excel / mô tả) */
+        oilCapacityText: { type: String, default: '', trim: true, maxlength: 200 },
+        /** Đời xe (Excel / mô tả) */
+        vehicleModelText: { type: String, default: '', trim: true, maxlength: 200 },
         costPrice: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
         image: { type: String, default: '' },

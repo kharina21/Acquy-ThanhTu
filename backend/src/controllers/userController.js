@@ -6,6 +6,7 @@ import Location from '../models/Location.js';
 import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
+import { canonicalRoleName, userHasAnyOfRoles, roleNameMatchesCanonical } from '../utils/roleEquivalence.js';
 
 export const getAllUsers = async (req, res) => {
     try {
@@ -53,7 +54,16 @@ export const getAllUsers = async (req, res) => {
         } else if (kindFilter) {
             // Lọc theo loại tài khoản (staff / customer) khi không chọn role cụ thể
             if (kindFilter === 'staff') {
-                const staffRoleNames = ['seller', 'warehouse_manager', 'manager'];
+                /** Hồ sơ nhân viên: chỉ seller / manager / warehouse (+ alias VI & staff cũ). */
+                const staffRoleNames = [
+                    'seller',
+                    'staff',
+                    'warehouse_manager',
+                    'manager',
+                    'Nhân viên bán hàng',
+                    'Quản lý kho',
+                    'Quản lý chi nhánh',
+                ];
                 const staffRoles = await Role.find({ name: { $in: staffRoleNames } }).select('_id');
                 const ids = staffRoles.map((r) => r._id);
                 if (ids.length) {
@@ -502,28 +512,32 @@ export const assignRoles = async (req, res) => {
         const currentUser = await User.findById(req.user._id).populate('roles', 'name');
         const currentRoleNames = (currentUser?.roles || []).map((r) => r.name);
         const isAdmin = currentRoleNames.includes('admin');
-        if (!isAdmin && currentRoleNames.includes('manager')) {
+        if (!isAdmin && userHasAnyOfRoles(currentRoleNames, ['manager'])) {
             const managerAllowedRoles = ['seller', 'warehouse_manager'];
-            if (!managerAllowedRoles.includes(roleName)) {
+            const canAssign = managerAllowedRoles.some((canonical) =>
+                roleNameMatchesCanonical(roleName, canonical)
+            );
+            if (!canAssign) {
                 return res.status(403).json({
                     message: 'Quản lý chỉ được gán vai trò Nhân viên bán hàng hoặc Quản lý kho',
                 });
             }
         }
 
-        const role = await Role.findOne({ name: roleName });
+        const resolvedRoleName = canonicalRoleName(roleName);
+        const role = await Role.findOne({ name: resolvedRoleName });
         if (!role) {
             return res.status(400).json({ message: 'Vai trò không tồn tại' });
         }
 
         // user: chỉ gán khi chưa mua hàng; customer: chỉ gán khi đã mua hàng
         const hasPurchases = await Order.exists({ customer: user._id });
-        if (roleName === 'user' && hasPurchases) {
+        if (resolvedRoleName === 'user' && hasPurchases) {
             return res.status(400).json({
                 message: 'Không thể gán vai trò Người dùng thường cho tài khoản đã có đơn hàng. Vui lòng chọn Khách hàng.',
             });
         }
-        if (roleName === 'customer' && !hasPurchases) {
+        if (resolvedRoleName === 'customer' && !hasPurchases) {
             return res.status(400).json({
                 message: 'Không thể gán vai trò Khách hàng cho tài khoản chưa có đơn hàng. Vui lòng chọn Người dùng thường.',
             });
