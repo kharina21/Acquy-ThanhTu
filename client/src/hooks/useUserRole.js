@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useMemo } from 'react';
+import { roleMeets, rolesMeetsAny } from '@/utils/roleMatch';
 
 /**
  * Hook để kiểm tra role của user hiện tại
@@ -13,19 +14,17 @@ export const useUserRole = () => {
         return user.roles.map((role) => role.name);
     }, [user]);
 
-    // Kiểm tra user có role cụ thể không
+    // Kiểm tra user có role cụ thể không (slug EN hoặc nhãn VI cùng nhóm)
     const hasRole = (roleName) => {
-        return userRoles.includes(roleName);
+        return roleMeets(userRoles, roleName);
     };
 
-    // Kiểm tra user có một trong các roles không
     const hasAnyRole = (...roleNames) => {
-        return roleNames.some((roleName) => userRoles.includes(roleName));
+        return rolesMeetsAny(userRoles, ...roleNames);
     };
 
-    // Kiểm tra user có tất cả các roles không
     const hasAllRoles = (...roleNames) => {
-        return roleNames.every((roleName) => userRoles.includes(roleName));
+        return roleNames.every((roleName) => roleMeets(userRoles, roleName));
     };
 
     // Memoize các giá trị boolean để tránh re-render không cần thiết
@@ -37,11 +36,11 @@ export const useUserRole = () => {
         () => ['seller', 'staff', 'Nhân viên bán hàng'].some((r) => userRoles.includes(r)),
         [userRoles]
     );
-    const isManager = useMemo(() => userRoles.includes('manager'), [userRoles]);
-    const isWarehouseManager = useMemo(() => userRoles.includes('warehouse_manager'), [userRoles]);
+    const isManager = useMemo(() => roleMeets(userRoles, 'manager'), [userRoles]);
+    const isWarehouseManager = useMemo(() => roleMeets(userRoles, 'warehouse_manager'), [userRoles]);
     /** @deprecated Dùng isSeller. Giữ để tương thích user cũ có role staff */
     const isStaff = useMemo(() => userRoles.includes('staff'), [userRoles]);
-    const isBranchManager = useMemo(() => userRoles.includes('Quản lý chi nhánh'), [userRoles]);
+    const isBranchManager = useMemo(() => roleMeets(userRoles, 'manager'), [userRoles]);
 
     return {
         userRoles,

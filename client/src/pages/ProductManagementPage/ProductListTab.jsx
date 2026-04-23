@@ -19,6 +19,8 @@ import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
 import { getUsageDevices, createUsageDevice, updateUsageDevice, deleteUsageDevice } from '@/services/usageDeviceService';
 import UsageDeviceModal from '@/components/common/UsageDeviceModal';
+import CountrySearchCombobox from '@/components/common/CountrySearchCombobox';
+import { labelBatteryType, formatDimensionsMm, formatWeightKg, formatVoltageV } from '@/utils/productDetailDisplay';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '—';
@@ -40,6 +42,15 @@ const emptyProductForm = () => ({
     isActive: true,
     warrantyText: '',
     notes: '',
+    batteryType: '',
+    originCountry: '',
+    dimensionLengthMm: '',
+    dimensionWidthMm: '',
+    dimensionHeightMm: '',
+    weightKg: '',
+    voltageV: '',
+    oilCapacityText: '',
+    vehicleModelText: '',
 });
 
 const ProductListTab = () => {
@@ -87,6 +98,12 @@ const ProductListTab = () => {
     const [filterPriceMax, setFilterPriceMax] = useState(0);
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
+
+    const parseOptNum = (v) => {
+        if (v === '' || v === null || v === undefined) return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    };
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -269,6 +286,28 @@ const ProductListTab = () => {
             isActive: selectedProduct.isActive ?? true,
             warrantyText: selectedProduct.warrantyText ?? '',
             notes: selectedProduct.notes ?? '',
+            batteryType: selectedProduct.batteryType ?? '',
+            originCountry: selectedProduct.originCountry ?? '',
+            dimensionLengthMm:
+                selectedProduct.dimensionLengthMm != null && selectedProduct.dimensionLengthMm !== ''
+                    ? String(selectedProduct.dimensionLengthMm)
+                    : '',
+            dimensionWidthMm:
+                selectedProduct.dimensionWidthMm != null && selectedProduct.dimensionWidthMm !== ''
+                    ? String(selectedProduct.dimensionWidthMm)
+                    : '',
+            dimensionHeightMm:
+                selectedProduct.dimensionHeightMm != null && selectedProduct.dimensionHeightMm !== ''
+                    ? String(selectedProduct.dimensionHeightMm)
+                    : '',
+            weightKg:
+                selectedProduct.weightKg != null && selectedProduct.weightKg !== ''
+                    ? String(selectedProduct.weightKg)
+                    : '',
+            voltageV:
+                selectedProduct.voltageV != null && selectedProduct.voltageV !== '' ? String(selectedProduct.voltageV) : '',
+            oilCapacityText: selectedProduct.oilCapacityText ?? '',
+            vehicleModelText: selectedProduct.vehicleModelText ?? '',
         });
         setShowDetailModal(false);
         setEditImageIndex(0);
@@ -287,6 +326,15 @@ const ProductListTab = () => {
                 costPrice: Number(editFormData.costPrice) || 0,
                 price: Number(editFormData.price) || 0,
                 images: Array.isArray(editFormData.images) ? editFormData.images : [],
+                batteryType: editFormData.batteryType || null,
+                originCountry: (editFormData.originCountry || '').trim(),
+                dimensionLengthMm: parseOptNum(editFormData.dimensionLengthMm),
+                dimensionWidthMm: parseOptNum(editFormData.dimensionWidthMm),
+                dimensionHeightMm: parseOptNum(editFormData.dimensionHeightMm),
+                weightKg: parseOptNum(editFormData.weightKg),
+                voltageV: parseOptNum(editFormData.voltageV),
+                oilCapacityText: (editFormData.oilCapacityText || '').trim(),
+                vehicleModelText: (editFormData.vehicleModelText || '').trim(),
             };
             if (currentLocationId) payload.locationId = currentLocationId;
             await updateProduct(selectedProduct._id, payload);
@@ -601,6 +649,15 @@ const ProductListTab = () => {
                 costPrice: Number(createFormData.costPrice) || 0,
                 price: Number(createFormData.price) || 0,
                 images: Array.isArray(createFormData.images) ? createFormData.images : [],
+                batteryType: createFormData.batteryType || null,
+                originCountry: (createFormData.originCountry || '').trim(),
+                dimensionLengthMm: parseOptNum(createFormData.dimensionLengthMm),
+                dimensionWidthMm: parseOptNum(createFormData.dimensionWidthMm),
+                dimensionHeightMm: parseOptNum(createFormData.dimensionHeightMm),
+                weightKg: parseOptNum(createFormData.weightKg),
+                voltageV: parseOptNum(createFormData.voltageV),
+                oilCapacityText: (createFormData.oilCapacityText || '').trim(),
+                vehicleModelText: (createFormData.vehicleModelText || '').trim(),
             };
             delete payload.category;
             if (currentLocationId) payload.locationId = currentLocationId;
@@ -1138,6 +1195,48 @@ const ProductListTab = () => {
                                                 <span>{selectedProduct.warrantyText || '—'}</span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Kiểu ắc quy
+                                                </span>
+                                                <span>{labelBatteryType(selectedProduct.batteryType)}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Kích thước (mm)
+                                                </span>
+                                                <span>{formatDimensionsMm(selectedProduct)}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Trọng lượng
+                                                </span>
+                                                <span>{formatWeightKg(selectedProduct.weightKg)}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Điện áp
+                                                </span>
+                                                <span>{formatVoltageV(selectedProduct.voltageV)}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Xuất xứ
+                                                </span>
+                                                <span>{selectedProduct.originCountry?.trim() || '—'}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Dung tích nhớt
+                                                </span>
+                                                <span>{selectedProduct.oilCapacityText?.trim() || '—'}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    Đời xe
+                                                </span>
+                                                <span>{selectedProduct.vehicleModelText?.trim() || '—'}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Đang kinh doanh</span>
                                                 <span>{selectedProduct.isActive ? 'Có' : 'Không'}</span>
                                             </div>
@@ -1589,6 +1688,142 @@ const ProductListTab = () => {
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
+                                        <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>
+                                            Mô tả chi tiết sản phẩm
+                                        </h4>
+                                        <div className='space-y-3'>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Kiểu ắc quy</span>
+                                                </label>
+                                                <select
+                                                    className='select select-bordered select-sm w-full'
+                                                    value={editFormData.batteryType}
+                                                    onChange={(e) =>
+                                                        setEditFormData({ ...editFormData, batteryType: e.target.value })
+                                                    }
+                                                >
+                                                    <option value=''>— Chưa chọn —</option>
+                                                    <option value='dry'>Khô</option>
+                                                    <option value='wet'>Nước</option>
+                                                </select>
+                                            </div>
+                                            <div className='grid grid-cols-3 gap-2'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dài (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.dimensionLengthMm}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, dimensionLengthMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Rộng (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.dimensionWidthMm}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, dimensionWidthMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Cao (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.dimensionHeightMm}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, dimensionHeightMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Trọng lượng (kg)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.weightKg}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, weightKg: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Điện áp (V)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={editFormData.voltageV}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, voltageV: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                            <CountrySearchCombobox
+                                                value={editFormData.originCountry}
+                                                onChange={(name) => setEditFormData({ ...editFormData, originCountry: name })}
+                                            />
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dung tích nhớt</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        placeholder='VD: 4.3L 5W-30'
+                                                        value={editFormData.oilCapacityText}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, oilCapacityText: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Đời xe</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        placeholder='VD: 2015–2019'
+                                                        value={editFormData.vehicleModelText}
+                                                        onChange={(e) =>
+                                                            setEditFormData({ ...editFormData, vehicleModelText: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className='pt-4 border-t border-base-200'>
                                         <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Giá & Tồn kho</h4>
                                         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                                             <div>
@@ -1987,6 +2222,142 @@ const ProductListTab = () => {
                                                         value={createFormData.capacity}
                                                         onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
                                                         placeholder='VD: 100'
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section className='pt-4 border-t border-base-200'>
+                                        <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>
+                                            Mô tả chi tiết sản phẩm
+                                        </h4>
+                                        <div className='space-y-3'>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Kiểu ắc quy</span>
+                                                </label>
+                                                <select
+                                                    className='select select-bordered select-sm w-full'
+                                                    value={createFormData.batteryType}
+                                                    onChange={(e) =>
+                                                        setCreateFormData({ ...createFormData, batteryType: e.target.value })
+                                                    }
+                                                >
+                                                    <option value=''>— Chưa chọn —</option>
+                                                    <option value='dry'>Khô</option>
+                                                    <option value='wet'>Nước</option>
+                                                </select>
+                                            </div>
+                                            <div className='grid grid-cols-3 gap-2'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dài (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.dimensionLengthMm}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, dimensionLengthMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Rộng (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.dimensionWidthMm}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, dimensionWidthMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Cao (mm)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.dimensionHeightMm}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, dimensionHeightMm: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Trọng lượng (kg)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.weightKg}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, weightKg: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Điện áp (V)</span>
+                                                    </label>
+                                                    <input
+                                                        type='number'
+                                                        min={0}
+                                                        step='any'
+                                                        className='input input-bordered input-sm w-full'
+                                                        value={createFormData.voltageV}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, voltageV: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                            <CountrySearchCombobox
+                                                value={createFormData.originCountry}
+                                                onChange={(name) => setCreateFormData({ ...createFormData, originCountry: name })}
+                                            />
+                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1'>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Dung tích nhớt</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        placeholder='VD: 4.3L 5W-30'
+                                                        value={createFormData.oilCapacityText}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, oilCapacityText: e.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className='label py-0'>
+                                                        <span className='label-text text-xs font-medium'>Đời xe</span>
+                                                    </label>
+                                                    <input
+                                                        type='text'
+                                                        className='input input-bordered input-sm w-full'
+                                                        placeholder='VD: 2015–2019'
+                                                        value={createFormData.vehicleModelText}
+                                                        onChange={(e) =>
+                                                            setCreateFormData({ ...createFormData, vehicleModelText: e.target.value })
+                                                        }
                                                     />
                                                 </div>
                                             </div>

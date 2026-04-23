@@ -188,7 +188,9 @@ describe('employeeController', () => {
             const res = createMockRes();
 
             employeeModelMock.findOne.mockResolvedValue(null); // Không trùng mã
-            userModelMock.findById.mockResolvedValue(null); // Không tìm thấy user
+            userModelMock.findById.mockReturnValue({
+                populate: vi.fn().mockResolvedValue(null),
+            });
 
             await createEmployee(req, res);
             expect(res.status).toHaveBeenCalledWith(404);
@@ -206,7 +208,9 @@ describe('employeeController', () => {
 
             await createEmployee(req, res);
             expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({ message: 'Chỉ tạo hồ sơ nhân viên cho tài khoản nhân viên' });
+            expect(res.json).toHaveBeenCalledWith({
+                message: 'Không được tạo hồ sơ nhân viên cho tài khoản quản trị viên',
+            });
         });
 
         it('UTCID06: Trả về 400 nếu User đang có hồ sơ nhân viên Active', async () => {

@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-
+import { userHasAnyOfRoles } from '../utils/roleEquivalence.js';
 
 export const hasRole = (...roleNames) => {
     return async (req, res, next) => {
@@ -15,7 +15,7 @@ export const hasRole = (...roleNames) => {
             }
 
             const userRoleNames = user.roles.map((role) => role.name);
-            const hasRequiredRole = roleNames.some((roleName) => userRoleNames.includes(roleName));
+            const hasRequiredRole = userHasAnyOfRoles(userRoleNames, roleNames);
 
             if (!hasRequiredRole) {
                 console.log(`[RBAC] User ${user.username} (${user._id}) has roles: [${userRoleNames.join(', ')}], but required: [${roleNames.join(', ')}]`);
@@ -37,5 +37,5 @@ export const hasRole = (...roleNames) => {
 export const checkRole = (user, ...roleNames) => {
     if (!user || !user.roles) return false;
     const userRoleNames = user.roles.map((role) => role.name);
-    return roleNames.some((roleName) => userRoleNames.includes(roleName));
+    return userHasAnyOfRoles(userRoleNames, roleNames);
 };

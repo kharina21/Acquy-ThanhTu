@@ -1,11 +1,13 @@
 import User from '../models/User.js';
 import Employee from '../models/Employee.js';
+import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
 
 /** Role có phạm vi chi nhánh theo bản ghi Employee (không phải admin toàn hệ thống). */
 const BRANCH_SCOPED_ROLE_NAMES = [
     'manager',
     'Quản lý chi nhánh',
     'warehouse_manager',
+    'Quản lý kho',
     'seller',
     'staff',
     'Nhân viên bán hàng',
@@ -22,7 +24,7 @@ export const getManagerAllowedLocationIds = async (userId) => {
     const roleNames = user?.roles?.map((r) => r.name) || [];
     if (roleNames.includes('admin')) return null;
 
-    const needsEmployeeScope = BRANCH_SCOPED_ROLE_NAMES.some((r) => roleNames.includes(r));
+    const needsEmployeeScope = BRANCH_SCOPED_ROLE_NAMES.some((r) => userHasEquivalentRole(roleNames, r));
     if (!needsEmployeeScope) return [];
 
     const emp = await Employee.findOne({ user: userId, isDeleted: { $ne: true } }).lean();

@@ -6,6 +6,10 @@ import { getUsers, updateUser, resetUserPassword } from '@/services/userService'
 import { toast } from 'sonner';
 import { Plus, ChevronRight, ChevronLeft, ChevronDown, User, UserCircle, Pencil, Trash2, Eye, EyeOff } from 'lucide-react';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { rolesMeetsAny } from '@/utils/roleMatch';
+
+/** Tài khoản được chọn khi tạo hồ sơ nhân viên (đồng bộ backend kind=staff & createEmployee). */
+const EMPLOYEE_ACCOUNT_ROLES = ['seller', 'manager', 'warehouse_manager'];
 
 const StaffManagementPage = () => {
 
@@ -60,10 +64,9 @@ const StaffManagementPage = () => {
 
     const fetchStaffUsers = async () => {
         try {
-            // Lấy tất cả người dùng trừ "Người dùng thường" và "admin"
             const res = await getUsers({
                 limit: 1000,
-                excludeRoles: ['Người dùng thường', 'admin'],
+                kind: 'staff',
             });
             if (res.success) {
                 setStaffUsers(res.data.users || []);
@@ -184,16 +187,12 @@ const StaffManagementPage = () => {
         setPagination((prev) => ({ ...prev, page: newPage }));
     };
 
-    // Những tài khoản nhân viên chưa có hồ sơ Employee
-    // Lấy tất cả tài khoản nhân viên trừ các role "user" và "admin", và chưa có hồ sơ Employee
-    const availableStaffUsers = staffUsers.filter(
-        (u) =>
-            !employees.some((emp) => emp.user && emp.user._id === u._id) &&
-            Array.isArray(u.roles) &&
-            u.roles.every(
-                (r) => r.name !== 'Người dùng thường' && r.name !== 'admin'
-            )
-    );
+    // Tài khoản seller / quản lý chi nhánh / quản lý kho chưa có hồ sơ Employee
+    const availableStaffUsers = staffUsers.filter((u) => {
+        if (employees.some((emp) => emp.user && emp.user._id === u._id)) return false;
+        const names = Array.isArray(u.roles) ? u.roles.map((r) => r.name) : [];
+        return names.length > 0 && rolesMeetsAny(names, ...EMPLOYEE_ACCOUNT_ROLES);
+    });
 
     const toggleLocationSelection = (locationId) => {
         setFormData((prev) => {

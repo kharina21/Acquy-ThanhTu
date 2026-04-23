@@ -11,6 +11,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import ProductFilter from '@/components/ProductFilter';
+import { labelBatteryType, formatDimensionsMm, formatWeightKg, formatVoltageV } from '@/utils/productDetailDisplay';
 
 const ProductDetailPage = () => {
     const { id } = useParams();
@@ -233,10 +234,6 @@ const ProductDetailPage = () => {
                                                 <span className="font-medium text-gray-900">{product.sku || 'N/A'}</span>
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="text-gray-500">Series</span>
-                                                <span className="font-medium text-gray-900">{product.series || 'N/A'}</span>
-                                            </div>
-                                            <div className="flex flex-col">
                                                 <span className="text-gray-500">Dung lượng (Ah)</span>
                                                 <span className="font-medium text-gray-900">{product.capacity || 'N/A'}</span>
                                             </div>
@@ -255,6 +252,40 @@ const ProductDetailPage = () => {
                                             <div className="flex flex-col">
                                                 <span className="text-gray-500">Bảo hành</span>
                                                 <span className="font-medium text-gray-900">{product.warrantyText || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Kiểu ắc quy</span>
+                                                <span className="font-medium text-gray-900">{labelBatteryType(product.batteryType, 'N/A')}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Kích thước (Dài × Rộng × Cao)</span>
+                                                <span className="font-medium text-gray-900">{formatDimensionsMm(product, 'N/A')}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Trọng lượng</span>
+                                                <span className="font-medium text-gray-900">{formatWeightKg(product.weightKg, 'N/A')}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Điện áp</span>
+                                                <span className="font-medium text-gray-900">{formatVoltageV(product.voltageV, 'N/A')}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Xuất xứ</span>
+                                                <span className="font-medium text-gray-900">
+                                                    {product.originCountry?.trim() || 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Dung tích nhớt</span>
+                                                <span className="font-medium text-gray-900">
+                                                    {product.oilCapacityText?.trim() || 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500">Đời xe</span>
+                                                <span className="font-medium text-gray-900">
+                                                    {product.vehicleModelText?.trim() || 'N/A'}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
