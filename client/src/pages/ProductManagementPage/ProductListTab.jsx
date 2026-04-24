@@ -40,7 +40,8 @@ const emptyProductForm = () => ({
     price: 0,
     images: [],
     isActive: true,
-    warrantyText: '',
+    warrantyYears: 0,
+    warrantyMonths: 0,
     notes: '',
     batteryType: '',
     originCountry: '',
@@ -284,7 +285,8 @@ const ProductListTab = () => {
             price: selectedProduct.price ?? 0,
             images: selectedProduct.images?.length ? selectedProduct.images : selectedProduct.image ? [selectedProduct.image] : [],
             isActive: selectedProduct.isActive ?? true,
-            warrantyText: selectedProduct.warrantyText ?? '',
+            warrantyYears: selectedProduct.warrantyYears ?? 0,
+            warrantyMonths: selectedProduct.warrantyMonths ?? 0,
             notes: selectedProduct.notes ?? '',
             batteryType: selectedProduct.batteryType ?? '',
             originCountry: selectedProduct.originCountry ?? '',
@@ -1869,15 +1871,35 @@ const ProductListTab = () => {
                                         <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Bảo hành</h4>
                                         <div>
                                             <label className='label py-0'>
-                                                <span className='label-text text-xs font-medium'>Bảo hành</span>
+                                                <span className='label-text text-xs font-medium'>Thời gian bảo hành</span>
                                             </label>
-                                            <input
-                                                type='text'
-                                                className='input input-bordered input-sm w-full'
-                                                placeholder='VD: 12 tháng, 1 năm, 15 ngày'
-                                                value={editFormData.warrantyText}
-                                                onChange={(e) => setEditFormData({ ...editFormData, warrantyText: e.target.value })}
-                                            />
+                                            <div className='flex items-center gap-2 mt-1'>
+                                                <input
+                                                    type='number'
+                                                    min='0'
+                                                    max='99'
+                                                    className='input input-bordered input-sm w-20 text-center'
+                                                    placeholder='0'
+                                                    value={editFormData.warrantyYears}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, warrantyYears: Number(e.target.value) })}
+                                                />
+                                                <span className='text-sm'>Năm</span>
+                                                <input
+                                                    type='number'
+                                                    min='0'
+                                                    max='11'
+                                                    className='input input-bordered input-sm w-20 text-center'
+                                                    placeholder='0'
+                                                    value={editFormData.warrantyMonths}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, warrantyMonths: Number(e.target.value) })}
+                                                />
+                                                <span className='text-sm'>Tháng</span>
+                                            </div>
+                                            {(editFormData.warrantyYears > 0 || editFormData.warrantyMonths > 0) && (
+                                                <p className='text-xs text-primary mt-1 font-medium'>
+                                                    = {(editFormData.warrantyYears || 0) * 12 + (editFormData.warrantyMonths || 0)} tháng
+                                                </p>
+                                            )}
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
@@ -2402,15 +2424,35 @@ const ProductListTab = () => {
                                         <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Bảo hành</h4>
                                         <div>
                                             <label className='label py-0'>
-                                                <span className='label-text text-xs font-medium'>Bảo hành</span>
+                                                <span className='label-text text-xs font-medium'>Thời gian bảo hành</span>
                                             </label>
-                                            <input
-                                                type='text'
-                                                className='input input-bordered input-sm w-full'
-                                                placeholder='VD: 12 tháng, 1 năm, 15 ngày'
-                                                value={createFormData.warrantyText}
-                                                onChange={(e) => setCreateFormData({ ...createFormData, warrantyText: e.target.value })}
-                                            />
+                                            <div className='flex items-center gap-2 mt-1'>
+                                                <input
+                                                    type='number'
+                                                    min='0'
+                                                    max='99'
+                                                    className='input input-bordered input-sm w-20 text-center'
+                                                    placeholder='0'
+                                                    value={createFormData.warrantyYears}
+                                                    onChange={(e) => setCreateFormData({ ...createFormData, warrantyYears: Number(e.target.value) })}
+                                                />
+                                                <span className='text-sm'>Năm</span>
+                                                <input
+                                                    type='number'
+                                                    min='0'
+                                                    max='11'
+                                                    className='input input-bordered input-sm w-20 text-center'
+                                                    placeholder='0'
+                                                    value={createFormData.warrantyMonths}
+                                                    onChange={(e) => setCreateFormData({ ...createFormData, warrantyMonths: Number(e.target.value) })}
+                                                />
+                                                <span className='text-sm'>Tháng</span>
+                                            </div>
+                                            {(createFormData.warrantyYears > 0 || createFormData.warrantyMonths > 0) && (
+                                                <p className='text-xs text-primary mt-1 font-medium'>
+                                                    = {(createFormData.warrantyYears || 0) * 12 + (createFormData.warrantyMonths || 0)} tháng
+                                                </p>
+                                            )}
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>

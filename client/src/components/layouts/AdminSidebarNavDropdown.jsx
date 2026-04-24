@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { cn } from '@/lib/utils';
 import { ChevronDown } from 'lucide-react';
@@ -16,18 +16,36 @@ export default function AdminSidebarNavDropdown({ icon: Icon, label, ariaLabel, 
         subItems.some((sub) => pathname === sub.to || pathname.startsWith(sub.to + '/')) ||
         activePaths.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
+    // Auto-open dropdown when a sub-item is active
+    useEffect(() => {
+        if (isAnyActive) {
+            setIsOpen(true);
+        }
+    }, [isAnyActive]);
+
     const subMenuContent = (
         <ul className='min-w-[200px] py-1 rounded-lg bg-base-100 text-base-content shadow-lg border border-base-300'>
             {subItems.map((sub) => {
                 const isActive = pathname === sub.to;
                 return (
                     <li key={sub.id}>
-                        <Link
-                            to={sub.to}
-                            className={cn('block px-4 py-2.5 text-sm transition-colors', 'hover:bg-base-200', isActive && 'bg-primary/10 text-primary font-medium')}
-                        >
-                            {sub.label}
-                        </Link>
+                        {sub.external ? (
+                            <a
+                                href={sub.to}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className={cn('block px-4 py-2.5 text-sm transition-colors', 'hover:bg-base-200')}
+                            >
+                                {sub.label}
+                            </a>
+                        ) : (
+                            <Link
+                                to={sub.to}
+                                className={cn('block px-4 py-2.5 text-sm transition-colors', 'hover:bg-base-200', isActive && 'bg-primary/10 text-primary font-medium')}
+                            >
+                                {sub.label}
+                            </Link>
+                        )}
                     </li>
                 );
             })}
@@ -88,13 +106,24 @@ export default function AdminSidebarNavDropdown({ icon: Icon, label, ariaLabel, 
                         {subItems.map((sub) => {
                             const isActive = pathname === sub.to;
                             return (
-                    <li key={sub.id}>
-                        <Link
-                            to={sub.to}
-                            className={cn('block px-3 py-2 rounded-lg text-sm transition-colors', 'hover:bg-white/10', isActive && 'bg-white/15 font-medium')}
-                                    >
-                                        {sub.label}
-                                    </Link>
+                                <li key={sub.id}>
+                                    {sub.external ? (
+                                        <a
+                                            href={sub.to}
+                                            target='_blank'
+                                            rel='noopener noreferrer'
+                                            className={cn('block px-3 py-2 rounded-lg text-sm transition-colors', 'hover:bg-white/10')}
+                                        >
+                                            {sub.label}
+                                        </a>
+                                    ) : (
+                                        <Link
+                                            to={sub.to}
+                                            className={cn('block px-3 py-2 rounded-lg text-sm transition-colors', 'hover:bg-white/10', isActive && 'bg-white/15 font-medium')}
+                                        >
+                                            {sub.label}
+                                        </Link>
+                                    )}
                                 </li>
                             );
                         })}
