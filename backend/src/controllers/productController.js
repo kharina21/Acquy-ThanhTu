@@ -7,6 +7,7 @@ import Brand from '../models/Brand.js';
 import UsageDevice from '../models/UsageDevice.js';
 import { parseExcelBuffer } from '../utils/parseExcelProduct.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
+import { getMaxImportUnitPriceByProductIds } from '../utils/maxImportUnitPriceFromStockIns.js';
 
 async function findCategoryByName(categoryName) {
     const name = String(categoryName || '').trim();
@@ -24,26 +25,6 @@ async function findBrandByName(brandName) {
     return await Brand.findOne({
         name: { $regex: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
     });
-}
-
-/**
- * Với từng sản phẩm: đơn giá nhập tối đa trên các dòng hàng
- * của phiếu nhập hàng trạng thái "confirmed" (cùng tất cả chi nhánh).
- */
-async function getMaxImportUnitPriceByProductIds(productObjectIds) {
-    if (!productObjectIds?.length) return {};
-    const rows = await StockIn.aggregate([
-        { $match: { status: 'confirmed' } },
-        { $unwind: '$items' },
-        { $match: { 'items.product': { $in: productObjectIds } } },
-        { $group: { _id: '$items.product', maxUnit: { $max: '$items.unitPrice' } } },
-    ]);
-    return Object.fromEntries(
-        rows.map((r) => {
-            const v = r.maxUnit;
-            return [r._id.toString(), v != null && Number.isFinite(Number(v)) ? Math.round(Number(v)) : null];
-        }),
-    );
 }
 
 async function findUsageDeviceByName(usageName) {

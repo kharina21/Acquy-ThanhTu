@@ -88,6 +88,15 @@ const orderSchema = new mongoose.Schema(
         warehousePackedLineIndexes: { type: [Number], default: [] },
         /** Nhân viên kho xác nhận đã gom/kiểm hàng sẵn sàng trước bước quét từng dòng (bắt buộc theo nghiệp vụ) */
         warehouseItemsPreparedAt: { type: Date, default: null },
+        /**
+         * Nhập chứng từ giấy cũ vào hệ thống (số hóa trước khi dùng phần mềm).
+         * Không giữ chỗ tồn / không tạo bảo hành / không cộng tích lũy — chỉ lưu hồ sơ.
+         */
+        isLegacyImport: { type: Boolean, default: false },
+        /** Ngày trên chứng từ thực tế (khi isLegacyImport). null = dùng createdAt cho hiển thị */
+        documentDate: { type: Date, default: null },
+        /** Số hóa đơn / mã trên giấy (tùy chọn) */
+        legacyPaperCode: { type: String, default: '', trim: true, maxlength: 64 },
     },
     { timestamps: true }
 );
@@ -99,6 +108,7 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ paymentStatus: 1 });
 orderSchema.index({ location: 1 });
 orderSchema.index({ isPreOrder: 1 });
+orderSchema.index({ isLegacyImport: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

@@ -117,6 +117,10 @@ export async function printVatInvoiceForOrderId(orderId) {
     const locPhone = escapeHtml(String(loc.phone || '').trim() || '—');
     const taxCodeHtml = taxCodePrint ? escapeHtml(taxCodePrint) : '—';
     const now = escapeHtml(new Date().toLocaleString('vi-VN'));
+    const docMoment = order.documentDate || order.createdAt;
+    const invoiceDocDate = docMoment
+        ? escapeHtml(new Date(docMoment).toLocaleDateString('vi-VN'))
+        : '—';
 
     const cp = order.customerProfile;
     let customerLine = 'Khách lẻ / vãng lai';
@@ -174,7 +178,10 @@ export async function printVatInvoiceForOrderId(orderId) {
         <strong>Mã số thuế (MST):</strong> ${taxCodeHtml}
       </td>
       <td class="l" style="width:50%"><strong>Số chứng từ / mã đơn:</strong> ${escapeHtml(orderCode)}<br/>
-        <strong>Loại đơn:</strong> ${escapeHtml(order.channel === 'online' ? 'Bán online' : 'Bán tại quầy')}<br/>
+        <strong>Loại đơn:</strong> ${escapeHtml(order.channel === 'online' ? 'Bán online' : 'Bán tại quầy')}${
+            order.isLegacyImport ? escapeHtml(' · Nhập chứng từ cũ') : ''
+        }<br/>
+        <strong>Ngày trên chứng từ / giao dịch:</strong> ${invoiceDocDate}<br/>
         <strong>Ngày in:</strong> ${now}<br/>
         <strong>Tên người mua:</strong> ${customerLine}<br/>
         <strong>Nhân viên bán:</strong> ${sellerLine}<br/>

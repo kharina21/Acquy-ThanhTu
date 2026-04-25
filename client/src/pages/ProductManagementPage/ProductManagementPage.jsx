@@ -13,8 +13,8 @@ const ProductManagementPage = ({ initialTab = 'list' } = {}) => {
     const ActiveComponent = TABS.find((t) => t.id === activeTab)?.component || ProductListTab;
 
     return (
-        <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
-            <div className="container mx-auto max-w-7xl">
+        <div className="flex-1 min-w-0 overflow-y-auto bg-base-200 px-3 py-4 sm:px-4 md:py-5">
+            <div className="w-full min-w-0 max-w-none">
                 <h1 className="text-2xl font-bold text-base-content tracking-tight mb-6">Quản lý sản phẩm</h1>
 
                 <div

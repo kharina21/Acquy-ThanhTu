@@ -853,6 +853,7 @@ export const getWarrantyStats = async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 export const createWarrantiesForOrder = async (order, orderItems, customerProfile) => {
     if (!order || !orderItems?.length || !customerProfile) return;
+    if (order.isLegacyImport === true) return;
 
     const purchaseDate = order.createdAt || new Date();
     const warrantyRecords = [];

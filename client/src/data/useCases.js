@@ -138,4 +138,10 @@ export const USE_CASES = [
         description: 'Nhập kho: sinh seri số tự động theo số lượng (mỗi cái một mã), không trùng seri phiếu khác và không trùng mã SKU sản phẩm',
         mark: 'warehouse',
     },
+    {
+        id: 129,
+        module: 'Orders',
+        useCase: 'Import legacy paper invoice',
+        description: 'Nhập hóa đơn/chứng từ giấy cũ vào hệ thống (ngày trên giấy, không trừ tồn / không bảo hành / không tích lũy) — POS',
+    },
 ];

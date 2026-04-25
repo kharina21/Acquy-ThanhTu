@@ -172,6 +172,7 @@ export default function CreateInvoicePage() {
     const { hasAnyRole } = useUserRole();
     const { currentLocationId: storeLocationId, setCurrentLocationId } = useBranchStore();
     const canSelectSeller = hasAnyRole('admin', 'manager');
+    const canLegacyImport = hasAnyRole('admin', 'manager', 'Quản lý chi nhánh');
     const searchInputRef = useRef(null);
 
     const [tabs, setTabs] = useState([{ id: 1, type: TAB_TYPES.INVOICE, label: 'Hóa đơn 1', items: [] }]);
@@ -217,6 +218,10 @@ export default function CreateInvoicePage() {
     const payPollPaidToastRef = useRef(false);
     const [invoiceVatPercent, setInvoiceVatPercent] = useState(10);
     const [invoiceTaxCode, setInvoiceTaxCode] = useState('');
+    /** Ghi nhận hóa đơn giấy cũ (admin/quản lý) — có ngày chứng từ, không tác động tồn kho */
+    const [legacyImport, setLegacyImport] = useState(false);
+    const [documentDate, setDocumentDate] = useState('');
+    const [legacyPaperCode, setLegacyPaperCode] = useState('');
 
     const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
     const items = activeTab?.items || [];
@@ -329,6 +334,12 @@ export default function CreateInvoicePage() {
             setCurrentLocationId(form.locationId);
         }
     }, [form.locationId, storeLocationId, setCurrentLocationId]);
+
+    useEffect(() => {
+        if (legacyImport) {
+            setForm((f) => ({ ...f, paymentMethod: 'cash' }));
+        }
+    }, [legacyImport]);
 
     const searchProducts = useCallback(
         async (q) => {
@@ -709,10 +720,12 @@ export default function CreateInvoicePage() {
         let printItems = items;
         let vatPct = invoiceVatPercent;
         let taxCodePrint = invoiceTaxCode;
+        let documentDateForPrint = null;
         try {
             const [orderRes, stRes] = await Promise.all([getOrderById(posPrintOrderId), getStoreSettings()]);
             const ord = orderRes?.data?.order ?? orderRes?.order;
             if (ord) {
+                if (ord.documentDate) documentDateForPrint = ord.documentDate;
                 if (ord.code != null) orderCode = String(ord.code);
                 if (ord.totalAmount != null) orderTotal = ord.totalAmount;
                 if (ord.discount != null) orderDiscount = Number(ord.discount);
@@ -802,6 +815,9 @@ export default function CreateInvoicePage() {
         const locPhone = escapeHtml((currentLocation?.phone || '').trim() || '—');
         const taxCodeHtml = taxCodePrint ? escapeHtml(taxCodePrint) : '—';
         const now = escapeHtml(new Date().toLocaleString('vi-VN'));
+        const docPrintLine = documentDateForPrint
+            ? escapeHtml(new Date(documentDateForPrint).toLocaleDateString('vi-VN'))
+            : '';
         const customerLine = selectedCustomer
             ? `${escapeHtml(selectedCustomer.name || '')}${
                   selectedCustomer.phone ? ` — ${escapeHtml(selectedCustomer.phone)}` : ''
@@ -848,6 +864,7 @@ export default function CreateInvoicePage() {
       <td class="l" style="width:50%"><strong>Ký hiệu mẫu / Số HĐ (hệ thống):</strong> ${escapeHtml(
           orderCode,
       )}<br/>
+        ${docPrintLine ? `<strong>Ngày trên chứng từ:</strong> ${docPrintLine}<br/>` : ''}
         <strong>Ngày in:</strong> ${now}<br/>
         <strong>Tên người mua:</strong> ${customerLine}${
             bankLine ? `<br/><strong>TK/CK thanh toán:</strong> ${bankLine}` : ''
@@ -946,11 +963,21 @@ export default function CreateInvoicePage() {
             toast.error('Vui lòng chọn người bán hàng (quản trị viên hoặc nhân viên bán hàng).');
             return;
         }
+        if (legacyImport) {
+            if (!documentDate?.trim()) {
+                toast.error('Chọn ngày trên chứng từ cũ.');
+                return;
+            }
+            if (activeTab?.type === TAB_TYPES.ORDER) {
+                toast.error('Chứng từ cũ chỉ dùng trên tab Hóa đơn, không dùng cho Đặt trước.');
+                return;
+            }
+        }
         const insufficientStock = items.filter((i) => {
             const stock = stocksByProduct[i.productId] ?? 0;
             return (Number(i.quantity) || 0) > stock;
         });
-        if (insufficientStock.length > 0) {
+        if (!legacyImport && insufficientStock.length > 0) {
             const names = insufficientStock.map((i) => i.name).join(', ');
             toast.error(`Sản phẩm không đủ tồn kho: ${names}`);
             return;
@@ -963,8 +990,9 @@ export default function CreateInvoicePage() {
             toast.error('Nhấn «Hoàn thành hóa đơn» cho đơn tiền mặt vừa tạo (tab này) trước khi bán tiếp.');
             return;
         }
-        const method = form.paymentMethod === 'transfer' ? 'transfer' : 'cash';
+        const method = legacyImport ? 'cash' : form.paymentMethod === 'transfer' ? 'transfer' : 'cash';
         if (
+            !legacyImport &&
             method === 'transfer' &&
             transferSession &&
             transferSession.paymentStatus !== 'paid'
@@ -972,7 +1000,7 @@ export default function CreateInvoicePage() {
             toast.error('Đang có đơn chuyển khoản chưa hoàn tất. Hủy hoặc xác nhận thanh toán đơn đó trước.');
             return;
         }
-        if (method === 'transfer' && bankAccounts.length === 0) {
+        if (!legacyImport && method === 'transfer' && bankAccounts.length === 0) {
             toast.error('Hãy thêm tài khoản ngân hàng để nhận chuyển khoản. Vào Hồ sơ cửa hàng → Tài khoản ngân hàng.');
             return;
         }
@@ -980,7 +1008,7 @@ export default function CreateInvoicePage() {
             method === 'transfer'
                 ? String(selectedBankAccountId || bankAccounts[0]?._id || '')
                 : '';
-        if (method === 'transfer' && !bankAccountIdForQr) {
+        if (!legacyImport && method === 'transfer' && !bankAccountIdForQr) {
             toast.error('Vui lòng chọn tài khoản nhận chuyển khoản.');
             return;
         }
@@ -995,6 +1023,13 @@ export default function CreateInvoicePage() {
                 isPreOrder: activeTab?.type === TAB_TYPES.ORDER,
                 customerId: selectedCustomer?._id || undefined,
             };
+            if (legacyImport) {
+                payload.legacyImport = true;
+                const d = documentDate.trim();
+                payload.documentDate =
+                    d.length >= 10 ? new Date(`${d.slice(0, 10)}T12:00:00`).toISOString() : d;
+                if (legacyPaperCode.trim()) payload.legacyPaperCode = legacyPaperCode.trim();
+            }
             if (canSelectSeller && selectedSeller?._id && selectedSeller._id !== user?._id) {
                 payload.createdBy = selectedSeller._id;
             }
@@ -1055,7 +1090,14 @@ export default function CreateInvoicePage() {
                         orderSnapshot: { code: order.code, totalAmount: order.totalAmount },
                     });
                     await refreshStocks();
-                    toast.success('Đã tạo đơn tiền mặt. In hóa đơn hoặc bấm Hoàn thành khi xong.');
+                    if (legacyImport) {
+                        toast.success(res?.message || 'Đã ghi nhận chứng từ cũ.');
+                        setLegacyImport(false);
+                        setDocumentDate('');
+                        setLegacyPaperCode('');
+                    } else {
+                        toast.success('Đã tạo đơn tiền mặt. In hóa đơn hoặc bấm Hoàn thành khi xong.');
+                    }
                 }
             } else {
                 toast.error(res?.message || 'Thanh toán thất bại');
@@ -1711,20 +1753,68 @@ export default function CreateInvoicePage() {
                             </div>
                         </div>
 
+                        {canLegacyImport && activeTab?.type === TAB_TYPES.INVOICE && (
+                            <div className='rounded-lg border border-amber-400/70 bg-amber-50/95 dark:bg-amber-950/35 p-3 space-y-2'>
+                                <label className='flex items-start gap-2 cursor-pointer'>
+                                    <input
+                                        type='checkbox'
+                                        className='checkbox checkbox-sm checkbox-warning mt-0.5 shrink-0'
+                                        checked={legacyImport}
+                                        onChange={(e) => setLegacyImport(e.target.checked)}
+                                    />
+                                    <span className='text-sm'>
+                                        <span className='font-medium text-base-content'>Nhập chứng từ / hóa đơn giấy cũ</span>
+                                        <span className='block text-xs text-base-content/70 mt-0.5 leading-snug'>
+                                            Ghi đúng ngày trên giấy. Không trừ hay giữ tồn kho hiện tại, không tạo bảo hành, không cộng tích lũy — chỉ lưu hồ sơ số hóa.
+                                        </span>
+                                    </span>
+                                </label>
+                                {legacyImport && (
+                                    <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1'>
+                                        <div>
+                                            <label className='label py-0 text-xs'>Ngày trên chứng từ *</label>
+                                            <input
+                                                type='date'
+                                                className='input input-bordered input-sm w-full'
+                                                max={new Date().toISOString().slice(0, 10)}
+                                                value={documentDate}
+                                                onChange={(e) => setDocumentDate(e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className='label py-0 text-xs'>Số trên giấy (tuỳ chọn)</label>
+                                            <input
+                                                type='text'
+                                                className='input input-bordered input-sm w-full'
+                                                placeholder='VD: HD 0123/2024'
+                                                maxLength={64}
+                                                value={legacyPaperCode}
+                                                onChange={(e) => setLegacyPaperCode(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div>
                             <label className='label py-0 text-xs'>Hình thức thanh toán</label>
                             <div className='flex flex-wrap gap-2'>
                                 {PAYMENT_METHODS.map((pm) => (
                                     <label
                                         key={pm.value}
-                                        className={`label gap-2${lockPaymentUiForCurrentTransfer ? ' cursor-not-allowed opacity-60' : ' cursor-pointer'}`}
+                                        className={`label gap-2${
+                                            lockPaymentUiForCurrentTransfer || legacyImport
+                                                ? ' cursor-not-allowed opacity-60'
+                                                : ' cursor-pointer'
+                                        }`}
                                     >
                                         <input
                                             type='radio'
                                             name='payment'
                                             className='radio radio-primary radio-sm'
                                             checked={form.paymentMethod === pm.value}
-                                            disabled={lockPaymentUiForCurrentTransfer}
+                                            disabled={lockPaymentUiForCurrentTransfer || legacyImport}
                                             onChange={() => setForm((f) => ({ ...f, paymentMethod: pm.value }))}
                                         />
                                         <span className='label-text text-sm'>{pm.label}</span>

@@ -9,7 +9,12 @@ export default function AdminSidebarNavItem({ to, icon: Icon, label, ariaLabel, 
     const pathname = useLocation().pathname;
     const isActive =
         activePaths.length > 0
-            ? activePaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
+            ? activePaths.some((p) => {
+                  if (pathname === p) return true;
+                  // `/admin` là dashboard nhưng cũng là tiền tố của mọi route admin — không dùng prefix match
+                  if (p === '/admin') return false;
+                  return pathname.startsWith(`${p}/`);
+              })
             : pathname === to;
 
     return (

@@ -44,7 +44,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
-    const [filters, setFilters] = useState({ status: '', paymentStatus: '' });
+    const [filters, setFilters] = useState({ status: '', paymentStatus: '', legacy: '' });
     const [updatingId, setUpdatingId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
@@ -71,6 +71,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
             const params = { page: pagination.page, limit: pagination.limit, locationId: currentLocationId };
             if (filters.status) params.status = filters.status;
             if (filters.paymentStatus) params.paymentStatus = filters.paymentStatus;
+            if (filters.legacy === 'only') params.isLegacyImport = 'true';
+            if (filters.legacy === 'exclude') params.isLegacyImport = 'false';
             if (type === 'pre-orders') params.isPreOrder = true;
             if (type === 'invoices') params.isPreOrder = false;
             const res = await getMyOrders(params);
@@ -92,7 +94,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
 
     useEffect(() => {
         fetchOrders();
-    }, [pagination.page, filters.status, filters.paymentStatus, currentLocationId, type]);
+    }, [pagination.page, filters.status, filters.paymentStatus, filters.legacy, currentLocationId, type]);
 
     const handleUpdateStatus = async (orderId, field, value) => {
         setUpdatingId(orderId);
@@ -167,7 +169,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     <h1 className='text-2xl font-bold text-base-content'>{type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}</h1>
                     {type === 'invoices' && (
                         <p className='text-sm text-base-content/65 mt-1 max-w-3xl'>
-                            Đơn online: sau khi khách thanh toán, seller chuyển sang &quot;Đã xác nhận&quot; thì kho xuất hàng. Bán tại quầy: sau khi tạo hóa đơn (đã thanh toán hoặc sau khi xác nhận chuyển khoản), kho quét xuất tương tự — trừ tồn thực tế khi xác nhận xuất kho.
+                            Đơn online: sau khi khách thanh toán, seller chuyển sang &quot;Đã xác nhận&quot; thì kho xuất hàng. Bán tại quầy: sau khi tạo hóa đơn (đã thanh toán hoặc sau khi xác nhận chuyển khoản), kho quét xuất tương tự — trừ tồn thực tế khi xác nhận xuất kho.{' '}
+                            <strong>Chứng từ cũ</strong> nhập tại POS (Bán hàng): có ngày trên giấy, không ảnh hưởng tồn kho hiện tại.
                         </p>
                     )}
                 </div>
@@ -221,6 +224,17 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                             </option>
                         ))}
                     </select>
+                    {type === 'invoices' && (
+                        <select
+                            className='select select-bordered select-sm w-44'
+                            value={filters.legacy}
+                            onChange={(e) => setFilters((f) => ({ ...f, legacy: e.target.value }))}
+                        >
+                            <option value=''>Mọi hóa đơn</option>
+                            <option value='only'>Chỉ chứng từ cũ</option>
+                            <option value='exclude'>Loại trừ chứng từ cũ</option>
+                        </select>
+                    )}
                 </div>
 
                 <div className='bg-base-100 rounded-lg shadow-lg'>
@@ -245,7 +259,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                             <th className='font-medium text-neutral text-xs py-3'>Tổng tiền</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Trạng thái</th>
                                             <th className='font-medium text-neutral text-xs py-3'>Thanh toán</th>
-                                            <th className='font-medium text-neutral text-xs py-3'>Ngày tạo</th>
+                                            <th className='font-medium text-neutral text-xs py-3'>Ngày (CT / tạo)</th>
                                         </tr>
                                     </thead>
                                     <tbody className='text-xs'>
@@ -263,6 +277,9 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                         <td className='py-3'>
                                                             <span className='font-mono font-medium'>{order.code}</span>
                                                             {order.isPreOrder && <span className='ml-1 badge badge-sm badge-ghost'>Đặt trước</span>}
+                                                            {order.isLegacyImport && (
+                                                                <span className='ml-1 badge badge-sm badge-warning whitespace-nowrap'>Chứng từ cũ</span>
+                                                            )}
                                                         </td>
                                                         <td className='py-3'>
                                                             <span className='badge badge-sm badge-ghost whitespace-nowrap'>
@@ -311,7 +328,20 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                             </select>
                                                         </td>
                                                         <td className='text-base-content/70 py-3'>
-                                                            {order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : '—'}
+                                                            {order.documentDate || order.createdAt ? (
+                                                                <>
+                                                                    <span>
+                                                                        {new Date(order.documentDate || order.createdAt).toLocaleString('vi-VN')}
+                                                                    </span>
+                                                                    {order.isLegacyImport && order.documentDate && order.createdAt && (
+                                                                        <span className='block text-[10px] text-base-content/50 mt-0.5'>
+                                                                            Nhập máy: {new Date(order.createdAt).toLocaleString('vi-VN')}
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                '—'
+                                                            )}
                                                         </td>
                                                     </tr>
                                                     {isExpanded && (
@@ -342,6 +372,12 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                         {order.shippingPhone && (
                                                                             <p>
                                                                                 <span className='font-medium text-base-content/70'>SĐT nhận hàng:</span> {order.shippingPhone}
+                                                                            </p>
+                                                                        )}
+                                                                        {order.isLegacyImport && order.legacyPaperCode && (
+                                                                            <p>
+                                                                                <span className='font-medium text-base-content/70'>Số trên giấy:</span>{' '}
+                                                                                {order.legacyPaperCode}
                                                                             </p>
                                                                         )}
                                                                         {order.note && (

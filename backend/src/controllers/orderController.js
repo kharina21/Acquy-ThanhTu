@@ -105,6 +105,9 @@ const generateOrderCode = async () => {
  * Xóa phiếu xuất gắn đơn (nếu có) để báo cáo NXT không lệch với tồn đã hoàn.
  */
 async function restoreInventoryOnOrderCancel(order) {
+    if (order.isLegacyImport === true) {
+        return;
+    }
     const locationId = order.location;
     await StockOut.deleteMany({ order: order._id });
     if (
@@ -538,7 +541,9 @@ const getOrCreateCustomerFromUser = async (user) => {
 
 /**
  * POST /api/orders/from-items – Tạo đơn hàng từ danh sách sản phẩm (bán tại quầy).
- * Body: { items, locationId, paymentMethod, note?, isPreOrder?, customerId? }
+ * Body: { items, locationId, paymentMethod, note?, isPreOrder?, customerId?,
+ *   legacyImport?, documentDate?, legacyPaperCode? }
+ * legacyImport + documentDate (chỉ admin/manager/Quản lý CN): ghi nhận chứng từ giấy cũ — không trừ/giữ tồn, không bảo hành, không tích lũy.
  * customerId: Customer từ bảng khách hàng. Nếu không có thì dùng "Khách vãng lai".
  */
 export const createOrderFromItems = async (req, res) => {
@@ -562,12 +567,45 @@ export const createOrderFromItems = async (req, res) => {
         } = req.body || {};
         // createdBy (sellerId): Admin/Manager có thể chọn người bán khác
 
+        const legacyImport = req.body?.legacyImport === true || req.body?.legacyImport === 'true';
+        const documentDateRaw = req.body?.documentDate;
+        const legacyPaperCode = String(req.body?.legacyPaperCode || '')
+            .trim()
+            .slice(0, 64);
+
+        let documentDate = null;
+        if (legacyImport) {
+            const canLegacy = await isAdminOrManager(userId);
+            if (!canLegacy) {
+                return res.status(403).json({
+                    message: 'Chỉ quản lý / admin mới được nhập chứng từ hóa đơn cũ.',
+                });
+            }
+            if (!documentDateRaw) {
+                return res.status(400).json({
+                    message: 'Vui lòng nhập ngày trên chứng từ cũ (documentDate).',
+                });
+            }
+            documentDate = new Date(documentDateRaw);
+            if (Number.isNaN(documentDate.getTime())) {
+                return res.status(400).json({ message: 'Ngày chứng từ không hợp lệ.' });
+            }
+            if (documentDate.getTime() > Date.now()) {
+                return res.status(400).json({ message: 'Ngày chứng từ không được là thời điểm tương lai.' });
+            }
+        }
+
+        const effectivePreOrder = legacyImport ? false : !!isPreOrder;
+
         if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
             return res.status(400).json({ message: 'Vui lòng chọn chi nhánh/kho' });
         }
 
         const validMethods = ['vietqr', 'cash', 'transfer'];
-        const method = validMethods.includes(paymentMethod) ? paymentMethod : 'cash';
+        let method = validMethods.includes(paymentMethod) ? paymentMethod : 'cash';
+        if (legacyImport) {
+            method = 'cash';
+        }
 
         const location = await Location.findById(locationId);
         if (!location || !location.isActive) {
@@ -597,7 +635,7 @@ export const createOrderFromItems = async (req, res) => {
             const price = typeof product.price === 'number' ? product.price : 0;
             const stock = await getStockAtLocation(productId, locationId);
 
-            if (stock < qty) {
+            if (!legacyImport && stock < qty) {
                 return res.status(400).json({
                     message: `Sản phẩm "${product.name}" không đủ tồn (yêu cầu: ${qty}, tồn: ${stock})`,
                 });
@@ -673,15 +711,21 @@ export const createOrderFromItems = async (req, res) => {
 
         const code = await generateOrderCode();
 
-        const awaitingBankTransfer = !isPreOrder && (method === 'transfer' || method === 'vietqr');
+        const awaitingBankTransfer =
+            !legacyImport && !effectivePreOrder && (method === 'transfer' || method === 'vietqr');
         /** Bán tại quầy (không đặt trước): cùng luồng online — giữ chỗ tồn, kho xác nhận xuất. */
-        const inStoreStatusNonPre = isPreOrder
+        const inStoreStatusNonPre = effectivePreOrder
             ? 'pending'
             : awaitingBankTransfer
               ? 'pending'
               : 'confirmed';
-        const inStorePaymentNonPre = isPreOrder ? 'pending' : awaitingBankTransfer ? 'pending' : 'paid';
-        const inStorePaidAt = isPreOrder || awaitingBankTransfer ? null : new Date();
+        const inStorePaymentNonPre = effectivePreOrder ? 'pending' : awaitingBankTransfer ? 'pending' : 'paid';
+        const inStorePaidAt =
+            legacyImport && documentDate
+                ? documentDate
+                : effectivePreOrder || awaitingBankTransfer
+                  ? null
+                  : new Date();
 
         const orderPayload = {
             code,
@@ -693,14 +737,17 @@ export const createOrderFromItems = async (req, res) => {
             items: orderItems,
             totalAmount: finalTotal,
             discount,
-            status: isPreOrder ? 'pending' : inStoreStatusNonPre,
+            status: legacyImport ? 'completed' : effectivePreOrder ? 'pending' : inStoreStatusNonPre,
             paymentMethod: method,
-            paymentStatus: isPreOrder ? 'pending' : inStorePaymentNonPre,
+            paymentStatus: legacyImport ? 'paid' : effectivePreOrder ? 'pending' : inStorePaymentNonPre,
             paidAt: inStorePaidAt,
             shippingAddress: 'Tại quầy',
             note: String(note).trim(),
-            isPreOrder: !!isPreOrder,
-            warehouseReservationActive: !isPreOrder ? true : false,
+            isPreOrder: effectivePreOrder,
+            warehouseReservationActive: legacyImport ? false : !effectivePreOrder,
+            ...(legacyImport
+                ? { isLegacyImport: true, documentDate, legacyPaperCode }
+                : {}),
         };
 
         let order;
@@ -709,7 +756,7 @@ export const createOrderFromItems = async (req, res) => {
             await session.withTransaction(async () => {
                 const [created] = await Order.create([orderPayload], { session });
                 order = created;
-                if (!isPreOrder) {
+                if (!effectivePreOrder && !legacyImport) {
                     for (const item of orderItems) {
                         await ProductStock.findOneAndUpdate(
                             { product: item.product, location: locationId },
@@ -727,7 +774,7 @@ export const createOrderFromItems = async (req, res) => {
 
                     // ── Tạo bảo hành cho từng sản phẩm ──────────────────────
                     // Chỉ tạo khi: không phải đặt cọc (isPreOrder) VÀ đã thanh toán (không chờ CK)
-                    if (!isPreOrder && !awaitingBankTransfer) {
+                    if (!awaitingBankTransfer) {
                         // Resolve product info for warranty snapshot
                         const resolvedOrderItems = [];
                         for (const item of orderItems) {
@@ -767,7 +814,7 @@ export const createOrderFromItems = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'Tạo hóa đơn thành công',
+            message: legacyImport ? 'Đã ghi nhận chứng từ cũ (không ảnh hưởng tồn kho hiện tại).' : 'Tạo hóa đơn thành công',
             data: { order: populated },
         });
     } catch (error) {
@@ -792,7 +839,8 @@ export const getOrders = async (req, res) => {
 
         const user = await User.findById(userId).populate('roles', 'name').lean();
         const roleNames = user?.roles?.map((r) => r.name) || [];
-        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue } = req.query;
+        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue, isLegacyImport } =
+            req.query;
         const useWarehouseQueue = warehouseQueue === 'true' || warehouseQueue === '1';
         const canViewAll = roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
 
@@ -887,6 +935,11 @@ export const getOrders = async (req, res) => {
         }
         if (isPreOrder !== undefined && isPreOrder !== '') {
             filter.isPreOrder = isPreOrder === 'true' ? true : { $ne: true };
+        }
+        if (isLegacyImport === 'true') {
+            filter.isLegacyImport = true;
+        } else if (isLegacyImport === 'false') {
+            filter.isLegacyImport = { $ne: true };
         }
 
         const [orders, total] = await Promise.all([
@@ -1376,6 +1429,9 @@ async function findOrderByScanForWarehouse(userId, rawScan) {
 
 /** Kiểm tra đơn đủ điều kiện đóng gói / xuất kho (chưa kiểm tra đã quét đủ dòng). */
 function assertOrderReadyForWarehouseOperations(order) {
+    if (order.isLegacyImport === true) {
+        throw outboundHttpError(400, 'Đơn nhập từ chứng từ cũ — không qua xuất kho / giữ chỗ tồn.');
+    }
     if (order.status === 'cancelled') {
         throw outboundHttpError(400, 'Đơn đã hủy');
     }

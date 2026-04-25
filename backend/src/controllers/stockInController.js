@@ -4,6 +4,7 @@ import StockReturn from '../models/StockReturn.js';
 import ProductStock from '../models/ProductStock.js';
 import Product from '../models/Product.js';
 import { generateStockInCode } from '../utils/stockInCode.js';
+import { syncProductsCostPriceFromConfirmedStockIns } from '../utils/maxImportUnitPriceFromStockIns.js';
 
 /**
  * Mỗi dòng: hoặc không nhập seri (0 mã), hoặc phải đúng bằng số lượng — tránh dở dang 3/5 mã.
@@ -372,6 +373,9 @@ export const deleteStockIn = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy phiếu nhập hàng' });
         }
 
+        const productIdsToSyncOnDelete =
+            stockIn.status === 'confirmed' ? [...new Set(stockIn.items.map((it) => it.product))] : [];
+
         if (stockIn.status === 'confirmed') {
             const locationId = stockIn.location;
             const returns = await StockReturn.find({ stockIn: id }).lean();
@@ -408,6 +412,9 @@ export const deleteStockIn = async (req, res) => {
         }
 
         await StockIn.findByIdAndDelete(id);
+        if (productIdsToSyncOnDelete.length) {
+            await syncProductsCostPriceFromConfirmedStockIns(productIdsToSyncOnDelete);
+        }
         res.status(200).json({ success: true, message: 'Đã hủy phiếu nhập hàng' });
     } catch (error) {
         console.error('deleteStockIn error:', error.message);
@@ -451,6 +458,9 @@ export const confirmStockIn = async (req, res) => {
         stockIn.status = 'confirmed';
         stockIn.confirmedAt = new Date();
         await stockIn.save();
+
+        const productIdsToSync = [...new Set(stockIn.items.map((it) => it.product))];
+        await syncProductsCostPriceFromConfirmedStockIns(productIdsToSync);
 
         const populated = await StockIn.findById(id)
             .populate('supplier', 'code name')

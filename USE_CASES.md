@@ -127,6 +127,7 @@
 | 126 | Warehouse | Stock In Lines Report | Báo cáo nhập hàng theo dòng phiếu (mã đơn = mã phiếu nhập), xuất Excel | 🔵 |
 | 127 | Warehouse | Stock Out Lines Report | Báo cáo xuất kho theo dòng phiếu (mã đơn = mã đơn bán hoặc mã phiếu), xuất Excel | 🔵 |
 | 128 | Warehouse | Auto-generate stock-in serials | Nhập kho: sinh seri số tự động theo số lượng (mỗi cái một mã), không trùng seri phiếu khác và không trùng mã SKU sản phẩm | 🔵 |
+| 129 | Orders | Import legacy paper invoice | Nhập hóa đơn/chứng từ giấy cũ (ngày trên giấy; không trừ tồn, không bảo hành, không tích lũy) tại POS | |
 
 ---
 
