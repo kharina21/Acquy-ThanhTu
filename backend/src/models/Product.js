@@ -69,7 +69,7 @@ productSchema.index({ name: 'text', sku: 'text' });
 productSchema.index({ isDeleted: 1 });
 
 /** Tự động sinh warrantyText từ warrantyYears + warrantyMonths trước khi save */
-productSchema.pre('save', function (next) {
+productSchema.pre('save', function () {
     const y = this.warrantyYears || 0;
     const m = this.warrantyMonths || 0;
 
@@ -82,8 +82,6 @@ productSchema.pre('save', function (next) {
     } else {
         this.warrantyText = `${y} Năm ${m} Tháng`;
     }
-
-    next();
 });
 
 /**
