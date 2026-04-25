@@ -22,6 +22,7 @@ import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
 import { createPayOSPaymentLink, getPayOSPaymentStatus } from '../libs/payosHelper.js';
 import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
 import 'dotenv/config';
+import { createWarrantiesForOrder } from './warrantyController.js';
 
 const GUEST_USERNAME = '__guest_pos__';
 
@@ -723,6 +724,22 @@ export const createOrderFromItems = async (req, res) => {
                             { session }
                         );
                     }
+
+                    // ── Tạo bảo hành cho từng sản phẩm ──────────────────────
+                    // Chỉ tạo khi: không phải đặt cọc (isPreOrder) VÀ đã thanh toán (không chờ CK)
+                    if (!isPreOrder && !awaitingBankTransfer) {
+                        // Resolve product info for warranty snapshot
+                        const resolvedOrderItems = [];
+                        for (const item of orderItems) {
+                            const product = await Product.findById(item.product).lean();
+                            if (product) {
+                                resolvedOrderItems.push({
+                                    ...(item.toObject ? item.toObject() : item),
+                                });
+                            }
+                        }
+                        await createWarrantiesForOrder(created, resolvedOrderItems, customerProfile);
+                    }
                 }
             });
         } catch (e) {
@@ -1232,6 +1249,16 @@ export const syncPaymentFromPayOS = async (req, res) => {
                     await orderDoc.save();
                 } else if (!resApp.success) {
                     console.error('applyWarehouseQueueReservationIfReady after PayOS:', resApp.message);
+                }
+
+                // ── Tạo bảo hành khi thanh toán online thành công ─────────
+                try {
+                    const customer = await Customer.findById(order.customerProfile).lean();
+                    if (customer) {
+                        await createWarrantiesForOrder(orderDoc, orderDoc.items, customer);
+                    }
+                } catch (wErr) {
+                    console.warn('createWarrantiesForOrder failed (non-fatal):', wErr.message);
                 }
             }
         }

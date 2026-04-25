@@ -1,4 +1,4 @@
-import { Search, User, LogOut, ShoppingCart, Package, Menu, ChevronDown, Send, FileSearch, ClipboardList } from 'lucide-react';
+import { Search, User, LogOut, ShoppingCart, Package, Menu, ChevronDown, Send, FileSearch, ClipboardList, ShieldCheck } from 'lucide-react';
 import { getDisplayName } from '@/lib/utils';
 import { useNavigate, Link } from 'react-router';
 import { useState } from 'react';
@@ -186,6 +186,31 @@ export function Header({ user, onLogout }) {
                                 {label}
                             </Link>
                         ))}
+
+                        {/* Dropdown Tra cứu */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="px-4 py-2 rounded-lg text-sm font-medium opacity-90 hover:opacity-100 hover:bg-white/10 transition-all inline-flex items-center gap-1 outline-none"
+                                >
+                                    Tra cứu
+                                    <ChevronDown className="w-4 h-4 opacity-90" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="start"
+                                className="w-56 rounded-xl shadow-lg border-gray-100 p-1 bg-white"
+                            >
+                                <DropdownMenuItem asChild className="rounded-lg cursor-pointer gap-2 py-2.5">
+                                    <Link to="/warranty" className="flex items-center gap-2 w-full">
+                                        <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
+                                        Tra cứu bảo hành
+                                    </Link>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <button
@@ -248,6 +273,21 @@ export function Header({ user, onLogout }) {
                             {label}
                         </Link>
                     ))}
+                    {/* Mobile: Tra cứu */}
+                    <div className="px-4 pt-1 pb-2">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Tra cứu</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-primary/30">
+                            <Link
+                                to="/warranty"
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2.5 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
+                                Tra cứu bảo hành
+                            </Link>
+                        </div>
+                    </div>
+                    {/* Mobile: Thu mua ắc quy */}
                     <div className="px-4 pt-1 pb-2">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Thu mua ắc quy</p>
                         <div className="space-y-0.5 pl-2 border-l-2 border-primary/30">

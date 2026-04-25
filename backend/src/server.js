@@ -32,6 +32,7 @@ import bankAccountRoutes from './routes/bankAccountRoute.js';
 import cartRoutes from './routes/cartRoute.js';
 import batteryTradeInRoutes from './routes/batteryTradeInRoute.js';
 import orderRoutes from './routes/orderRoute.js';
+import warrantyRoutes from './routes/warrantyRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
 import dashboardRoutes from './routes/dashboardRoute.js';
@@ -51,7 +52,7 @@ app.use(
     }),
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
@@ -78,6 +79,7 @@ app.use('/api/bank-accounts', bankAccountRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/battery-trade-in', batteryTradeInRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/warranties', warrantyRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);

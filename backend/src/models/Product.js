@@ -30,10 +30,6 @@ const productSchema = new mongoose.Schema(
         batteryType: {
             type: String,
             default: null,
-            validate: {
-                validator: (v) => v == null || v === '' || v === 'dry' || v === 'wet',
-                message: 'batteryType phải dry, wet hoặc rỗng',
-            },
         },
         /** Kích thước từng cạnh (mm) */
         dimensionLengthMm: { type: Number, default: null, min: 0 },
@@ -57,6 +53,11 @@ const productSchema = new mongoose.Schema(
         images: { type: [String], default: [] },
         isActive: { type: Boolean, default: true },
         isDeleted: { type: Boolean, default: false },
+        /** Số năm bảo hành (0-99) */
+        warrantyYears: { type: Number, default: 0, min: 0, max: 99 },
+        /** Số tháng bảo hành (0-11) */
+        warrantyMonths: { type: Number, default: 0, min: 0, max: 11 },
+        /** Text hiển thị – tự động sinh từ warrantyYears + warrantyMonths (không cần nhập tay) */
         warrantyText: { type: String, default: '' },
         notes: { type: String, default: '' },
     },
@@ -66,6 +67,35 @@ const productSchema = new mongoose.Schema(
 productSchema.index({ sku: 1 }, { unique: true });
 productSchema.index({ name: 'text', sku: 'text' });
 productSchema.index({ isDeleted: 1 });
+
+/** Tự động sinh warrantyText từ warrantyYears + warrantyMonths trước khi save */
+productSchema.pre('save', function (next) {
+    const y = this.warrantyYears || 0;
+    const m = this.warrantyMonths || 0;
+
+    if (y === 0 && m === 0) {
+        this.warrantyText = '';
+    } else if (y === 0) {
+        this.warrantyText = `${m} Tháng`;
+    } else if (m === 0) {
+        this.warrantyText = `${y} Năm`;
+    } else {
+        this.warrantyText = `${y} Năm ${m} Tháng`;
+    }
+
+    next();
+});
+
+/**
+ * Tính tổng số tháng bảo hành (dùng trong controller/service).
+ * @param {Object} product - Product document hoặc plain object
+ * @returns {number} Số tháng
+ */
+productSchema.statics.calcWarrantyMonths = function (product) {
+    const y = product?.warrantyYears || 0;
+    const m = product?.warrantyMonths || 0;
+    return y * 12 + m;
+};
 
 const Product = mongoose.model('Product', productSchema);
 

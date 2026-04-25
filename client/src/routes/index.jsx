@@ -44,6 +44,9 @@ import BatteryTradeInLookupPage from '../pages/BatteryTradeInLookupPage';
 import BatteryTradeInMinePage from '../pages/BatteryTradeInMinePage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 import ContactPage from '../pages/ContactPage';
+import WarrantyLookupPage from '../pages/WarrantyLookupPage';
+import WarrantyClaimPage from '../pages/WarrantyClaimPage';
+import AdminWarrantyPage from '../pages/AdminWarrantyPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -117,6 +120,15 @@ export const AppRoutes = () => {
             <Route
                 path='/battery-trade-in/don-cua-toi'
                 element={<BatteryTradeInMinePage />}
+            />
+            {/* Tra cứu bảo hành – public */}
+            <Route
+                path='/warranty'
+                element={<WarrantyLookupPage />}
+            />
+            <Route
+                path='/warranty/claim'
+                element={<WarrantyClaimPage />}
             />
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}
@@ -262,6 +274,10 @@ export const AppRoutes = () => {
                         <Route
                             path='/admin/battery-trade-in'
                             element={<AdminBatteryTradeInPage />}
+                        />
+                        <Route
+                            path='/admin/warranties'
+                            element={<AdminWarrantyPage />}
                         />
                     </Route>
 

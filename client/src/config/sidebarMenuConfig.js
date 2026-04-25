@@ -9,6 +9,7 @@ import {
     UserRound,
     UserRoundPen,
     UsersRound,
+    ShieldCheck,
 } from 'lucide-react';
 
 /**
@@ -74,12 +75,35 @@ export const SIDEBAR_MENU_ITEMS = [
         activePaths: ['/admin/staffs'],
     },
     {
+        id: 'orders',
+        icon: Receipt,
+        label: 'Đơn hàng',
+        ariaLabel: 'Quản lý đơn hàng cửa hàng',
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        activePaths: ['/admin/orders'],
+        subItems: [
+            { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },
+            { id: 'invoices', to: '/admin/orders/invoices', label: 'Hóa đơn' },
+            { id: 'returns', to: '/admin/orders/returns', label: 'Trả hàng' },
+            { id: 'orders-report', to: '/admin/orders/report', label: 'Báo cáo đơn hàng' },
+        ],
+    },
+    {
         id: 'battery-trade-in',
         to: '/admin/battery-trade-in',
         icon: RotateCw,
         label: 'Thu cũ acquy',
         ariaLabel: 'Quản lý yêu cầu thu cũ acquy',
         activePaths: ['/admin/battery-trade-in'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
+    },
+    {
+        id: 'warranty',
+        to: '/admin/warranties',
+        icon: ShieldCheck,
+        label: 'Bảo hành',
+        ariaLabel: 'Quản lý bảo hành',
+        activePaths: ['/admin/warranties'],
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
     },
     {
@@ -94,6 +118,7 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'invoices', to: '/admin/orders/invoices', label: 'Hóa đơn' },
             { id: 'returns', to: '/admin/orders/returns', label: 'Trả hàng' },
             { id: 'orders-report', to: '/admin/orders/report', label: 'Báo cáo đơn hàng' },
+            { id: 'order-lookup', to: '/order-lookup', label: 'Tra cứu hóa đơn', external: true },
         ],
     },
     {
