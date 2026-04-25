@@ -127,6 +127,16 @@ const warrantySchema = new mongoose.Schema(
                     },
                     /** Mô tả chi tiết từ khách */
                     description: { type: String, default: '' },
+                    /** Ảnh sản phẩm thực tế (tối thiểu 2 ảnh) */
+                    images: { type: [String], default: [] },
+                    /** Họ tên người yêu cầu BH */
+                    customerName: { type: String, default: '', trim: true },
+                    /** SĐT người yêu cầu BH */
+                    customerPhone: { type: String, default: '', trim: true },
+                    /** Địa chỉ người yêu cầu BH */
+                    customerAddress: { type: String, default: '', trim: true },
+                    /** Ghi chú từ khách */
+                    notes: { type: String, default: '' },
                     /** Trạng thái xử lý */
                     status: {
                         type: String,
@@ -138,7 +148,7 @@ const warrantySchema = new mongoose.Schema(
                     /** Ngày xử lý xong */
                     resolvedAt: { type: Date, default: null },
                     /** Ghi chú xử lý từ nhân viên */
-                    notes: { type: String, default: '' },
+                    resolutionNotes: { type: String, default: '' },
                     /** Người xử lý */
                     resolvedBy: {
                         type: mongoose.Schema.Types.ObjectId,
@@ -174,6 +184,10 @@ warrantySchema.index({ status: 1 });
 /** Theo ngày kết thúc BH – cron job cập nhật expired */
 warrantySchema.index({ warrantyEndDate: 1 });
 warrantySchema.index({ isDeleted: 1 });
+/** Filter theo trạng thái claim (pending/approved/rejected/completed) */
+warrantySchema.index({ 'claims.status': 1 });
+/** Tìm kiếm claim theo mã */
+warrantySchema.index({ 'claims.claimCode': 1 });
 
 // ── Mã bảo hành tự động ─────────────────────────────────────────────
 /**

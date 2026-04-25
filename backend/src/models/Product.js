@@ -30,10 +30,6 @@ const productSchema = new mongoose.Schema(
         batteryType: {
             type: String,
             default: null,
-            validate: {
-                validator: (v) => v == null || v === '' || v === 'dry' || v === 'wet',
-                message: 'batteryType phải dry, wet hoặc rỗng',
-            },
         },
         /** Kích thước từng cạnh (mm) */
         dimensionLengthMm: { type: Number, default: null, min: 0 },
