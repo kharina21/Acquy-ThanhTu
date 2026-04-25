@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import Customer from '../models/Customer.js';
 import Order from '../models/Order.js';
+import StoreSettings from '../models/StoreSettings.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import Location from '../models/Location.js';
@@ -16,12 +17,38 @@ import StockOut from '../models/StockOut.js';
 import { getStockAtLocation } from './productStockController.js';
 import { generateStockOutCode } from '../utils/stockOutCode.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
-import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+import { getManagerAllowedLocationIds, validateLocationForUser } from '../libs/managerLocationHelper.js';
+import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
 import { createPayOSPaymentLink, getPayOSPaymentStatus } from '../libs/payosHelper.js';
 import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
 import 'dotenv/config';
 
 const GUEST_USERNAME = '__guest_pos__';
+
+const clampVatPercent = (n) => {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return 0;
+    return Math.min(100, Math.max(0, x));
+};
+
+const getStoreDefaultVat = async () => {
+    const s = await StoreSettings.findOne().lean();
+    return clampVatPercent(s?.defaultVatPercent ?? 10);
+};
+
+const effectiveVatPercent = (product, defaultVat) => {
+    if (product?.vatPercent != null && Number.isFinite(Number(product.vatPercent))) {
+        return clampVatPercent(product.vatPercent);
+    }
+    return clampVatPercent(defaultVat);
+};
+
+/** Đơn giá chưa thuế × SL → tiền trước thuế; thuế làm tròn; thành tiền dòng = trước thuế + thuế */
+const lineGrossFromExVat = (unitPriceEx, qty, vatPercent) => {
+    const net = Math.round(Number(unitPriceEx) * Number(qty));
+    const vat = Math.round((net * vatPercent) / 100);
+    return { net, vat, gross: net + vat };
+};
 
 /** Lấy hoặc tạo User "Khách vãng lai" cho đơn bán tại quầy (khi Customer không có tài khoản) */
 const getOrCreateGuestUser = async () => {
@@ -79,7 +106,10 @@ const generateOrderCode = async () => {
 async function restoreInventoryOnOrderCancel(order) {
     const locationId = order.location;
     await StockOut.deleteMany({ order: order._id });
-    if (order.channel === 'online' && order.warehouseReservationActive === true) {
+    if (
+        (order.channel === 'online' || order.channel === 'in_store') &&
+        order.warehouseReservationActive === true
+    ) {
         for (const item of order.items) {
             await ProductStock.findOneAndUpdate(
                 { product: item.product, location: locationId },
@@ -102,6 +132,57 @@ async function restoreInventoryOnOrderCancel(order) {
 }
 
 /**
+ * Đơn chưa giữ chỗ (ví dụ đặt trước / bản cũ) mà đủ Đã xác nhận + Đã thanh toán → tăng reservedOnlineQty, bật warehouseReservationActive để vào hàng chờ quét xuất.
+ */
+async function applyWarehouseQueueReservationIfReady(order) {
+    if (order.warehouseReservationActive === true) {
+        return { success: true, skipped: true };
+    }
+    if (order.status === 'cancelled' || order.status !== 'confirmed' || order.paymentStatus !== 'paid') {
+        return { success: true, skipped: true };
+    }
+    if (order.channel !== 'online' && order.channel !== 'in_store') {
+        return { success: true, skipped: true };
+    }
+    if (!order.items?.length) {
+        return { success: true, skipped: true };
+    }
+    const locationId = order.location?._id || order.location;
+    for (const item of order.items) {
+        const pid = item.product?._id || item.product;
+        const need = Math.max(1, Number(item.quantity) || 1);
+        const avail = await getStockAtLocation(pid, locationId);
+        if (avail < need) {
+            const product = await Product.findById(pid).lean();
+            return {
+                success: false,
+                message: `Chưa đủ tồn để xếp hàng xuất (sản phẩm "${product?.name || '—'}" — cần ${need}, khả dụng ${avail}). Nhập thêm tồn rồi cập nhật lại đơn.`,
+            };
+        }
+    }
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            for (const item of order.items) {
+                const pid = item.product?._id || item.product;
+                const qty = Math.max(1, Number(item.quantity) || 1);
+                await ProductStock.findOneAndUpdate(
+                    { product: pid, location: locationId },
+                    { $inc: { reservedOnlineQty: qty } },
+                    { session, upsert: true }
+                );
+            }
+        });
+    } catch (e) {
+        return { success: false, message: e?.message || 'Không thể giữ chỗ tồn kho' };
+    } finally {
+        session.endSession();
+    }
+    order.warehouseReservationActive = true;
+    return { success: true, skipped: false, activated: true };
+}
+
+/**
  * GET /api/orders/checkout-preview – Xem trước hạng khách hàng và chiết khấu khi checkout.
  * Trả về: tierName, discountPercent, discount, subtotal, finalTotal.
  */
@@ -112,8 +193,11 @@ export const checkoutPreview = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted');
-        let subtotal = 0;
+        const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted vatPercent unit');
+        const defaultVatPreview = await getStoreDefaultVat();
+        let sumNet = 0;
+        let sumVat = 0;
+        let sumGross = 0;
         if (cart?.items?.length) {
             for (const item of cart.items) {
                 if (item.selected === false) continue;
@@ -121,10 +205,15 @@ export const checkoutPreview = async (req, res) => {
                 if (product && !product.isDeleted) {
                     const qty = Number(item.quantity) || 1;
                     const price = typeof product.price === 'number' ? product.price : Number(item.priceSnapshot) || 0;
-                    subtotal += price * qty;
+                    const r = effectiveVatPercent(product, defaultVatPreview);
+                    const { net, vat, gross } = lineGrossFromExVat(price, qty, r);
+                    sumNet += net;
+                    sumVat += vat;
+                    sumGross += gross;
                 }
             }
         }
+        const subtotal = sumNet;
 
         const customerProfile = await getOrCreateCustomerFromUser(await User.findById(userId).lean());
         const accumulatedAmount = customerProfile?.accumulatedAmount ?? 0;
@@ -133,8 +222,8 @@ export const checkoutPreview = async (req, res) => {
         const tierPolicy = getCustomerPolicy(accumulatedAmount, policies);
         const tierName = tierPolicy?.name ?? null;
         const discountPercent = tierPolicy?.discountPercent ?? 0;
-        const discount = Math.round((subtotal * discountPercent) / 100);
-        const finalTotal = Math.max(0, subtotal - discount);
+        const discount = Math.round((sumNet * discountPercent) / 100);
+        const finalTotal = Math.max(0, sumGross - discount);
 
         return res.status(200).json({
             success: true,
@@ -143,6 +232,8 @@ export const checkoutPreview = async (req, res) => {
                 discountPercent,
                 discount,
                 subtotal,
+                vatTotal: sumVat,
+                grossSubtotal: sumGross,
                 finalTotal,
                 accumulatedAmount,
             },
@@ -240,7 +331,7 @@ export const createOrder = async (req, res) => {
             return res.status(400).json({ message: 'Hệ thống chưa có chi nhánh. Vui lòng liên hệ quản trị viên.' });
         }
 
-        const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted');
+        const cart = await Cart.findOne({ userId }).populate('items.product', 'name price isDeleted vatPercent unit');
         if (!cart || !cart.items || cart.items.length === 0) {
             return res.status(400).json({ message: 'Giỏ hàng trống' });
         }
@@ -252,8 +343,10 @@ export const createOrder = async (req, res) => {
             });
         }
 
+        const defaultVat = await getStoreDefaultVat();
         const orderItems = [];
-        let totalAmount = 0;
+        let sumNet = 0;
+        let sumGross = 0;
 
         for (const item of selectedCartItems) {
             const productId = item.product?._id || item.product;
@@ -276,14 +369,20 @@ export const createOrder = async (req, res) => {
                 });
             }
 
-            const total = price * qty;
+            const r = effectiveVatPercent(product, defaultVat);
+            const { net, vat, gross } = lineGrossFromExVat(price, qty, r);
+            const unit = (product.unit && String(product.unit).trim()) || 'Cái';
             orderItems.push({
                 product: productId,
                 quantity: qty,
                 price,
-                total,
+                total: gross,
+                unit,
+                vatPercent: r,
+                vatAmount: vat,
             });
-            totalAmount += total;
+            sumNet += net;
+            sumGross += gross;
         }
 
         if (orderItems.length === 0) {
@@ -302,8 +401,8 @@ export const createOrder = async (req, res) => {
         const policies = await MemberPolicy.find({ isActive: true }).sort({ minTotalSpent: 1 }).lean();
         const tierPolicy = getCustomerPolicy(customerProfile.accumulatedAmount ?? 0, policies);
         const discountPercent = tierPolicy?.discountPercent ?? 0;
-        const discount = Math.round((totalAmount * discountPercent) / 100);
-        const finalTotal = Math.max(0, totalAmount - discount);
+        const discount = Math.round((sumNet * discountPercent) / 100);
+        const finalTotal = Math.max(0, sumGross - discount);
 
         const code = await generateOrderCode();
 
@@ -478,8 +577,9 @@ export const createOrderFromItems = async (req, res) => {
             return res.status(400).json({ message: 'Danh sách sản phẩm trống' });
         }
 
+        const defaultVat = await getStoreDefaultVat();
         const orderItems = [];
-        let totalAmount = 0;
+        let sumGross = 0;
 
         for (const it of rawItems) {
             const productId = it.productId?.toString?.() || it.productId;
@@ -502,14 +602,19 @@ export const createOrderFromItems = async (req, res) => {
                 });
             }
 
-            const total = price * qty;
+            const r = effectiveVatPercent(product, defaultVat);
+            const { vat, gross } = lineGrossFromExVat(price, qty, r);
+            const unit = (product.unit && String(product.unit).trim()) || 'Cái';
             orderItems.push({
                 product: product._id,
                 quantity: qty,
                 price,
-                total,
+                total: gross,
+                unit,
+                vatPercent: r,
+                vatAmount: vat,
             });
-            totalAmount += total;
+            sumGross += gross;
         }
 
         if (orderItems.length === 0) {
@@ -517,7 +622,7 @@ export const createOrderFromItems = async (req, res) => {
         }
 
         const discount = Math.max(0, Number(discountAmount) || 0);
-        const finalTotal = Math.max(0, totalAmount - discount);
+        const finalTotal = Math.max(0, sumGross - discount);
 
         let customerProfile = null;
         let orderCustomerUserId = userId;
@@ -568,6 +673,14 @@ export const createOrderFromItems = async (req, res) => {
         const code = await generateOrderCode();
 
         const awaitingBankTransfer = !isPreOrder && (method === 'transfer' || method === 'vietqr');
+        /** Bán tại quầy (không đặt trước): cùng luồng online — giữ chỗ tồn, kho xác nhận xuất. */
+        const inStoreStatusNonPre = isPreOrder
+            ? 'pending'
+            : awaitingBankTransfer
+              ? 'pending'
+              : 'confirmed';
+        const inStorePaymentNonPre = isPreOrder ? 'pending' : awaitingBankTransfer ? 'pending' : 'paid';
+        const inStorePaidAt = isPreOrder || awaitingBankTransfer ? null : new Date();
 
         const orderPayload = {
             code,
@@ -579,13 +692,14 @@ export const createOrderFromItems = async (req, res) => {
             items: orderItems,
             totalAmount: finalTotal,
             discount,
-            status: isPreOrder ? 'pending' : 'completed',
+            status: isPreOrder ? 'pending' : inStoreStatusNonPre,
             paymentMethod: method,
-            paymentStatus: isPreOrder ? 'pending' : awaitingBankTransfer ? 'pending' : 'paid',
-            paidAt: isPreOrder || awaitingBankTransfer ? null : new Date(),
+            paymentStatus: isPreOrder ? 'pending' : inStorePaymentNonPre,
+            paidAt: inStorePaidAt,
             shippingAddress: 'Tại quầy',
             note: String(note).trim(),
             isPreOrder: !!isPreOrder,
+            warehouseReservationActive: !isPreOrder ? true : false,
         };
 
         let order;
@@ -596,47 +710,12 @@ export const createOrderFromItems = async (req, res) => {
                 order = created;
                 if (!isPreOrder) {
                     for (const item of orderItems) {
-                        const resUpd = await ProductStock.findOneAndUpdate(
-                            {
-                                product: item.product,
-                                location: locationId,
-                                quantity: { $gte: item.quantity },
-                            },
-                            { $inc: { quantity: -item.quantity } },
-                            { session, new: true }
+                        await ProductStock.findOneAndUpdate(
+                            { product: item.product, location: locationId },
+                            { $inc: { reservedOnlineQty: item.quantity } },
+                            { session, upsert: true }
                         );
-                        if (!resUpd) {
-                            const err = new Error('INSUFFICIENT_STOCK');
-                            err.code = 'INSUFFICIENT_STOCK';
-                            throw err;
-                        }
                     }
-                    const processedItems = orderItems.map((it) => ({
-                        product: it.product,
-                        quantity: it.quantity,
-                        unitPrice: it.price,
-                        totalPrice: it.total,
-                    }));
-                    const soTotal = processedItems.reduce((s, it) => s + it.totalPrice, 0);
-                    const soCode = await generateStockOutCode();
-                    await StockOut.create(
-                        [
-                            {
-                                code: soCode,
-                                location: locationId,
-                                createdBy: userId,
-                                note: `Bán tại quầy — đơn ${created.code} (xuất kho tự động, không cần xác nhận tay)`,
-                                status: 'confirmed',
-                                confirmedAt: new Date(),
-                                reasonType: 'sale_order',
-                                saleChannel: 'offline',
-                                order: created._id,
-                                items: processedItems,
-                                totalAmount: soTotal,
-                            },
-                        ],
-                        { session }
-                    );
                     if (!awaitingBankTransfer) {
                         await Customer.findByIdAndUpdate(
                             customerProfile._id,
@@ -694,55 +773,66 @@ export const getOrders = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const canViewAll = await canViewAllOrders(userId);
+        const user = await User.findById(userId).populate('roles', 'name').lean();
+        const roleNames = user?.roles?.map((r) => r.name) || [];
+        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue } = req.query;
+        const useWarehouseQueue = warehouseQueue === 'true' || warehouseQueue === '1';
+        const canViewAll = roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
 
         const filter = {};
         if (!canViewAll) {
-            const user = await User.findById(userId).populate('roles', 'name').lean();
-            const roleNames = user?.roles?.map((r) => r.name) || [];
-            const isCustomerLike = roleNames.some((r) => ['user', 'customer'].includes(r));
-            if (!isCustomerLike) {
-                return res.status(403).json({ message: 'Không có quyền xem danh sách đơn hàng.' });
+            if (useWarehouseQueue && userHasEquivalentRole(roleNames, 'warehouse_manager')) {
+                /** Nhân viên kho: danh sách theo hàng chờ xuất, không lọc theo customer. */
+            } else {
+                const isCustomerLike = roleNames.some((r) => ['user', 'customer'].includes(r));
+                if (!isCustomerLike) {
+                    return res.status(403).json({ message: 'Không có quyền xem danh sách đơn hàng.' });
+                }
+                filter.customer = userId;
             }
-            filter.customer = userId;
         }
 
         const allowedLocIds = await getManagerAllowedLocationIds(userId);
 
-        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue } = req.query;
         const skip = (Math.max(1, parseInt(page)) - 1) * Math.max(1, Math.min(100, parseInt(limit)));
         const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
 
-        const useWarehouseQueue = warehouseQueue === 'true' || warehouseQueue === '1';
         if (useWarehouseQueue) {
-            filter.channel = 'online';
-            filter.paymentStatus = 'paid';
-            filter.warehouseReservationActive = true;
-            filter.status = 'confirmed';
+            const qBase = {
+                paymentStatus: 'paid',
+                warehouseReservationActive: true,
+                status: 'confirmed',
+            };
+            const orClauses = [];
             const onlineLoc = await getOnlineLocation();
-            if (!onlineLoc?._id) {
-                return res.status(400).json({
-                    message: 'Chưa có chi nhánh hoạt động để xác định kho đơn online (cấu hình chi nhánh bán online).',
-                });
-            }
-            if (allowedLocIds !== null) {
-                const onlineIdStr = String(onlineLoc._id);
-                if (!allowedLocIds.length || !allowedLocIds.includes(onlineIdStr)) {
-                    return res.status(200).json({
-                        success: true,
-                        data: {
-                            orders: [],
-                            pagination: {
-                                page: Math.max(1, parseInt(page)),
-                                limit: limitNum,
-                                total: 0,
-                                totalPages: 0,
-                            },
-                        },
-                    });
+            if (onlineLoc?._id) {
+                if (allowedLocIds === null || allowedLocIds.includes(String(onlineLoc._id))) {
+                    orClauses.push({ ...qBase, channel: 'online', location: onlineLoc._id });
                 }
             }
-            filter.location = onlineLoc._id;
+            if (allowedLocIds === null) {
+                orClauses.push({ ...qBase, channel: 'in_store' });
+            } else if (allowedLocIds.length) {
+                const oidList = allowedLocIds
+                    .filter((lid) => mongoose.Types.ObjectId.isValid(lid))
+                    .map((lid) => new mongoose.Types.ObjectId(lid));
+                orClauses.push({ ...qBase, channel: 'in_store', location: { $in: oidList } });
+            }
+            if (orClauses.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        orders: [],
+                        pagination: {
+                            page: Math.max(1, parseInt(page)),
+                            limit: limitNum,
+                            total: 0,
+                            totalPages: 0,
+                        },
+                    },
+                });
+            }
+            filter.$or = orClauses;
         } else {
             if (status) filter.status = status;
             if (paymentStatus) filter.paymentStatus = paymentStatus;
@@ -1119,16 +1209,31 @@ export const syncPaymentFromPayOS = async (req, res) => {
                 (paid >= payOrderTotal && payOrderTotal > 0) ||
                 (remNum === 0 && paid > 0));
         if (isPaid) {
-            await Order.findByIdAndUpdate(id, {
-                paymentStatus: 'paid',
-                paidAt: new Date(),
-            });
+            const paymentUpdate = { paymentStatus: 'paid', paidAt: new Date() };
+            if (
+                order.channel === 'in_store' &&
+                order.status === 'pending' &&
+                (order.warehouseReservationActive === true || order.isPreOrder === true)
+            ) {
+                paymentUpdate.status = 'confirmed';
+            }
+            await Order.findByIdAndUpdate(id, paymentUpdate);
             if (order.customerProfile) {
                 await Customer.findByIdAndUpdate(order.customerProfile, {
                     $inc: { accumulatedAmount: order.totalAmount || 0 },
                 });
             }
             await PaymentLink.updateOne({ _id: paymentLink._id }, { status: 'paid' });
+
+            const orderDoc = await Order.findById(id);
+            if (orderDoc) {
+                const resApp = await applyWarehouseQueueReservationIfReady(orderDoc);
+                if (resApp.success && resApp.activated) {
+                    await orderDoc.save();
+                } else if (!resApp.success) {
+                    console.error('applyWarehouseQueueReservationIfReady after PayOS:', resApp.message);
+                }
+            }
         }
 
         const populated = await Order.findById(id)
@@ -1215,35 +1320,35 @@ function outboundHttpError(statusCode, message) {
     return e;
 }
 
-async function findOnlineOrderByScanForWarehouse(rawScan) {
-    const onlineLoc = await getOnlineLocation();
-    if (!onlineLoc?._id) return null;
-    const onlineLocationId = onlineLoc._id;
+/**
+ * Tìm đơn theo mã/ID (online hoặc tại quầy) khi kho mở để đóng gói. Phạm vi chi nhánh theo quyền user.
+ */
+async function findOrderByScanForWarehouse(userId, rawScan) {
     const raw = String(rawScan || '').trim();
     if (!raw) return null;
+
     let order = null;
     if (mongoose.Types.ObjectId.isValid(raw) && String(new mongoose.Types.ObjectId(raw)) === raw) {
-        order = await Order.findOne({ _id: raw, channel: 'online', location: onlineLocationId }).populate(
-            'items.product',
-            'sku barcode name'
-        );
+        order = await Order.findById(raw).populate('items.product', 'sku barcode name');
     }
     if (!order) {
         const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        order = await Order.findOne({
-            channel: 'online',
-            location: onlineLocationId,
-            code: new RegExp(`^${esc}$`, 'i'),
-        }).populate('items.product', 'sku barcode name');
+        order = await Order.findOne({ code: new RegExp(`^${esc}$`, 'i') }).populate('items.product', 'sku barcode name');
+    }
+    if (!order) return null;
+
+    const { valid: locOk } = await validateLocationForUser(userId, order.location?._id || order.location);
+    if (!locOk) return null;
+
+    if (order.channel === 'online') {
+        const onlineLoc = await getOnlineLocation();
+        if (!onlineLoc?._id || String(order.location) !== String(onlineLoc._id)) return null;
     }
     return order;
 }
 
 /** Kiểm tra đơn đủ điều kiện đóng gói / xuất kho (chưa kiểm tra đã quét đủ dòng). */
-function assertOnlineOrderWarehouseGate(order) {
-    if (order.channel !== 'online') {
-        throw outboundHttpError(400, 'Chỉ áp dụng cho đơn bán online');
-    }
+function assertOrderReadyForWarehouseOperations(order) {
     if (order.status === 'cancelled') {
         throw outboundHttpError(400, 'Đơn đã hủy');
     }
@@ -1251,23 +1356,40 @@ function assertOnlineOrderWarehouseGate(order) {
         throw outboundHttpError(400, 'Đơn chưa thanh toán');
     }
     if (order.status !== 'confirmed') {
-        throw outboundHttpError(400, 'Đơn chưa được seller xác nhận (chưa ở trạng thái chờ xuất kho)');
+        throw outboundHttpError(400, 'Đơn chưa ở trạng thái chờ xuất kho (đã xác nhận).');
     }
     if (order.warehouseReservationActive !== true) {
         throw outboundHttpError(400, 'Đơn không còn ở trạng thái chờ xuất kho');
     }
 }
 
-async function assertOnlineOrderMatchesConfiguredLocation(order) {
-    const onlineLoc = await getOnlineLocation();
-    if (!onlineLoc?._id) {
-        throw outboundHttpError(400, 'Hệ thống chưa xác định được chi nhánh bán online');
+/** Đồng bộ: đơn online phải tại chi nhánh bán online. */
+async function assertWarehouseOrderContext(order) {
+    if (order.channel === 'online') {
+        const onlineLoc = await getOnlineLocation();
+        if (!onlineLoc?._id) {
+            throw outboundHttpError(400, 'Hệ thống chưa xác định được chi nhánh bán online');
+        }
+        if (String(order.location) !== String(onlineLoc._id)) {
+            throw outboundHttpError(
+                400,
+                'Đơn không thuộc chi nhánh bán online đang cấu hình — không thao tác tại đây.'
+            );
+        }
     }
-    if (String(order.location) !== String(onlineLoc._id)) {
-        throw outboundHttpError(
-            400,
-            'Đơn không thuộc chi nhánh bán online đang cấu hình — không thao tác tại đây.'
-        );
+}
+
+async function assertUserMayOperateWarehouseOnOrder(userId, order) {
+    const { valid } = await validateLocationForUser(userId, order.location?._id || order.location);
+    if (!valid) {
+        throw outboundHttpError(403, 'Bạn không có quyền thao tác kho tại chi nhánh của đơn này');
+    }
+    await assertWarehouseOrderContext(order);
+}
+
+function assertWarehouseItemsPreparationDone(order) {
+    if (!order.warehouseItemsPreparedAt) {
+        throw outboundHttpError(400, 'Cần bấm "Xác nhận đã chuẩn bị hàng" (đã gom/kiểm sản phẩm) trước khi quét đóng gói hoặc xuất kho.');
     }
 }
 
@@ -1298,6 +1420,7 @@ function packingProgressPayload(orderLean) {
         packedCount: packed.size,
         allPacked: n > 0 && packed.size === n,
         lines,
+        itemsPrepared: Boolean(orderLean.warehouseItemsPreparedAt),
     };
 }
 
@@ -1315,13 +1438,13 @@ export const lookupOnlineOrderForPacking = async (req, res) => {
         if (!raw) {
             return res.status(400).json({ message: 'Thiếu mã đơn hoặc ID đơn' });
         }
-        const order = await findOnlineOrderByScanForWarehouse(raw);
+        const order = await findOrderByScanForWarehouse(userId, raw);
         if (!order) {
-            return res.status(404).json({ message: 'Không tìm thấy đơn online tại chi nhánh bán online' });
+            return res.status(404).json({ message: 'Không tìm thấy đơn hoặc bạn không có quyền tại chi nhánh này' });
         }
         try {
-            assertOnlineOrderWarehouseGate(order);
-            await assertOnlineOrderMatchesConfiguredLocation(order);
+            assertOrderReadyForWarehouseOperations(order);
+            await assertUserMayOperateWarehouseOnOrder(userId, order);
         } catch (e) {
             if (e.statusCode) return res.status(e.statusCode).json({ message: e.message });
             throw e;
@@ -1348,6 +1471,68 @@ export const lookupOnlineOrderForPacking = async (req, res) => {
 };
 
 /**
+ * POST /api/orders/:id/warehouse-confirm-prepared — Kho xác nhận đã gom/kiểm hàng (bước bắt buộc trước khi quét từng dòng & xuất kho).
+ */
+export const confirmWarehouseItemsPrepared = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+        const order = await Order.findById(id).populate('items.product', 'sku barcode name');
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        try {
+            assertOrderReadyForWarehouseOperations(order);
+            await assertUserMayOperateWarehouseOnOrder(userId, order);
+        } catch (e) {
+            if (e.statusCode) return res.status(e.statusCode).json({ message: e.message });
+            throw e;
+        }
+        const dup = await StockOut.findOne({ order: order._id }).lean();
+        if (dup) {
+            return res.status(400).json({ message: 'Đơn đã có phiếu xuất kho' });
+        }
+        if (order.warehouseItemsPreparedAt) {
+            const populated = await Order.findById(order._id)
+                .populate('items.product', 'sku barcode name')
+                .populate('location', 'code name address')
+                .lean();
+            return res.status(200).json({
+                success: true,
+                message: 'Đơn đã được xác nhận chuẩn bị từ trước',
+                data: {
+                    order: populated,
+                    ...packingProgressPayload(populated),
+                },
+            });
+        }
+        order.warehouseItemsPreparedAt = new Date();
+        await order.save();
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku barcode name')
+            .populate('location', 'code name address')
+            .lean();
+        return res.status(200).json({
+            success: true,
+            message: 'Đã xác nhận chuẩn bị hàng — có thể quét từng dòng rồi xuất kho',
+            data: {
+                order: populated,
+                ...packingProgressPayload(populated),
+            },
+        });
+    } catch (error) {
+        console.error('confirmWarehouseItemsPrepared error:', error.message);
+        return res.status(500).json({ message: 'Lỗi khi cập nhật', error: error.message });
+    }
+};
+
+/**
  * POST /api/orders/:id/warehouse-pack-line — Quét SKU/mã vạch để xác nhận đóng gói một dòng hàng.
  */
 export const packWarehouseOrderLine = async (req, res) => {
@@ -1370,8 +1555,9 @@ export const packWarehouseOrderLine = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
         try {
-            assertOnlineOrderWarehouseGate(order);
-            await assertOnlineOrderMatchesConfiguredLocation(order);
+            assertOrderReadyForWarehouseOperations(order);
+            await assertUserMayOperateWarehouseOnOrder(userId, order);
+            assertWarehouseItemsPreparationDone(order);
         } catch (e) {
             if (e.statusCode) return res.status(e.statusCode).json({ message: e.message });
             throw e;
@@ -1427,13 +1613,14 @@ export const packWarehouseOrderLine = async (req, res) => {
  * Trừ tồn, tạo phiếu xuất, đặt đơn completed.
  * Luôn đọc lại đơn từ DB để có warehousePackedLineIndexes mới nhất.
  */
-async function executeOnlineWarehouseOutbound(orderRef, userId) {
+async function executeWarehouseOutbound(orderRef, userId) {
     const o = await Order.findById(orderRef._id).populate('items.product', 'sku barcode name');
     if (!o) {
         throw outboundHttpError(404, 'Không tìm thấy đơn hàng');
     }
-    assertOnlineOrderWarehouseGate(o);
-    await assertOnlineOrderMatchesConfiguredLocation(o);
+    assertOrderReadyForWarehouseOperations(o);
+    await assertUserMayOperateWarehouseOnOrder(userId, o);
+    assertWarehouseItemsPreparationDone(o);
 
     const dup = await StockOut.findOne({ order: o._id }).lean();
     if (dup) {
@@ -1489,6 +1676,10 @@ async function executeOnlineWarehouseOutbound(orderRef, userId) {
             });
             const totalAmount = processedItems.reduce((s, it) => s + it.totalPrice, 0);
             const code = await generateStockOutCode();
+            const isOnline = o.channel === 'online';
+            const soNote = isOnline
+                ? `Bán online — đơn ${o.code} (xuất kho sau khi nhân viên kho xác nhận)`
+                : `Bán tại quầy — đơn ${o.code} (xuất kho sau khi nhân viên kho xác nhận)`;
 
             const [so] = await StockOut.create(
                 [
@@ -1496,11 +1687,11 @@ async function executeOnlineWarehouseOutbound(orderRef, userId) {
                         code,
                         location: locationId,
                         createdBy: userId,
-                        note: `Bán online — đơn ${o.code} (xuất kho sau khi nhân viên kho xác nhận)`,
+                        note: soNote,
                         status: 'confirmed',
                         confirmedAt: new Date(),
                         reasonType: 'sale_order',
-                        saleChannel: 'online',
+                        saleChannel: isOnline ? 'online' : 'offline',
                         order: o._id,
                         items: processedItems,
                         totalAmount,
@@ -1517,6 +1708,7 @@ async function executeOnlineWarehouseOutbound(orderRef, userId) {
                         warehouseReservationActive: false,
                         status: 'completed',
                         warehousePackedLineIndexes: [],
+                        warehouseItemsPreparedAt: null,
                     },
                 },
                 { session }
@@ -1546,7 +1738,7 @@ async function executeOnlineWarehouseOutbound(orderRef, userId) {
 }
 
 /**
- * POST /api/orders/:id/confirm-warehouse-outbound — Đơn online: trừ tồn thật, giảm giữ chỗ, tạo phiếu xuất.
+ * POST /api/orders/:id/confirm-warehouse-outbound — Trừ tồn thật, giảm giữ chỗ, tạo phiếu xuất (online & tại quầy).
  * Yêu cầu đã quét đủ từng dòng hàng đóng gói (warehousePackedLineIndexes).
  */
 export const confirmWarehouseOutbound = async (req, res) => {
@@ -1567,7 +1759,7 @@ export const confirmWarehouseOutbound = async (req, res) => {
         }
 
         try {
-            const data = await executeOnlineWarehouseOutbound(order, userId);
+            const data = await executeWarehouseOutbound(order, userId);
             return res.status(200).json({
                 success: true,
                 message: 'Đã xác nhận xuất kho và trừ tồn',
@@ -1839,7 +2031,7 @@ export const cancelOrderByCustomer = async (req, res) => {
         }
 
         await restoreInventoryOnOrderCancel(order);
-        if (order.channel === 'online') {
+        if (order.channel === 'online' || order.channel === 'in_store') {
             await Order.findByIdAndUpdate(order._id, { warehouseReservationActive: false });
         }
 
@@ -1982,11 +2174,6 @@ export const updateOrder = async (req, res) => {
         const previousStatus = order.status;
 
         if (status) {
-            if (order.channel === 'in_store' && status === 'confirmed') {
-                return res.status(400).json({
-                    message: 'Đơn bán tại quầy không dùng trạng thái "Đã xác nhận" — chỉ áp dụng cho đơn online.',
-                });
-            }
             const validStatuses = ['pending', 'confirmed', 'completed', 'cancelled'];
             if (validStatuses.includes(status)) order.status = status;
         }
@@ -2004,16 +2191,41 @@ export const updateOrder = async (req, res) => {
             }
         }
 
-        if (order.channel === 'online' && order.status === 'confirmed' && order.paymentStatus !== 'paid') {
+        if (
+            order.channel === 'in_store' &&
+            order.paymentStatus === 'paid' &&
+            order.status === 'pending' &&
+            (order.warehouseReservationActive === true || order.isPreOrder === true)
+        ) {
+            order.status = 'confirmed';
+        }
+
+        if (order.status === 'confirmed' && order.paymentStatus !== 'paid' && (order.channel === 'online' || order.channel === 'in_store')) {
             return res.status(400).json({
-                message: 'Đơn online chỉ được chuyển sang "Đã xác nhận" sau khi khách đã thanh toán.',
+                message: 'Chỉ chuyển sang "Đã xác nhận (chờ xuất kho)" sau khi đã thanh toán.',
             });
+        }
+
+        let reservationWarning = null;
+        if (
+            order.status !== 'cancelled' &&
+            order.status === 'confirmed' &&
+            order.paymentStatus === 'paid' &&
+            (order.channel === 'online' || order.channel === 'in_store') &&
+            order.warehouseReservationActive !== true
+        ) {
+            const resApply = await applyWarehouseQueueReservationIfReady(order);
+            if (!resApply.success) {
+                reservationWarning =
+                    resApply.message ||
+                    'Chưa giữ được chỗ tồn — trạng thái vẫn cập nhật; nhập đủ tồn tại kho rồi bấm cập nhật lại để đưa đơn vào hàng chờ kho.';
+            }
         }
 
         // Khi hủy đơn: hoàn lại tồn kho (chỉ khi đơn chưa từng bị hủy trước đó)
         if (order.status === 'cancelled' && previousStatus !== 'cancelled') {
             await restoreInventoryOnOrderCancel(order);
-            if (order.channel === 'online') {
+            if (order.channel === 'online' || order.channel === 'in_store') {
                 order.warehouseReservationActive = false;
             }
         }
@@ -2030,13 +2242,225 @@ export const updateOrder = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: 'Cập nhật đơn hàng thành công',
-            data: { order: populated },
+            message: reservationWarning
+                ? 'Đã cập nhật đơn. Lưu ý: thông báo về tồn (reservation) — xem reservationWarning.'
+                : 'Cập nhật đơn hàng thành công',
+            data: { order: populated, reservationWarning },
         });
     } catch (error) {
         console.error('updateOrder error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi cập nhật đơn hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * PUT /api/orders/:id/pre-order – Chỉnh sửa đơn đặt trước (chỉ khi chưa thanh toán, trạng thái chờ xử lý).
+ * Body: { items, note?, locationId?, discount?, customerId? } — gửi customerId để đổi khách (có thể gửi null = khách vãng lai).
+ * Không chặn tồn khi tính lại dòng (nghiệp vụ “đặt hàng trước khi đủ hàng trong kho” khi sửa).
+ */
+export const updatePreOrder = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const { id } = req.params;
+        const body = req.body || {};
+        const { items: rawItems, note, locationId } = body;
+
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        if (order.isPreOrder !== true) {
+            return res.status(400).json({ message: 'Chỉ áp dụng cho đơn đặt hàng (đặt trước) tại quầy' });
+        }
+        if (order.status !== 'pending' || order.paymentStatus !== 'pending') {
+            return res.status(400).json({ message: 'Chỉ chỉnh sửa khi đơn đang chờ xử lý và chưa thanh toán' });
+        }
+
+        const hasStockOut = await StockOut.exists({ order: order._id });
+        if (hasStockOut) {
+            return res.status(400).json({ message: 'Đơn đã có phiếu xuất kho — không chỉnh sửa ở đây' });
+        }
+
+        const { valid: canUseOrderLocation } = await validateLocationForUser(userId, order.location);
+        if (!canUseOrderLocation) {
+            return res.status(403).json({ message: 'Bạn không có quyền thao tác đơn tại chi nhánh này' });
+        }
+
+        if (!Array.isArray(rawItems) || rawItems.length === 0) {
+            return res.status(400).json({ message: 'Danh sách sản phẩm trống' });
+        }
+
+        let targetLocationId = order.location;
+        if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            if (String(locationId) !== String(order.location)) {
+                const { valid: locOk } = await validateLocationForUser(userId, locationId);
+                if (!locOk) {
+                    return res.status(403).json({ message: 'Bạn không có quyền chuyển đơn sang chi nhánh này' });
+                }
+                const location = await Location.findById(locationId);
+                if (!location || !location.isActive) {
+                    return res.status(404).json({ message: 'Không tìm thấy chi nhánh hoặc chi nhánh không hoạt động' });
+                }
+            }
+            targetLocationId = locationId;
+        }
+
+        const defaultVat = await getStoreDefaultVat();
+        const orderItems = [];
+        let sumGross = 0;
+        for (const it of rawItems) {
+            const productId = it.productId?.toString?.() || it.productId;
+            if (!productId || !mongoose.Types.ObjectId.isValid(productId)) continue;
+            const product = await Product.findOne({ _id: productId, isDeleted: false }).lean();
+            if (!product) {
+                return res.status(400).json({ message: 'Sản phẩm không tồn tại hoặc đã ngừng kinh doanh' });
+            }
+            const qty = Math.max(1, Number(it.quantity) || 1);
+            const price = typeof product.price === 'number' ? product.price : 0;
+            const r = effectiveVatPercent(product, defaultVat);
+            const { vat, gross } = lineGrossFromExVat(price, qty, r);
+            const unit = (product.unit && String(product.unit).trim()) || 'Cái';
+            orderItems.push({
+                product: product._id,
+                quantity: qty,
+                price,
+                total: gross,
+                unit,
+                vatPercent: r,
+                vatAmount: vat,
+            });
+            sumGross += gross;
+        }
+
+        if (orderItems.length === 0) {
+            return res.status(400).json({ message: 'Không có sản phẩm hợp lệ' });
+        }
+
+        const discount = Object.prototype.hasOwnProperty.call(body, 'discount')
+            ? Math.max(0, Number(body.discount) || 0)
+            : (order.discount != null ? Number(order.discount) : 0);
+        const finalTotal = Math.max(0, sumGross - discount);
+
+        if (Object.prototype.hasOwnProperty.call(body, 'customerId')) {
+            const cid = body.customerId;
+            let customerProfile = null;
+            let orderCustomerUserId = order.customer;
+            if (cid && mongoose.Types.ObjectId.isValid(String(cid))) {
+                const found = await Customer.findById(cid).lean();
+                if (found) {
+                    customerProfile = found;
+                    if (found.userId) {
+                        orderCustomerUserId = found.userId;
+                    } else {
+                        orderCustomerUserId = (await getOrCreateGuestUser())._id;
+                    }
+                }
+            }
+            if (!customerProfile) {
+                customerProfile = await getOrCreateDefaultWalkinCustomer();
+                orderCustomerUserId = (await getOrCreateGuestUser())._id;
+            }
+            order.customer = orderCustomerUserId;
+            order.customerProfile = customerProfile._id;
+        }
+
+        order.items = orderItems;
+        order.totalAmount = finalTotal;
+        order.discount = discount;
+        order.location = targetLocationId;
+        if (note !== undefined) {
+            order.note = String(note || '').trim();
+        }
+
+        await order.save();
+
+        const populated = await Order.findById(order._id)
+            .populate('items.product', 'sku barcode name price image images')
+            .populate('location', 'code name address')
+            .populate('customer', 'username email firstName lastName')
+            .populate('customerProfile', 'name phone type')
+            .populate('createdBy', 'username firstName lastName')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Đã cập nhật đơn đặt hàng',
+            data: { order: populated },
+        });
+    } catch (error) {
+        console.error('updatePreOrder error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi cập nhật đơn đặt hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * DELETE /api/orders/:id/pre-order – Xóa đơn đặt trước (soft-không dùng: xóa bản ghi thật).
+ * Không cho xóa nếu đã hoàn thành; không cho nếu đã có StockOut. Hoàn tồn / hủy giữ chỗ tương ứng.
+ * Khi đã thanh toán (trừ tích lũy khi hủy) — không trừ tích lũy nếu đơn đã ở trạng thái đã hủy (đã trừ khi hủy).
+ */
+export const deletePreOrder = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        if (order.isPreOrder !== true) {
+            return res.status(400).json({ message: 'Chỉ xóa được đơn đặt hàng (đặt trước) qua thao tác này' });
+        }
+        if (order.status === 'completed') {
+            return res.status(400).json({ message: 'Không xóa đơn đã hoàn thành' });
+        }
+        if (await StockOut.exists({ order: order._id })) {
+            return res.status(400).json({
+                message: 'Đơn đã có phiếu xuất kho — không xóa trực tiếp; dùng hủy/hoàn kho theo quy trình',
+            });
+        }
+
+        const { valid } = await validateLocationForUser(userId, order.location);
+        if (!valid) {
+            return res.status(403).json({ message: 'Bạn không có quyền thao tác đơn tại chi nhánh này' });
+        }
+
+        if (
+            order.paymentStatus === 'paid' &&
+            order.customerProfile &&
+            order.status !== 'cancelled'
+        ) {
+            await Customer.findByIdAndUpdate(order.customerProfile, {
+                $inc: { accumulatedAmount: -(order.totalAmount || 0) },
+            });
+        }
+        if (order.status !== 'cancelled') {
+            await restoreInventoryOnOrderCancel(order);
+        }
+        await Order.findByIdAndDelete(id);
+        return res.status(200).json({ success: true, message: 'Đã xóa đơn đặt hàng' });
+    } catch (error) {
+        console.error('deletePreOrder error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi xóa đơn đặt hàng',
             error: error.message,
         });
     }

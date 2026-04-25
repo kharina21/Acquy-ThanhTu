@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { getStoreSettings } from '@/services/storeSettingsService';
+import { moneyToVietnameseWords } from '@/lib/moneyToVietnameseWords';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBranchStore } from '@/stores/useBranchStore';
@@ -50,6 +52,25 @@ function escapeHtml(s) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+function clampInvoiceVat(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return 0;
+    return Math.min(100, Math.max(0, x));
+}
+
+/** Đơn giá chưa thuế × SL — cộng thuế GTGT (làm tròn) — khớp backend */
+function lineGrossFromExVatPos(unitPrice, qty, vatPct) {
+    const net = Math.round(Number(unitPrice) * Number(qty));
+    const v = clampInvoiceVat(vatPct);
+    const vat = Math.round((net * v) / 100);
+    return { net, vat, gross: net + vat };
+}
+
+function effectiveVatForLine(item, defaultPct) {
+    if (item?.vatPercent != null && Number.isFinite(Number(item.vatPercent))) return clampInvoiceVat(item.vatPercent);
+    return clampInvoiceVat(defaultPct);
 }
 
 function getUserRoleLabels(user) {
@@ -188,10 +209,14 @@ export default function CreateInvoicePage() {
     const [vietQRModal, setVietQRModal] = useState(() => emptyVietQRModal());
     /** Đơn CK vừa tạo: chờ thanh toán hoặc đã paid (chờ bấm Hoàn thành). tabId = tab tạo đơn. */
     const [transferSession, setTransferSession] = useState(null);
+    /** Đơn tiền mặt vừa tạo — chờ in / Hoàn thành (cùng trải nghiệm với chuyển khoản). */
+    const [cashSession, setCashSession] = useState(null);
     const [selectedBankAccountId, setSelectedBankAccountId] = useState('');
     const [cancelOrderSubmitting, setCancelOrderSubmitting] = useState(false);
     const [checkPaymentSubmitting, setCheckPaymentSubmitting] = useState(false);
     const payPollPaidToastRef = useRef(false);
+    const [invoiceVatPercent, setInvoiceVatPercent] = useState(10);
+    const [invoiceTaxCode, setInvoiceTaxCode] = useState('');
 
     const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
     const items = activeTab?.items || [];
@@ -222,11 +247,16 @@ export default function CreateInvoicePage() {
     const bankForTransferPreview = selectedBankAccount || defaultBankAccount;
 
     const transferFooterActive = transferSession && activeTabId === transferSession.tabId;
+    const cashFooterActive = cashSession && activeTabId === cashSession.tabId;
+    /** Đang xử lý đơn vừa tạo (CK hoặc tiền mặt) trên tab hiện tại — hiện In / Hoàn thành thay cho Thanh toán. */
+    const posFooterActive = transferFooterActive || cashFooterActive;
     const lockPaymentUiForCurrentTransfer =
-        transferSession && transferSession.paymentStatus !== 'paid' && activeTabId === transferSession.tabId;
-    const pendingTransferHoldsLocation = transferSession && transferSession.paymentStatus !== 'paid';
-    const cartLockedForTransfer =
-        transferSession && transferSession.paymentStatus !== 'paid' && activeTabId === transferSession.tabId;
+        (transferSession && activeTabId === transferSession.tabId) ||
+        (cashSession && activeTabId === cashSession.tabId);
+    const pendingTransferHoldsLocation =
+        (transferSession && transferSession.paymentStatus !== 'paid' && activeTabId === transferSession.tabId) ||
+        cashFooterActive;
+    const cartLockedForTransfer = lockPaymentUiForCurrentTransfer;
 
     const refreshStocks = useCallback(async () => {
         if (!form.locationId) return;
@@ -354,6 +384,20 @@ export default function CreateInvoicePage() {
                 setMemberPolicies(list.sort((a, b) => (a.minTotalSpent ?? 0) - (b.minTotalSpent ?? 0)));
             })
             .catch(() => setMemberPolicies([]));
+    }, []);
+
+    useEffect(() => {
+        getStoreSettings()
+            .then((r) => {
+                const p = r?.data?.defaultVatPercent;
+                if (p != null && !Number.isNaN(Number(p))) {
+                    setInvoiceVatPercent(Number(p));
+                }
+                if (r?.data?.taxCode != null) {
+                    setInvoiceTaxCode(String(r.data.taxCode));
+                }
+            })
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -514,6 +558,8 @@ export default function CreateInvoicePage() {
                     name: product.name ?? '',
                     price: Number(product.price) || 0,
                     quantity: 1,
+                    unit: (product.unit && String(product.unit).trim()) || 'Cái',
+                    vatPercent: product.vatPercent != null && !Number.isNaN(Number(product.vatPercent)) ? Number(product.vatPercent) : null,
                 },
             ];
         });
@@ -542,16 +588,39 @@ export default function CreateInvoicePage() {
         updateActiveTabItems((prev) => prev.map((i) => (i.productId === productId?.toString?.() ? { ...i, quantity: qty } : i)));
     };
 
-    const subtotal = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
     const totalQty = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
 
-    const tierPolicy = selectedCustomer ? getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies) : null;
-    const tierDiscountAmount = tierPolicy?.discountPercent
-        ? Math.round((subtotal * (Number(tierPolicy.discountPercent) || 0)) / 100)
-        : 0;
-    const discount =
-        selectedCustomer && tierPolicy ? tierDiscountAmount : Number(form.discount) || 0;
-    const total = Math.max(0, subtotal - discount);
+    const invoiceTotals = useMemo(() => {
+        const tp = selectedCustomer ? getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies) : null;
+        const def = invoiceVatPercent;
+        let sumNet = 0;
+        let sumVat = 0;
+        let sumGross = 0;
+        for (const i of items) {
+            const r = effectiveVatForLine(i, def);
+            const { net, vat, gross } = lineGrossFromExVatPos(i.price, i.quantity, r);
+            sumNet += net;
+            sumVat += vat;
+            sumGross += gross;
+        }
+        const tierDiscountAmount = tp?.discountPercent
+            ? Math.round((sumNet * (Number(tp.discountPercent) || 0)) / 100)
+            : 0;
+        const discount = selectedCustomer && tp ? tierDiscountAmount : Number(form.discount) || 0;
+        const total = Math.max(0, sumGross - discount);
+        return { subtotal: sumNet, sumVat, grossSubtotal: sumGross, total, discount, tierPolicy: tp };
+    }, [items, invoiceVatPercent, selectedCustomer, form.discount, memberPolicies]);
+
+    const { subtotal, sumVat, grossSubtotal, total, discount, tierPolicy } = invoiceTotals;
+
+    const vatBreakdown = useMemo(
+        () => ({
+            truocThue: subtotal,
+            tienThue: sumVat,
+            vatLabel: invoiceVatPercent,
+        }),
+        [subtotal, sumVat, invoiceVatPercent],
+    );
 
     const transferPreviewQrUrl =
         form.paymentMethod === 'transfer' && bankForTransferPreview && total > 0 && items.length > 0
@@ -606,7 +675,7 @@ export default function CreateInvoicePage() {
     };
 
     const handleTransferComplete = () => {
-        const tid = transferSession?.tabId;
+        const tid = transferSession?.tabId ?? cashSession?.tabId;
         if (tid != null) {
             setTabs((prev) => prev.map((t) => (t.id === tid ? { ...t, items: [] } : t)));
         }
@@ -615,12 +684,15 @@ export default function CreateInvoicePage() {
         setSelectedCustomer(null);
         setVietQRModal(emptyVietQRModal());
         setTransferSession(null);
+        setCashSession(null);
         refreshStocks();
         toast.success('Đã hoàn thành hóa đơn');
     };
 
+    const posPrintOrderId = transferSession?.orderId ?? cashSession?.orderId;
+
     const handlePrintTransferInvoice = useCallback(async () => {
-        if (!transferSession?.orderId || items.length === 0) {
+        if (!posPrintOrderId) {
             toast.error('Không có dữ liệu hóa đơn để in.');
             return;
         }
@@ -629,153 +701,204 @@ export default function CreateInvoicePage() {
                 ? String(vietQRModal.order.code)
                 : transferSession?.orderSnapshot?.code != null
                   ? String(transferSession.orderSnapshot.code)
-                  : '';
-        let orderTotal = vietQRModal.order?.totalAmount ?? transferSession?.orderSnapshot?.totalAmount;
+                  : cashSession?.orderSnapshot?.code != null
+                    ? String(cashSession.orderSnapshot.code)
+                    : '';
+        let orderTotal = vietQRModal.order?.totalAmount ?? transferSession?.orderSnapshot?.totalAmount ?? cashSession?.orderSnapshot?.totalAmount;
+        let orderDiscount = null;
+        let printItems = items;
+        let vatPct = invoiceVatPercent;
+        let taxCodePrint = invoiceTaxCode;
         try {
-            const res = await getOrderById(transferSession.orderId);
-            const ord = res?.data?.order ?? res?.order;
+            const [orderRes, stRes] = await Promise.all([getOrderById(posPrintOrderId), getStoreSettings()]);
+            const ord = orderRes?.data?.order ?? orderRes?.order;
             if (ord) {
                 if (ord.code != null) orderCode = String(ord.code);
                 if (ord.totalAmount != null) orderTotal = ord.totalAmount;
+                if (ord.discount != null) orderDiscount = Number(ord.discount);
+                if (ord.items?.length) {
+                    printItems = ord.items.map((it) => {
+                        const p = it.product;
+                        return {
+                            productId: p?._id || it.product,
+                            name: p?.name || '—',
+                            sku: p?.sku || '',
+                            price: it.price,
+                            quantity: it.quantity,
+                            unit: (it.unit && String(it.unit).trim()) || 'Cái',
+                            vatPercent: it.vatPercent,
+                            vatAmount: it.vatAmount,
+                            lineTotal: it.total,
+                        };
+                    });
+                }
+            }
+            if (stRes?.data) {
+                const p = stRes.data.defaultVatPercent;
+                if (p != null && !Number.isNaN(Number(p))) vatPct = Number(p);
+                if (stRes.data.taxCode != null) taxCodePrint = String(stRes.data.taxCode);
             }
         } catch {
             /* dùng dữ liệu trên màn hình */
         }
-        if (!orderCode) orderCode = String(transferSession.orderId).slice(-12);
-        const totalPrint = orderTotal != null ? Number(orderTotal) : Number(total) || 0;
-        const bank = vietQRModal.bankAccount || transferSession?.bankAccount || selectedBankAccount;
-        const locName = escapeHtml(currentLocation?.name || '—');
-        const now = escapeHtml(new Date().toLocaleString('vi-VN'));
-        const customerLine = selectedCustomer
-            ? `${escapeHtml(selectedCustomer.name || '')}${selectedCustomer.phone ? ` · ${escapeHtml(selectedCustomer.phone)}` : ''}`
-            : 'Khách vãng lai';
-        const sellerLine = selectedSeller
-            ? escapeHtml(
-                  [selectedSeller.firstName, selectedSeller.lastName].filter(Boolean).join(' ') ||
-                      selectedSeller.username ||
-                      '—',
-              )
-            : '—';
-        const noteLine = form.note?.trim() ? escapeHtml(form.note.trim()) : '';
-        const bankLine = bank
-            ? `${escapeHtml(bank.bankName || bank.bankCode || '')} · STK ${escapeHtml(String(bank.bankAccount || ''))}`
-            : '';
+        vatPct = Math.max(0, Math.min(100, vatPct));
 
-        const itemBlocks = items
-            .map((item, idx) => {
-                const name = escapeHtml(item.name || '');
-                const sku = item.sku ? escapeHtml(item.sku) : '';
-                const qty = Number(item.quantity) || 0;
-                const price = Number(item.price) || 0;
-                const lineTotal = price * qty;
-                return `<div class="item">
-    <div class="item-name">${idx + 1}. ${name}</div>
-    ${sku ? `<div class="item-sku">SKU: ${sku}</div>` : ''}
-    <div class="item-calc">${qty} × ${price.toLocaleString('vi-VN')}đ = <strong>${lineTotal.toLocaleString('vi-VN')}đ</strong></div>
-  </div>`;
+        if (!orderCode) orderCode = String(posPrintOrderId).slice(-12);
+        const totalPrint = orderTotal != null ? Number(orderTotal) : Number(total) || 0;
+
+        let sumNetP = 0;
+        let sumVatP = 0;
+        let sumGrossP = 0;
+        const lineRows = printItems
+            .map((row, idx) => {
+                const name = escapeHtml(row.name || '');
+                const u = escapeHtml((row.unit && String(row.unit).trim()) || 'Cái');
+                const qty = Number(row.quantity) || 0;
+                const price = Number(row.price) || 0;
+                const net = Math.round(price * qty);
+                const r = row.vatPercent != null ? clampInvoiceVat(row.vatPercent) : clampInvoiceVat(vatPct);
+                const legacyNoVat =
+                    row.vatAmount == null &&
+                    row.vatPercent == null &&
+                    row.lineTotal != null &&
+                    Math.abs(Math.round(Number(row.lineTotal)) - net) < 2;
+                let vatLine;
+                let grossLine;
+                if (legacyNoVat) {
+                    grossLine = Math.round(Number(row.lineTotal));
+                    vatLine = 0;
+                } else if (row.vatAmount != null || row.lineTotal != null) {
+                    vatLine = row.vatAmount != null ? Math.round(Number(row.vatAmount)) : lineGrossFromExVatPos(price, qty, r).vat;
+                    grossLine = row.lineTotal != null ? Math.round(Number(row.lineTotal)) : lineGrossFromExVatPos(price, qty, r).gross;
+                } else {
+                    const lg = lineGrossFromExVatPos(price, qty, r);
+                    vatLine = lg.vat;
+                    grossLine = lg.gross;
+                }
+                sumNetP += net;
+                sumVatP += vatLine;
+                sumGrossP += grossLine;
+                return `<tr>
+  <td style="text-align:center">${idx + 1}</td>
+  <td class="l">${name}</td>
+  <td style="text-align:center">${u}</td>
+  <td style="text-align:right">${qty}</td>
+  <td style="text-align:right">${price.toLocaleString('vi-VN')}</td>
+  <td style="text-align:right">${grossLine.toLocaleString('vi-VN')}</td>
+  <td style="text-align:center">${r}%</td>
+  <td style="text-align:right">${Math.round(vatLine).toLocaleString('vi-VN')}</td>
+</tr>`;
             })
             .join('');
 
-        const subtotalPrint = Number(subtotal) || 0;
-        const discountPrint = Number(discount) || 0;
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hóa đơn ${escapeHtml(orderCode)}</title>
+        const subtotalPrint = sumGrossP;
+        const discountPrint =
+            orderDiscount != null ? Math.max(0, orderDiscount) : Math.max(0, subtotalPrint - totalPrint);
+        const truocThue = sumNetP;
+        const tienThueTong = sumVatP;
+
+        const locName = escapeHtml(currentLocation?.name || '—');
+        const locAddr = escapeHtml((currentLocation?.address || '').trim() || '—');
+        const locPhone = escapeHtml((currentLocation?.phone || '').trim() || '—');
+        const taxCodeHtml = taxCodePrint ? escapeHtml(taxCodePrint) : '—';
+        const now = escapeHtml(new Date().toLocaleString('vi-VN'));
+        const customerLine = selectedCustomer
+            ? `${escapeHtml(selectedCustomer.name || '')}${
+                  selectedCustomer.phone ? ` — ${escapeHtml(selectedCustomer.phone)}` : ''
+              }`
+            : 'Khách lẻ / vãng lai';
+        const bank = vietQRModal.bankAccount || transferSession?.bankAccount || selectedBankAccount;
+        const bankLine = bank
+            ? `${escapeHtml(bank.bankName || bank.bankCode || '')} — STK ${escapeHtml(String(bank.bankAccount || ''))}`
+            : '';
+        const noteLine = form.note?.trim() ? escapeHtml(form.note.trim()) : '';
+        const byWords = escapeHtml(moneyToVietnameseWords(Math.round(totalPrint)));
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hóa đơn GTGT ${escapeHtml(
+            orderCode,
+        )}</title>
 <style>
-  /* Khổ ngang 55mm; chiều dọc theo nội dung (cuộn nhiệt — không cố định chiều cao trang). */
-  @page {
-    size: 55mm auto;
-    margin: 2mm 2.5mm;
-  }
+  @page { size: A4 portrait; margin: 10mm; }
   * { box-sizing: border-box; }
-  html {
-    width: 55mm;
-    max-width: 55mm;
-    margin: 0;
-    padding: 0;
-    height: auto !important;
-    min-height: 0 !important;
-  }
-  body {
-    width: 55mm;
-    max-width: 55mm;
-    margin: 0;
-    padding: 0;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    color: #000;
-    background: #fff;
-    font-family: ui-monospace, "Cascadia Code", "Segoe UI", system-ui, sans-serif;
-    font-size: 10px;
-    line-height: 1.35;
-    overflow: visible !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .receipt {
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    height: auto;
-    min-height: 0;
-    max-height: none;
-    overflow: visible;
-    display: block;
-  }
-  .title { text-align: center; font-size: 11px; font-weight: 700; margin: 0 0 3mm; letter-spacing: 0.04em; }
-  hr.rule { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
-  .meta-line { margin: 0.8mm 0; font-size: 9px; word-break: break-word; }
-  .item {
-    margin: 2.5mm 0;
-    padding-bottom: 2mm;
-    border-bottom: 1px dotted #888;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .item-name { font-weight: 600; word-break: break-word; }
-  .item-sku { font-size: 8px; color: #333; margin-top: 0.5mm; }
-  .item-calc { font-size: 9px; margin-top: 1mm; text-align: right; }
-  .totals { margin-top: 3mm; font-size: 9px; text-align: right; break-inside: avoid; page-break-inside: avoid; }
-  .totals .row { margin: 1mm 0; }
-  .totals .grand { font-weight: 700; font-size: 11px; margin-top: 2mm; padding-top: 2mm; border-top: 1px solid #000; }
-  .footer { text-align: center; font-size: 8px; margin-top: 4mm; word-break: break-word; }
-  @media print {
-    @page {
-      size: 55mm auto;
-      margin: 2mm 2.5mm;
-    }
-    html, body, .receipt {
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      overflow: visible !important;
-    }
-  }
+  body { font-family: "Times New Roman", Times, serif; font-size: 11pt; color: #000; margin: 0; }
+  h1 { text-align: center; font-size: 14pt; margin: 0 0 8px; font-weight: 700; }
+  .sub { text-align: center; font-size: 10pt; margin-bottom: 10px; }
+  .box { width: 100%; border: 1px solid #000; border-collapse: collapse; margin: 6px 0; }
+  .box td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
+  .box .l { text-align: left; }
+  .head { background: #f0f0f0; font-weight: 600; }
+  .items { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .items th, .items td { border: 1px solid #000; padding: 3px 4px; }
+  .items th { background: #eee; font-weight: 600; }
+  .sum { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10pt; }
+  .sum td, .sum th { border: 1px solid #000; padding: 5px 6px; }
+  .num { text-align: right; }
+  .word { font-style: italic; margin-top: 8px; font-size: 10pt; }
+  .ft { text-align: center; margin-top: 16px; font-size: 9pt; }
 </style></head><body>
-  <div class="receipt">
-    <div class="title">HÓA ĐƠN BÁN HÀNG</div>
-    <hr class="rule" />
-    <div class="meta-line"><b>Mã đơn:</b> ${escapeHtml(orderCode)}</div>
-    <div class="meta-line"><b>In:</b> ${now}</div>
-    <div class="meta-line"><b>CN:</b> ${locName}</div>
-    <div class="meta-line"><b>Khách:</b> ${customerLine}</div>
-    <div class="meta-line"><b>NV:</b> ${sellerLine}</div>
-    ${bankLine ? `<div class="meta-line"><b>TK:</b> ${bankLine}</div>` : ''}
-    ${noteLine ? `<div class="meta-line"><b>Ghi chú:</b> ${noteLine}</div>` : ''}
-    <hr class="rule" />
-    ${itemBlocks}
-    <hr class="rule" />
-    <div class="totals">
-      <div class="row">Tổng hàng: <strong>${subtotalPrint.toLocaleString('vi-VN')}đ</strong></div>
-      ${discountPrint > 0 ? `<div class="row">Giảm: <strong>-${discountPrint.toLocaleString('vi-VN')}đ</strong></div>` : ''}
-      <div class="row grand">KHÁCH TRẢ: ${totalPrint.toLocaleString('vi-VN')}đ</div>
-    </div>
-    <div class="footer">CK · Đã thanh toán · Cảm ơn quý khách</div>
-  </div>
+  <h1>HÓA ĐƠN GIÁ TRỊ GIA TĂNG (BẢN THỂ HIỆN TẠI QUẦY)</h1>
+  <p class="sub">(Đơn giá chưa thuế; thuế suất từng mặt hàng hoặc mặc định ${vatPct}% từ cửa hàng; thành tiền dòng gồm thuế khi áp dụng)</p>
+  <table class="box">
+    <tr>
+      <td class="l" style="width:50%"><strong>Đơn vị bán:</strong> ${locName}<br/>
+        <strong>Địa chỉ:</strong> ${locAddr}<br/>
+        <strong>Điện thoại:</strong> ${locPhone}<br/>
+        <strong>Mã số thuế (MST):</strong> ${taxCodeHtml}
+      </td>
+      <td class="l" style="width:50%"><strong>Ký hiệu mẫu / Số HĐ (hệ thống):</strong> ${escapeHtml(
+          orderCode,
+      )}<br/>
+        <strong>Ngày in:</strong> ${now}<br/>
+        <strong>Tên người mua:</strong> ${customerLine}${
+            bankLine ? `<br/><strong>TK/CK thanh toán:</strong> ${bankLine}` : ''
+        }${noteLine ? `<br/><strong>Ghi chú:</strong> ${noteLine}` : ''}
+      </td>
+    </tr>
+  </table>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:4%">STT</th>
+        <th style="width:28%">Tên hàng hóa, dịch vụ</th>
+        <th style="width:6%">ĐVT</th>
+        <th style="width:6%">SL</th>
+        <th style="width:10%">Đơn giá (chưa thuế)</th>
+        <th style="width:12%">Thành tiền (gồm thuế)</th>
+        <th style="width:8%">Thuế suất</th>
+        <th style="width:12%">Tiền thuế GTGT</th>
+      </tr>
+    </thead>
+    <tbody>${lineRows}</tbody>
+  </table>
+  <table class="sum">
+    <tr>
+      <th class="l">Tổng hàng (trước giảm, gồm thuế)</th>
+      <td class="num">${subtotalPrint.toLocaleString('vi-VN')}</td>
+    </tr>
+    <tr>
+      <th class="l">Giảm giá / CK</th>
+      <td class="num">${discountPrint > 0 ? `-${discountPrint.toLocaleString('vi-VN')}` : '0'}</td>
+    </tr>
+    <tr>
+      <th class="l">Cộng tiền hàng (trước thuế)</th>
+      <td class="num">${Math.round(truocThue).toLocaleString('vi-VN')}</td>
+    </tr>
+    <tr>
+      <th class="l">Tiền thuế GTGT (tổng)</th>
+      <td class="num">${Math.round(tienThueTong).toLocaleString('vi-VN')}</td>
+    </tr>
+    <tr>
+      <th class="l"><strong>TỔNG CỘNG thanh toán (đồng)</strong></th>
+      <td class="num"><strong>${totalPrint.toLocaleString('vi-VN')}</strong></td>
+    </tr>
+  </table>
+  <p class="word">Số tiền viết bằng chữ: ${byWords}</p>
+  <p class="ft">Đã thanh toán · Cảm ơn quý khách</p>
 </body></html>`;
 
         const iframe = document.createElement('iframe');
         iframe.style.cssText =
-            'position:fixed;left:-9999px;top:0;width:55mm;min-width:55mm;height:1px;border:none;opacity:0;pointer-events:none;';
+            'position:fixed;left:-9999px;top:0;width:210mm;min-width:200mm;height:1px;border:none;opacity:0;pointer-events:none;';
         document.body.appendChild(iframe);
         const doc = iframe.contentWindow.document;
         doc.open();
@@ -790,22 +913,24 @@ export default function CreateInvoicePage() {
         requestAnimationFrame(() => requestAnimationFrame(runPrint));
         setTimeout(() => {
             if (iframe.parentNode) document.body.removeChild(iframe);
-        }, 1500);
+        }, 2000);
     }, [
-        transferSession?.orderId,
-        transferSession?.orderSnapshot,
-        transferSession?.bankAccount,
+        posPrintOrderId,
+        transferSession,
+        cashSession,
         items,
         vietQRModal.order,
         vietQRModal.bankAccount,
         selectedBankAccount,
         currentLocation?.name,
+        currentLocation?.address,
+        currentLocation?.phone,
         selectedCustomer,
-        selectedSeller,
         form.note,
         subtotal,
-        discount,
         total,
+        invoiceVatPercent,
+        invoiceTaxCode,
     ]);
 
     const handleSubmit = async () => {
@@ -830,8 +955,12 @@ export default function CreateInvoicePage() {
             toast.error(`Sản phẩm không đủ tồn kho: ${names}`);
             return;
         }
-        if (transferSession?.paymentStatus === 'paid') {
+        if (transferFooterActive && transferSession?.paymentStatus === 'paid') {
             toast.error('Nhấn «Hoàn thành hóa đơn» cho đơn chuyển khoản vừa xong (tab đang xử lý) trước khi bán tiếp.');
+            return;
+        }
+        if (cashSession && activeTabId === cashSession.tabId) {
+            toast.error('Nhấn «Hoàn thành hóa đơn» cho đơn tiền mặt vừa tạo (tab này) trước khi bán tiếp.');
             return;
         }
         const method = form.paymentMethod === 'transfer' ? 'transfer' : 'cash';
@@ -920,11 +1049,13 @@ export default function CreateInvoicePage() {
                         });
                     }
                 } else {
-                    toast.success('Thanh toán thành công!');
-                    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? { ...t, items: [] } : t)));
-                    setCustomerPaid('');
-                    setForm((f) => ({ ...f, note: '', discount: 0 }));
-                    setSelectedCustomer(null);
+                    setCashSession({
+                        orderId: order._id,
+                        tabId: activeTabId,
+                        orderSnapshot: { code: order.code, totalAmount: order.totalAmount },
+                    });
+                    await refreshStocks();
+                    toast.success('Đã tạo đơn tiền mặt. In hóa đơn hoặc bấm Hoàn thành khi xong.');
                 }
             } else {
                 toast.error(res?.message || 'Thanh toán thất bại');
@@ -1186,6 +1317,7 @@ export default function CreateInvoicePage() {
                                     <th className='w-10'></th>
                                     <th className='w-24'>Mã</th>
                                     <th>Tên sản phẩm</th>
+                                    <th className='w-20'>ĐVT</th>
                                     <th className='w-32'>Số lượng</th>
                                     <th className='w-28 text-right'>Đơn giá</th>
                                     <th className='w-28 text-right'>Thành tiền</th>
@@ -1195,7 +1327,7 @@ export default function CreateInvoicePage() {
                                 {items.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={7}
+                                            colSpan={8}
                                             className='text-center text-base-content/50 py-12'
                                         >
                                             Chưa có sản phẩm. Gõ tìm kiếm (F3) hoặc bật quét mã để thêm.
@@ -1224,6 +1356,7 @@ export default function CreateInvoicePage() {
                                                 </td>
                                                 <td className='font-mono text-sm'>{item.sku || '—'}</td>
                                                 <td>{item.name}</td>
+                                                <td className='text-sm text-base-content/80'>{item.unit || 'Cái'}</td>
                                                 <td className='align-middle py-1'>
                                                     <div
                                                         className={`inline-flex h-7 w-full max-w-36 items-stretch overflow-hidden rounded-md border border-base-300 bg-base-100 shadow-sm ${
@@ -1518,11 +1651,31 @@ export default function CreateInvoicePage() {
                         <div className='text-right text-sm text-base-content/60'>{new Date().toLocaleString('vi-VN')}</div>
 
                         <div className='space-y-2 pt-2 border-t border-base-300'>
+                            {invoiceTaxCode ? (
+                                <p className='text-xs text-base-content/60'>MST (người bán): {invoiceTaxCode}</p>
+                            ) : null}
                             <div className='flex justify-between text-sm'>
-                                <span>Tổng tiền hàng</span>
+                                <span>Tiền hàng (chưa thuế)</span>
                                 <span>
                                     {totalQty} · {(subtotal || 0).toLocaleString()}đ
                                 </span>
+                            </div>
+                            <div className='flex justify-between text-xs text-base-content/70'>
+                                <span>Cộng tạm (gồm thuế)</span>
+                                <span>{(grossSubtotal || 0).toLocaleString()}đ</span>
+                            </div>
+                            <div className='rounded-md bg-base-100/80 px-2 py-1.5 space-y-0.5 text-xs text-base-content/80 border border-base-200'>
+                                <p className='font-medium text-base-content/90'>
+                                    Đơn giá sản phẩm: chưa thuế; mặc định thuế cửa hàng {invoiceVatPercent}% nếu mặt hàng không đặt riêng
+                                </p>
+                                <div className='flex justify-between gap-2'>
+                                    <span>Tổng tiền hàng (trước thuế)</span>
+                                    <span>{Math.round(vatBreakdown.truocThue).toLocaleString('vi-VN')}đ</span>
+                                </div>
+                                <div className='flex justify-between gap-2'>
+                                    <span>Thuế GTGT (tổng)</span>
+                                    <span>{Math.round(vatBreakdown.tienThue).toLocaleString('vi-VN')}đ</span>
+                                </div>
                             </div>
                             <div className='flex justify-between items-center text-sm gap-2'>
                                 <span>
@@ -1751,51 +1904,79 @@ export default function CreateInvoicePage() {
                                 </option>
                             ))}
                         </select>
-                        {transferFooterActive ? (
+                        {posFooterActive ? (
                             <div className='space-y-2'>
-                                {transferSession.paymentStatus === 'paid' ? (
-                                    <div className='flex gap-2'>
-                                        <button
-                                            type='button'
-                                            className='btn btn-outline btn-lg flex-1 gap-1'
-                                            onClick={handlePrintTransferInvoice}
-                                        >
-                                            <Printer className='size-5 shrink-0' />
-                                            In hóa đơn
-                                        </button>
-                                        <button
-                                            type='button'
-                                            className='btn btn-success btn-lg flex-1'
-                                            onClick={handleTransferComplete}
-                                        >
-                                            Hoàn thành hóa đơn
-                                        </button>
-                                    </div>
+                                {cashFooterActive ? (
+                                    <>
+                                        <div className='flex gap-2'>
+                                            <button
+                                                type='button'
+                                                className='btn btn-outline btn-lg flex-1 gap-1'
+                                                onClick={handlePrintTransferInvoice}
+                                            >
+                                                <Printer className='size-5 shrink-0' />
+                                                In hóa đơn
+                                            </button>
+                                            <button
+                                                type='button'
+                                                className='btn btn-success btn-lg flex-1'
+                                                onClick={handleTransferComplete}
+                                            >
+                                                Hoàn thành hóa đơn
+                                            </button>
+                                        </div>
+                                        <p className='text-[11px] text-center text-base-content/55'>
+                                            Đã thu tiền mặt — in hóa đơn cho khách nếu cần, rồi bấm Hoàn thành để kết
+                                            thúc và xóa giỏ trên tab này.
+                                        </p>
+                                    </>
                                 ) : (
-                                    <div className='flex gap-2'>
-                                        <button
-                                            type='button'
-                                            className='btn btn-outline flex-1'
-                                            disabled={cancelOrderSubmitting || checkPaymentSubmitting || submitting}
-                                            onClick={handleTransferCancel}
-                                        >
-                                            {cancelOrderSubmitting ? 'Đang hủy...' : 'Hủy đơn'}
-                                        </button>
-                                        <button
-                                            type='button'
-                                            className='btn btn-primary flex-1'
-                                            disabled={checkPaymentSubmitting || cancelOrderSubmitting || submitting}
-                                            onClick={handleTransferCheckStatus}
-                                        >
-                                            {checkPaymentSubmitting ? 'Đang kiểm tra...' : 'Trạng thái'}
-                                        </button>
-                                    </div>
+                                    <>
+                                        {transferSession?.paymentStatus === 'paid' ? (
+                                            <div className='flex gap-2'>
+                                                <button
+                                                    type='button'
+                                                    className='btn btn-outline btn-lg flex-1 gap-1'
+                                                    onClick={handlePrintTransferInvoice}
+                                                >
+                                                    <Printer className='size-5 shrink-0' />
+                                                    In hóa đơn
+                                                </button>
+                                                <button
+                                                    type='button'
+                                                    className='btn btn-success btn-lg flex-1'
+                                                    onClick={handleTransferComplete}
+                                                >
+                                                    Hoàn thành hóa đơn
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className='flex gap-2'>
+                                                <button
+                                                    type='button'
+                                                    className='btn btn-outline flex-1'
+                                                    disabled={cancelOrderSubmitting || checkPaymentSubmitting || submitting}
+                                                    onClick={handleTransferCancel}
+                                                >
+                                                    {cancelOrderSubmitting ? 'Đang hủy...' : 'Hủy đơn'}
+                                                </button>
+                                                <button
+                                                    type='button'
+                                                    className='btn btn-primary flex-1'
+                                                    disabled={checkPaymentSubmitting || cancelOrderSubmitting || submitting}
+                                                    onClick={handleTransferCheckStatus}
+                                                >
+                                                    {checkPaymentSubmitting ? 'Đang kiểm tra...' : 'Trạng thái'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        <p className='text-[11px] text-center text-base-content/55'>
+                                            {transferSession?.paymentStatus === 'paid'
+                                                ? 'Đã xác nhận chuyển khoản — nhấn Hoàn thành để kết thúc và xóa giỏ trên tab này.'
+                                                : 'Đang chờ CK — Hủy đơn hoàn tồn; Trạng thái đồng bộ PayOS (tự kiểm tra mỗi 4 giây).'}
+                                        </p>
+                                    </>
                                 )}
-                                <p className='text-[11px] text-center text-base-content/55'>
-                                    {transferSession.paymentStatus === 'paid'
-                                        ? 'Đã xác nhận chuyển khoản — nhấn Hoàn thành để kết thúc và xóa giỏ trên tab này.'
-                                        : 'Đang chờ CK — Hủy đơn hoàn tồn; Trạng thái đồng bộ PayOS (tự kiểm tra mỗi 4 giây).'}
-                                </p>
                             </div>
                         ) : (
                             <button

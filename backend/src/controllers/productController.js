@@ -26,6 +26,26 @@ async function findBrandByName(brandName) {
     });
 }
 
+/**
+ * Với từng sản phẩm: đơn giá nhập tối đa trên các dòng hàng
+ * của phiếu nhập hàng trạng thái "confirmed" (cùng tất cả chi nhánh).
+ */
+async function getMaxImportUnitPriceByProductIds(productObjectIds) {
+    if (!productObjectIds?.length) return {};
+    const rows = await StockIn.aggregate([
+        { $match: { status: 'confirmed' } },
+        { $unwind: '$items' },
+        { $match: { 'items.product': { $in: productObjectIds } } },
+        { $group: { _id: '$items.product', maxUnit: { $max: '$items.unitPrice' } } },
+    ]);
+    return Object.fromEntries(
+        rows.map((r) => {
+            const v = r.maxUnit;
+            return [r._id.toString(), v != null && Number.isFinite(Number(v)) ? Math.round(Number(v)) : null];
+        }),
+    );
+}
+
 async function findUsageDeviceByName(usageName) {
     const name = String(usageName || '').trim();
     if (!name) return null;
@@ -81,10 +101,13 @@ export const getAllProducts = async (req, res) => {
         const limit = parseInt(req.query.limit) || 15;
         const search = (req.query.search || '').trim();
         const locationId = req.query.locationId?.trim();
+        const category = (req.query.category || '').trim();
         const brand = (req.query.brand || '').trim();
         const usageDevice = (req.query.usageDevice || '').trim();
         const priceMin = Number(req.query.priceMin) || 0;
         const priceMax = Number(req.query.priceMax) || 0;
+        const includeMaxImportUnitPrice =
+            req.query.includeMaxImportUnitPrice === '1' || req.query.includeMaxImportUnitPrice === 'true';
         const skip = (page - 1) * limit;
 
         const query = { isDeleted: false };
@@ -126,6 +149,9 @@ export const getAllProducts = async (req, res) => {
                     query.$or.push({ _id: { $in: productIdsBySerial } });
                 }
             }
+        }
+        if (category && mongoose.Types.ObjectId.isValid(category)) {
+            query.category = category;
         }
         if (brand && mongoose.Types.ObjectId.isValid(brand)) {
             query.brand = brand;
@@ -201,7 +227,7 @@ export const getAllProducts = async (req, res) => {
                 },
             ],
         };
-        const [totalsAgg, stocksAtLoc] = await Promise.all([
+        const [totalsAgg, stocksAtLoc, maxImportByProduct] = await Promise.all([
             ProductStock.aggregate([
                 { $match: { product: { $in: productIds } } },
                 { $addFields: { _avail: availExpr } },
@@ -224,6 +250,9 @@ export const getAllProducts = async (req, res) => {
                         return { sellable, physical };
                     })
                 : Promise.resolve({ sellable: {}, physical: {} }),
+            includeMaxImportUnitPrice && productIds.length
+                ? getMaxImportUnitPriceByProductIds(productIds)
+                : Promise.resolve({}),
         ]);
         processedProducts.forEach((p) => {
             p.totalStock = totalsAgg[p._id.toString()] ?? 0;
@@ -232,6 +261,9 @@ export const getAllProducts = async (req, res) => {
                 p.stockAtLocation = stocksAtLoc.sellable?.[key] ?? 0;
                 /** Tồn thực tế trên sổ (ProductStock.quantity) — dùng cho kiểm kho, khác tồn bán được (đã trừ giữ chỗ online). */
                 p.physicalStockAtLocation = stocksAtLoc.physical?.[key] ?? 0;
+            }
+            if (includeMaxImportUnitPrice) {
+                p.maxImportUnitPrice = maxImportByProduct[p._id.toString()] ?? null;
             }
         });
 
@@ -596,10 +628,24 @@ export const importFromExcel = async (req, res) => {
                 }
             }
             delete productData.usageDeviceName; // không lưu usageDeviceName nữa
+            const initialStockQty = Math.max(0, Math.floor(Number(productData.quantity) || 0));
             delete productData.quantity;
             delete productData.totalStock;
+            // Cột từ file export: không lưu vào Product
+            delete productData['Ngày tạo'];
+            delete productData['Ngày cập nhật'];
+            if (productData.vatPercent != null && (Number.isNaN(Number(productData.vatPercent)) || productData.vatPercent < 0 || productData.vatPercent > 100)) {
+                delete productData.vatPercent;
+            }
 
             const doc = await Product.create(productData);
+            if (locationId && initialStockQty > 0) {
+                await ProductStock.findOneAndUpdate(
+                    { product: doc._id, location: locationId },
+                    { $set: { quantity: initialStockQty } },
+                    { upsert: true, new: true }
+                );
+            }
             inserted.push(doc);
         }
         const skipMsg = [duplicateSkus.length && `${duplicateSkus.length} mã hàng trùng`, duplicateBarcodes.length && `${duplicateBarcodes.length} mã vạch trùng`].filter(Boolean).join(', ');

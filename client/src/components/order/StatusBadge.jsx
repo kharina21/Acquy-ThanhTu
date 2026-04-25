@@ -5,7 +5,7 @@ const STATUS_CONFIG = {
     pending: { label: 'Chờ xử lý', className: 'bg-amber-100 text-amber-900 border-amber-400' },
     /** Đơn online: đã thanh toán, chờ kho xuất hàng */
     confirmed: { label: 'Đã xác nhận · chờ xuất kho', className: 'bg-sky-100 text-sky-900 border-sky-500' },
-    /** Đơn online: đã xuất kho; đơn tại quầy: hoàn tất */
+    /** Đã xuất kho / giao hàng xong (online & tại quầy) */
     completed: { label: 'Đã xuất kho / hoàn thành', className: 'bg-green-100 text-green-800 border-green-500' },
     cancelled: { label: 'Đã hủy', className: 'bg-slate-200 text-slate-700 border-slate-400' },
     /** Dữ liệu cũ */

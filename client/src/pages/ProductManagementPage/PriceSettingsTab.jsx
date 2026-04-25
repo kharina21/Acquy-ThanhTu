@@ -17,6 +17,7 @@ const PriceSettingsTab = () => {
             page: pagination.page,
             limit: pagination.limit,
             search: search.trim() || undefined,
+            includeMaxImportUnitPrice: '1',
         });
         if (res.success && res.data) {
             setProducts(res.data.products || []);
@@ -34,8 +35,16 @@ const PriceSettingsTab = () => {
         setPagination((p) => ({ ...p, page: 1 }));
     };
 
-    const getCostPrice = (p) => edits[p._id]?.costPrice !== undefined ? edits[p._id].costPrice : (p.costPrice ?? 0);
-    const getPrice = (p) => edits[p._id]?.price !== undefined ? edits[p._id].price : (p.price ?? 0);
+    /** Giá vốn gợi ý: đơn giá nhập cao nhất trên phiếu nhập đã xác nhận; nếu chưa có thì dùng giá vốn hiện lưu. */
+    const getSuggestedCost = (p) => {
+        const m = p.maxImportUnitPrice;
+        if (m != null && Number(m) > 0) return Number(m);
+        return p.costPrice ?? 0;
+    };
+
+    const getCostPrice = (p) =>
+        edits[p._id]?.costPrice !== undefined ? edits[p._id].costPrice : getSuggestedCost(p);
+    const getPrice = (p) => (edits[p._id]?.price !== undefined ? edits[p._id].price : (p.price ?? 0));
 
     const setCostPrice = (id, value) => {
         const num = value === '' ? '' : Number(value);
@@ -91,8 +100,9 @@ const PriceSettingsTab = () => {
                 <DollarSign className="w-6 h-6 text-primary" />
                 <h2 className="text-lg font-bold">Thiết lập giá</h2>
             </div>
-            <p className="text-base-content/70 mb-6">
-                Chỉnh sửa giá vốn và giá bán (bảng giá chung) cho từng mặt hàng.
+            <p className="text-base-content/70 text-sm leading-relaxed mb-6 max-w-3xl">
+                Giá vốn: đơn giá nhập tối đa trên các phiếu nhập đã xác nhận; nếu chưa có thì dùng giá vốn đang lưu. Có
+                thể sửa trước khi Lưu. Giá cột bên phải là bảng giá bán chung.
             </p>
 
             <form onSubmit={handleSearchSubmit} className="flex gap-2 mb-4">
@@ -126,7 +136,12 @@ const PriceSettingsTab = () => {
                             <tr>
                                 <th className="w-32 font-medium text-neutral text-xs">Mã hàng</th>
                                 <th className="font-medium text-neutral text-xs">Tên hàng</th>
-                                <th className="text-right w-40 font-medium text-neutral text-xs">Giá vốn (VNĐ)</th>
+                                <th
+                                    className="text-right w-44 font-medium text-neutral text-xs"
+                                    title="Ô nhập: đơn giá nhập tối đa từ phiếu đã xác nhận, nếu không thì giá vốn đang lưu"
+                                >
+                                    Giá vốn (VNĐ)
+                                </th>
                                 <th className="text-right w-40 font-medium text-neutral text-xs">Bảng giá chung (VNĐ)</th>
                                 <th className="w-24 font-medium text-neutral text-xs"></th>
                             </tr>

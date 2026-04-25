@@ -8,8 +8,16 @@ const orderItemSchema = new mongoose.Schema(
     {
         product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
         quantity: { type: Number, required: true, min: 1 },
+        /** Đơn giá chưa thuế GTGT (theo sản phẩm) */
         price: { type: Number, required: true },
+        /** Thành tiền dòng = tiền hàng (chưa thuế) + thuế GTGT dòng (làm tròn) */
         total: { type: Number, required: true },
+        /** % VAT áp dụng dòng (snapshot) */
+        vatPercent: { type: Number, min: 0, max: 100 },
+        /** Tiền thuế GTGT dòng (làm tròn) */
+        vatAmount: { type: Number, min: 0, default: 0 },
+        /** Snapshot ĐVT khi tạo đơn (theo sản phẩm) */
+        unit: { type: String, default: 'Cái', trim: true, maxlength: 32 },
     },
     { _id: true }
 );
@@ -29,8 +37,8 @@ const orderSchema = new mongoose.Schema(
         /** Giảm giá (VNĐ) – từ chính sách hạng khách hàng hoặc giảm thủ công */
         discount: { type: Number, default: 0, min: 0 },
         /**
-         * Online: pending sau khi đặt và sau khi thanh toán (seller chưa xác nhận) → seller chuyển confirmed → kho xuất → completed.
-         * in_store: pending (đặt cọc) hoặc completed; không dùng confirmed.
+         * Online: pending → (thanh toán) → seller confirmed → kho xuất → completed.
+         * in_store: đặt trước = pending; bán thường = confirmed chờ kho xuất (hoặc pending khi chưa thanh toán chuyển khoản) → completed.
          */
         status: {
             type: String,
@@ -72,12 +80,14 @@ const orderSchema = new mongoose.Schema(
         /** Khách đặt hàng tại cửa hàng nhưng hàng chưa có sẵn */
         isPreOrder: { type: Boolean, default: false },
         /**
-         * Đơn online: true = đã giữ chỗ tồn (reservedOnlineQty), chưa trừ quantity.
-         * false/undefined = không còn giữ chỗ (đã xuất kho hoặc đơn cũ trừ tồn ngay khi đặt).
+         * Online & bán tại quầy (khi tạo hóa đơn thường): true = đã giữ chỗ tồn (reservedOnlineQty), chưa trừ quantity.
+         * false/undefined = không còn giữ chỗ (đã xuất kho, đơn cũ, hoặc đặt cọc).
          */
         warehouseReservationActive: { type: Boolean },
         /** Xuất kho nhanh: chỉ số dòng trong items (0-based) đã quét đóng gói — đủ mới cho xác nhận xuất kho */
         warehousePackedLineIndexes: { type: [Number], default: [] },
+        /** Nhân viên kho xác nhận đã gom/kiểm hàng sẵn sàng trước bước quét từng dòng (bắt buộc theo nghiệp vụ) */
+        warehouseItemsPreparedAt: { type: Date, default: null },
     },
     { timestamps: true }
 );

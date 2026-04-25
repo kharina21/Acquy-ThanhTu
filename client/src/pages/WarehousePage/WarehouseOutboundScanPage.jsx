@@ -7,12 +7,27 @@ import {
     lookupOnlineOrderForPacking,
     packWarehouseOrderLine,
     confirmWarehouseOutbound,
+    confirmWarehouseItemsPrepared,
 } from '@/services/orderService';
 import { toast } from 'sonner';
 
 /**
  * Xuất kho nhanh: danh sách đơn chờ → bấm mở từng đơn → quét SKU từng dòng → xác nhận xuất kho.
  */
+/** Màu phân loại: tại quầy (POS) vs đơn web — giúp kho nhận diện nhanh. */
+const channelStyles = {
+    in_store: {
+        label: 'Tại quầy',
+        badge: 'bg-amber-100 text-amber-950 border-amber-400/80',
+        rowBorder: 'border-l-4 border-l-amber-500',
+    },
+    online: {
+        label: 'Online',
+        badge: 'bg-sky-100 text-sky-950 border-sky-500/80',
+        rowBorder: 'border-l-4 border-l-sky-500',
+    },
+};
+
 const WarehouseOutboundScanPage = () => {
     const [onlineInfo, setOnlineInfo] = useState({ location: null, resolvedAs: null });
     const [onlineLoading, setOnlineLoading] = useState(true);
@@ -31,6 +46,7 @@ const WarehouseOutboundScanPage = () => {
     const [scanSku, setScanSku] = useState('');
     const [packLoading, setPackLoading] = useState(false);
     const [confirmLoading, setConfirmLoading] = useState(false);
+    const [preparedLoading, setPreparedLoading] = useState(false);
     const skuInputRef = useRef(null);
 
     useEffect(() => {
@@ -57,10 +73,6 @@ const WarehouseOutboundScanPage = () => {
     }, []);
 
     const loadQueue = async () => {
-        if (!onlineLocation?._id) {
-            setQueue([]);
-            return;
-        }
         setQueueLoading(true);
         try {
             const res = await getMyOrders({
@@ -78,7 +90,7 @@ const WarehouseOutboundScanPage = () => {
 
     useEffect(() => {
         loadQueue();
-    }, [onlineLocation?._id]);
+    }, []);
 
     const applyPackingResponse = (res) => {
         const d = res?.data;
@@ -90,6 +102,7 @@ const WarehouseOutboundScanPage = () => {
                 packedCount: d.packedCount,
                 totalLines: d.totalLines,
                 allPacked: d.allPacked,
+                itemsPrepared: d.itemsPrepared,
             });
         }
     };
@@ -154,8 +167,33 @@ const WarehouseOutboundScanPage = () => {
         }
     };
 
+    const submitConfirmPrepared = async () => {
+        if (!activeOrder?._id) return;
+        setPreparedLoading(true);
+        try {
+            const res = await confirmWarehouseItemsPrepared(activeOrder._id);
+            applyPackingResponse(res);
+            toast.success(res?.message || 'Đã xác nhận chuẩn bị hàng');
+            loadQueue();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không cập nhật được bước chuẩn bị');
+        } finally {
+            setPreparedLoading(false);
+        }
+    };
+
+    const isItemsPrepared = () =>
+        Boolean(
+            packingProgress?.itemsPrepared ??
+                (activeOrder?.warehouseItemsPreparedAt != null && String(activeOrder.warehouseItemsPreparedAt) !== '')
+        );
+
     const submitConfirmOutbound = async () => {
         if (!activeOrder?._id) return;
+        if (!isItemsPrepared()) {
+            toast.error('Bấm "Xác nhận đã chuẩn bị hàng" trước, rồi mới quét từng dòng');
+            return;
+        }
         if (!packingProgress?.allPacked) {
             toast.error('Chưa đóng gói đủ tất cả dòng trong đơn');
             return;
@@ -206,9 +244,18 @@ const WarehouseOutboundScanPage = () => {
     const OrderDetailCard = ({ order: ord }) => {
         if (!ord) return null;
         const addr = shippingAddressBlock(ord);
+        const ch = ord.channel === 'in_store' ? 'in_store' : 'online';
+        const chSt = channelStyles[ch];
         return (
-            <div className="rounded-lg border border-base-200 bg-base-100 p-3 space-y-2 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-base-content/50">Chi tiết đơn hàng</p>
+            <div className={`rounded-lg border border-base-200 bg-base-100 p-3 pl-3 space-y-2 text-sm ${chSt.rowBorder}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-base-content/50">Chi tiết đơn hàng</p>
+                    <span
+                        className={`shrink-0 inline-flex items-center rounded px-2.5 py-0.5 text-xs font-semibold border ${chSt.badge}`}
+                    >
+                        {chSt.label}
+                    </span>
+                </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                     <div>
                         <span className="text-base-content/55 text-xs block">Mã đơn</span>
@@ -283,11 +330,11 @@ const WarehouseOutboundScanPage = () => {
                     <div className="flex items-center gap-2">
                         <ScanLine className="w-8 h-8 text-primary" />
                         <div>
-                            <h1 className="text-2xl font-bold text-base-content">Xuất kho nhanh (đơn online)</h1>
+                            <h1 className="text-2xl font-bold text-base-content">Quét xuất: Tại quầy & Online</h1>
                             <p className="text-sm text-base-content/65 mt-0.5">
-                                Chọn đơn trong danh sách để mở các bước: quét SKU/mã vạch từng dòng đóng gói, sau đó xác
-                                nhận xuất kho. Chỉ áp dụng cho <strong>chi nhánh bán online</strong> (đã thanh toán,
-                                seller đã xác nhận).
+                                Chọn đơn, quét SKU từng dòng, rồi xác nhận xuất kho. Màu viền &amp; tem bên dưới phân
+                                loại: <span className="text-amber-800 font-medium">Tại quầy</span> (bán/đặt tại cửa
+                                hàng) và <span className="text-sky-800 font-medium">Online</span> (đơn trên web).
                             </p>
                         </div>
                     </div>
@@ -298,6 +345,19 @@ const WarehouseOutboundScanPage = () => {
 
                 <div className="bg-base-100 rounded-xl border border-base-200 overflow-hidden">
                     <div className="px-4 py-3 border-b border-base-200 space-y-2">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-base-content/80 pb-0.5">
+                            <span className="inline-flex items-center gap-1.5">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" aria-hidden />
+                                <span>Tại quầy (POS)</span>
+                            </span>
+                            <span className="text-base-content/30" aria-hidden>
+                                |
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" aria-hidden />
+                                <span>Online (web)</span>
+                            </span>
+                        </div>
                         <div className="flex flex-wrap justify-between items-center gap-2">
                             <h2 className="font-semibold">Đơn chờ xuất kho</h2>
                             <button type="button" className="btn btn-ghost btn-xs" onClick={loadQueue} disabled={queueLoading}>
@@ -305,7 +365,7 @@ const WarehouseOutboundScanPage = () => {
                             </button>
                         </div>
                         <div className="text-xs text-base-content/60">
-                            <span className="label-text">Chi nhánh bán online:</span>{' '}
+                            <span className="label-text">Kho bán online (giao từ xa):</span>{' '}
                             {onlineLoading ? (
                                 <span className="loading loading-spinner loading-xs align-middle" />
                             ) : onlineLocation ? (
@@ -316,16 +376,12 @@ const WarehouseOutboundScanPage = () => {
                                     )}
                                 </>
                             ) : (
-                                <span className="text-error">Chưa cấu hình</span>
+                                <span className="text-base-content/50">Chưa cấu hình (đơn cửa hàng vẫn hiện theo quyền)</span>
                             )}
                         </div>
                     </div>
 
-                    {!onlineLocation?._id ? (
-                        <p className="p-6 text-sm text-base-content/60">
-                            Cấu hình chi nhánh bán online trong quản lý cơ sở để xem danh sách.
-                        </p>
-                    ) : queueLoading && queue.length === 0 ? (
+                    {queueLoading && queue.length === 0 ? (
                         <div className="flex justify-center py-16">
                             <span className="loading loading-spinner text-primary" />
                         </div>
@@ -340,11 +396,13 @@ const WarehouseOutboundScanPage = () => {
                                     activeOrder &&
                                     String(activeOrder._id) === String(o._id);
                                 const addrPreview = shippingAddressBlock(o);
+                                const ch = o.channel === 'in_store' ? 'in_store' : 'online';
+                                const chStyle = channelStyles[ch];
                                 return (
-                                    <li key={o._id} className="bg-base-100">
+                                    <li key={o._id} className={`bg-base-100 pl-0 ${chStyle.rowBorder}`}>
                                         <button
                                             type="button"
-                                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-base-200/60 transition-colors"
+                                            className="w-full pl-3 pr-4 py-3 flex items-center gap-3 text-left hover:bg-base-200/60 transition-colors"
                                             onClick={() => handleToggleOrder(o._id)}
                                         >
                                             <ChevronDown
@@ -354,7 +412,14 @@ const WarehouseOutboundScanPage = () => {
                                                 aria-hidden
                                             />
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-mono font-semibold text-base-content">{o.code}</p>
+                                                <p className="font-mono font-semibold text-base-content">
+                                                    {o.code}
+                                                    <span
+                                                        className={`ml-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-sans font-semibold border ${chStyle.badge}`}
+                                                    >
+                                                        {chStyle.label}
+                                                    </span>
+                                                </p>
                                                 <p className="text-xs text-base-content/65 mt-0.5">
                                                     <span>{formatOrderDate(o)}</span>
                                                     <span className="text-base-content/40 mx-1">·</span>
@@ -374,7 +439,14 @@ const WarehouseOutboundScanPage = () => {
                                                     ) : null}
                                                 </p>
                                             </div>
-                                            <span className="badge badge-warning badge-sm shrink-0">Chờ xuất</span>
+                                            <div className="shrink-0 flex flex-col items-end gap-1">
+                                                {o.warehouseItemsPreparedAt ? (
+                                                    <span className="badge badge-success badge-sm">Đã chuẩn bị</span>
+                                                ) : (
+                                                    <span className="badge badge-ghost badge-sm">Chưa chuẩn bị</span>
+                                                )}
+                                                <span className="badge badge-warning badge-sm">Chờ xuất kho</span>
+                                            </div>
                                         </button>
 
                                         {expanded && (
@@ -386,87 +458,112 @@ const WarehouseOutboundScanPage = () => {
                                                 ) : isActive && packingProgress && activeOrder ? (
                                                     <div className="space-y-3 pt-3">
                                                         <OrderDetailCard order={activeOrder} />
-                                                        <p className="text-xs font-medium text-base-content/80 pt-1">
-                                                            Đóng gói & xuất kho
-                                                        </p>
-                                                        <p className="text-xs text-base-content/70">
-                                                            Đóng gói: {packingProgress.packedCount}/{packingProgress.totalLines}{' '}
-                                                            dòng
-                                                            {packingProgress.allPacked && (
-                                                                <span className="ml-2 badge badge-success badge-sm">
-                                                                    Đủ — có thể xuất kho
-                                                                </span>
-                                                            )}
-                                                        </p>
-
-                                                        <ul className="rounded-lg border border-base-200 divide-y divide-base-200 bg-base-100 text-sm max-h-48 overflow-y-auto">
-                                                            {packingProgress.lines.map((line) => (
-                                                                <li
-                                                                    key={line.lineIndex}
-                                                                    className={`px-3 py-2 flex flex-wrap justify-between gap-2 ${
-                                                                        line.packed ? 'bg-success/10' : ''
-                                                                    }`}
-                                                                >
-                                                                    <span>
-                                                                        {line.packed ? '✓ ' : '○ '}
-                                                                        <span className="font-medium">{line.productName}</span>
-                                                                        <span className="text-base-content/60">
-                                                                            {' '}
-                                                                            ×{line.quantity}
-                                                                        </span>
-                                                                    </span>
-                                                                    <span className="font-mono text-xs text-base-content/70">
-                                                                        SKU {line.sku}
-                                                                        {line.barcode ? ` · ${line.barcode}` : ''}
-                                                                    </span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-
-                                                        <form onSubmit={submitPackLine} className="space-y-2">
-                                                            <label className="label py-0 text-xs font-medium">
-                                                                Quét SKU / mã vạch (dòng chưa đóng gói)
-                                                            </label>
-                                                            <input
-                                                                ref={skuInputRef}
-                                                                type="text"
-                                                                className="input input-bordered input-sm w-full font-mono"
-                                                                placeholder="Quét sản phẩm vừa cho vào thùng"
-                                                                value={scanSku}
-                                                                onChange={(e) => setScanSku(e.target.value)}
-                                                                autoComplete="off"
-                                                                disabled={!onlineLocation?._id || packingProgress.allPacked}
-                                                            />
-                                                            <div className="flex flex-wrap gap-2">
-                                                                <button
-                                                                    type="submit"
-                                                                    className="btn btn-primary btn-sm"
-                                                                    disabled={
-                                                                        packLoading ||
-                                                                        !onlineLocation?._id ||
-                                                                        packingProgress.allPacked
-                                                                    }
-                                                                >
-                                                                    {packLoading ? (
-                                                                        <span className="loading loading-spinner loading-sm" />
-                                                                    ) : (
-                                                                        'Xác nhận đóng gói dòng'
-                                                                    )}
-                                                                </button>
+                                                        {!isItemsPrepared() ? (
+                                                            <div className="rounded-lg border border-amber-300/80 bg-amber-50/90 dark:bg-amber-950/20 p-3 space-y-2">
+                                                                <p className="text-sm font-medium text-base-content">
+                                                                    Bước 1 — Chuẩn bị hàng
+                                                                </p>
+                                                                <p className="text-xs text-base-content/80 leading-relaxed">
+                                                                    Sau khi lấy đủ sản phẩm tại kho, bấm xác nhận. Sau đó bước 2 mới
+                                                                    quét từng dòng đóng gói, bước 3 xuất kho (trừ tồn) — trạng thái
+                                                                    đơn sẽ là <strong>Đã xuất kho / hoàn thành</strong>.
+                                                                </p>
                                                                 <button
                                                                     type="button"
-                                                                    className="btn btn-success btn-sm"
-                                                                    disabled={confirmLoading || !packingProgress.allPacked}
-                                                                    onClick={submitConfirmOutbound}
+                                                                    className="btn btn-warning btn-sm"
+                                                                    disabled={preparedLoading}
+                                                                    onClick={submitConfirmPrepared}
                                                                 >
-                                                                    {confirmLoading ? (
+                                                                    {preparedLoading ? (
                                                                         <span className="loading loading-spinner loading-sm" />
                                                                     ) : (
-                                                                        'Xác nhận xuất kho (trừ tồn)'
+                                                                        'Xác nhận đã chuẩn bị hàng'
                                                                     )}
                                                                 </button>
                                                             </div>
-                                                        </form>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-xs font-medium text-base-content/80 pt-1">
+                                                                    Bước 2 &amp; 3 — Đóng gói từng dòng, xuất kho
+                                                                </p>
+                                                                <p className="text-xs text-base-content/70">
+                                                                    Đóng gói: {packingProgress.packedCount}/
+                                                                    {packingProgress.totalLines} dòng
+                                                                    {packingProgress.allPacked && (
+                                                                        <span className="ml-2 badge badge-success badge-sm">
+                                                                            Đủ dòng — có thể bấm xuất kho
+                                                                        </span>
+                                                                    )}
+                                                                </p>
+
+                                                                <ul className="rounded-lg border border-base-200 divide-y divide-base-200 bg-base-100 text-sm max-h-48 overflow-y-auto">
+                                                                    {packingProgress.lines.map((line) => (
+                                                                        <li
+                                                                            key={line.lineIndex}
+                                                                            className={`px-3 py-2 flex flex-wrap justify-between gap-2 ${
+                                                                                line.packed ? 'bg-success/10' : ''
+                                                                            }`}
+                                                                        >
+                                                                            <span>
+                                                                                {line.packed ? '✓ ' : '○ '}
+                                                                                <span className="font-medium">{line.productName}</span>
+                                                                                <span className="text-base-content/60">
+                                                                                    {' '}
+                                                                                    ×{line.quantity}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="font-mono text-xs text-base-content/70">
+                                                                                SKU {line.sku}
+                                                                                {line.barcode ? ` · ${line.barcode}` : ''}
+                                                                            </span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+
+                                                                <form onSubmit={submitPackLine} className="space-y-2">
+                                                                    <label className="label py-0 text-xs font-medium">
+                                                                        Quét SKU / mã vạch (dòng chưa đóng gói)
+                                                                    </label>
+                                                                    <input
+                                                                        ref={skuInputRef}
+                                                                        type="text"
+                                                                        className="input input-bordered input-sm w-full font-mono"
+                                                                        placeholder="Quét sản phẩm vừa cho vào thùng"
+                                                                        value={scanSku}
+                                                                        onChange={(e) => setScanSku(e.target.value)}
+                                                                        autoComplete="off"
+                                                                        disabled={packingProgress.allPacked}
+                                                                    />
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        <button
+                                                                            type="submit"
+                                                                            className="btn btn-primary btn-sm"
+                                                                            disabled={packLoading || packingProgress.allPacked}
+                                                                        >
+                                                                            {packLoading ? (
+                                                                                <span className="loading loading-spinner loading-sm" />
+                                                                            ) : (
+                                                                                'Xác nhận đóng gói dòng'
+                                                                            )}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="btn btn-success btn-sm"
+                                                                            disabled={
+                                                                                confirmLoading || !isItemsPrepared() || !packingProgress.allPacked
+                                                                            }
+                                                                            onClick={submitConfirmOutbound}
+                                                                        >
+                                                                            {confirmLoading ? (
+                                                                                <span className="loading loading-spinner loading-sm" />
+                                                                            ) : (
+                                                                                'Xác nhận xuất kho (trừ tồn — trạng thái: đã xuất kho)'
+                                                                            )}
+                                                                        </button>
+                                                                    </div>
+                                                                </form>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 ) : expanded && !detailLoading ? (
                                                     <p className="text-sm text-error py-4">Không tải được chi tiết đơn.</p>

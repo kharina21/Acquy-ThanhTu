@@ -1,6 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Package, Upload, Search, Pencil, X, Trash2, Plus, Printer, FileSpreadsheet, Barcode, FolderDown, ImageIcon } from 'lucide-react';
+import {
+    Package,
+    Search,
+    Pencil,
+    X,
+    Trash2,
+    Plus,
+    Printer,
+    FileSpreadsheet,
+    Barcode,
+    ImageIcon,
+    MoreVertical,
+    Download,
+    Upload,
+} from 'lucide-react';
 import {
     buildLabelCellInnerHtml,
     buildProductBarcodePrintDocumentHtml,
@@ -8,7 +22,16 @@ import {
     createBarcodeDataUrl,
     normalizeBarcodeValueForCode128,
 } from '@/utils/productBarcodePrint';
-import { getProducts, createProduct, updateProduct, deleteProduct, importProductsFromExcel, generateSampleExcelBlob, uploadProductImage } from '@/services/productService';
+import {
+    getProducts,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+    importProductsFromExcel,
+    generateSampleExcelBlob,
+    uploadProductImage,
+    HEADERS as PRODUCT_EXCEL_BASE_HEADERS,
+} from '@/services/productService';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/services/categoryService';
 import { getBrands, createBrand, updateBrand, deleteBrand } from '@/services/brandService';
 import CategoryBrandSelect from '@/components/common/CategoryBrandSelect';
@@ -21,6 +44,7 @@ import { getUsageDevices, createUsageDevice, updateUsageDevice, deleteUsageDevic
 import UsageDeviceModal from '@/components/common/UsageDeviceModal';
 import CountrySearchCombobox from '@/components/common/CountrySearchCombobox';
 import { labelBatteryType, formatDimensionsMm, formatWeightKg, formatVoltageV } from '@/utils/productDetailDisplay';
+import { getStoreSettings } from '@/services/storeSettingsService';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '—';
@@ -33,9 +57,9 @@ const emptyProductForm = () => ({
     sku: '',
     barcode: '',
     name: '',
+    unit: 'Cái',
     usageDevice: null,
     capacity: '',
-    series: '',
     costPrice: 0,
     price: 0,
     images: [],
@@ -49,8 +73,7 @@ const emptyProductForm = () => ({
     dimensionHeightMm: '',
     weightKg: '',
     voltageV: '',
-    oilCapacityText: '',
-    vehicleModelText: '',
+    vatPercent: '',
 });
 
 const ProductListTab = () => {
@@ -61,6 +84,7 @@ const ProductListTab = () => {
     const [selectedRowIds, setSelectedRowIds] = useState([]);
     const [bulkProcessing, setBulkProcessing] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -91,18 +115,36 @@ const ProductListTab = () => {
     const [createImageIndex, setCreateImageIndex] = useState(0);
 
     // Lọc theo tên thương hiệu / tên thiết bị sử dụng (để hỗ trợ cả dữ liệu cũ lẫn mới)
+    const [filterCategory, setFilterCategory] = useState('');
     const [filterBrand, setFilterBrand] = useState('');
     const [filterUsageDevice, setFilterUsageDevice] = useState('');
     // 0 = không lọc, >0 = giá trị VNĐ
     const [filterPriceMin, setFilterPriceMin] = useState(0);
     const [filterPriceMax, setFilterPriceMax] = useState(0);
+    const [storeDefaultVat, setStoreDefaultVat] = useState(null);
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
+
+    useEffect(() => {
+        getStoreSettings()
+            .then((res) => {
+                const p = res?.data?.defaultVatPercent;
+                if (p != null && !Number.isNaN(Number(p))) setStoreDefaultVat(Number(p));
+            })
+            .catch(() => {});
+    }, []);
 
     const parseOptNum = (v) => {
         if (v === '' || v === null || v === undefined) return null;
         const n = Number(v);
         return Number.isFinite(n) ? n : null;
+    };
+
+    const parseVatPercent = (v) => {
+        if (v === '' || v === null || v === undefined) return null;
+        const n = Number(String(v).replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+        return n;
     };
 
     const fetchProducts = async () => {
@@ -112,6 +154,7 @@ const ProductListTab = () => {
             limit: pagination.limit,
             search,
             locationId: currentLocationId || undefined,
+            category: filterCategory || undefined,
             brand: filterBrand || undefined,
             usageDevice: filterUsageDevice || undefined,
             priceMin: filterPriceMin || undefined,
@@ -137,6 +180,7 @@ const ProductListTab = () => {
             limit: pagination.limit,
             search,
             locationId: currentLocationId || undefined,
+            category: filterCategory || undefined,
             brand: filterBrand || undefined,
             usageDevice: filterUsageDevice || undefined,
             priceMin: filterPriceMin || undefined,
@@ -154,7 +198,7 @@ const ProductListTab = () => {
         return () => {
             cancelled = true;
         };
-    }, [pagination.page, search, currentLocationId, filterBrand, filterUsageDevice, filterPriceMin, filterPriceMax]);
+    }, [pagination.page, search, currentLocationId, filterCategory, filterBrand, filterUsageDevice, filterPriceMin, filterPriceMax]);
 
     const toggleSelectRow = (id) => {
         setSelectedRowIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -262,6 +306,124 @@ const ProductListTab = () => {
         input.click();
     };
 
+    /** Xuất toàn bộ sản phẩm theo bộ lọc/tìm hiện tại (gọi API theo trang nếu cần). */
+    const handleExportProductList = async () => {
+        setExporting(true);
+        try {
+            const baseParams = {
+                search,
+                locationId: currentLocationId || undefined,
+                category: filterCategory || undefined,
+                brand: filterBrand || undefined,
+                usageDevice: filterUsageDevice || undefined,
+                priceMin: filterPriceMin || undefined,
+                priceMax: filterPriceMax || undefined,
+            };
+            const pageSize = 2000;
+            let list = [];
+            let page = 1;
+            let totalCount = 0;
+            for (;;) {
+                const res = await getProducts({
+                    ...baseParams,
+                    page,
+                    limit: pageSize,
+                });
+                if (!res.success) {
+                    toast.error(res.message || 'Không tải được dữ liệu để xuất');
+                    return;
+                }
+                const batch = res.data?.products || [];
+                totalCount = res.data?.pagination?.total ?? batch.length;
+                list = list.concat(batch);
+                if (batch.length < pageSize || list.length >= totalCount) break;
+                page += 1;
+                if (page > 80) {
+                    toast.error('Quá nhiều bản ghi, thu hẹp bộ lọc rồi xuất lại');
+                    return;
+                }
+            }
+            if (list.length === 0) {
+                toast.error('Không có sản phẩm để xuất với bộ lọc hiện tại');
+                return;
+            }
+            const fmtExportDate = (d) => {
+                if (d == null) return '';
+                const x = new Date(d);
+                if (Number.isNaN(x.getTime())) return '';
+                return x.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+            };
+            /** Giống import: tách bằng dấu phẩy hoặc xuống dòng. */
+            const imageUrlsCell = (p) => {
+                const urls = Array.isArray(p.images) && p.images.length ? p.images : p.image ? [p.image] : [];
+                return urls
+                    .filter((u) => u && String(u).trim())
+                    .map((u) => String(u).trim())
+                    .join(',');
+            };
+            const numOrEmpty = (v) =>
+                v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : '';
+            /** 19 cột = file mẫu / `EXPECTED_HEADERS`; cột mở rộng ở cuối. */
+            const extraHeaders = ['VAT (%)', 'Đang kinh doanh', 'Ghi chú', 'Ngày tạo', 'Ngày cập nhật'];
+            const headers = [...PRODUCT_EXCEL_BASE_HEADERS, ...extraHeaders];
+            const rows = list.map((p) => {
+                const stock =
+                    p.stockAtLocation !== undefined && p.stockAtLocation !== null
+                        ? p.stockAtLocation
+                        : p.totalStock !== undefined && p.totalStock !== null
+                          ? p.totalStock
+                          : '';
+                const base = [
+                    p.category?.name || '',
+                    p.usageDevice?.name || '',
+                    p.brand?.name || '',
+                    p.sku || '',
+                    p.barcode || '',
+                    p.name || '',
+                    p.capacity || '',
+                    p.costPrice != null ? p.costPrice : '',
+                    p.price != null ? p.price : '',
+                    stock,
+                    imageUrlsCell(p),
+                    (p.warrantyText && String(p.warrantyText).trim()) || '',
+                    numOrEmpty(p.dimensionLengthMm),
+                    numOrEmpty(p.dimensionWidthMm),
+                    numOrEmpty(p.dimensionHeightMm),
+                    numOrEmpty(p.weightKg),
+                    labelBatteryType(p.batteryType, ''),
+                    numOrEmpty(p.voltageV),
+                    (p.originCountry && String(p.originCountry).trim()) || '',
+                ];
+                const extra = [
+                    p.vatPercent != null && p.vatPercent !== '' ? p.vatPercent : '',
+                    p.isActive ? 1 : 0,
+                    (p.notes && String(p.notes).trim()) || '',
+                    fmtExportDate(p.createdAt),
+                    fmtExportDate(p.updatedAt),
+                ];
+                return [...base, ...extra];
+            });
+            const data = [headers, ...rows];
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Sản phẩm');
+            const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `danh-sach-san-pham-${new Date().toISOString().slice(0, 10)}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast.success(`Đã xuất ${list.length} sản phẩm`);
+        } catch (err) {
+            console.error('handleExportProductList error:', err);
+            toast.error('Xuất Excel thất bại. Vui lòng thử lại.');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const handleRowClick = (p) => {
         setSelectedProduct(p);
         setShowDetailModal(true);
@@ -277,9 +439,9 @@ const ProductListTab = () => {
             sku: selectedProduct.sku ?? '',
             barcode: selectedProduct.barcode ?? '',
             name: selectedProduct.name ?? '',
+            unit: (selectedProduct.unit && String(selectedProduct.unit).trim()) || 'Cái',
             usageDevice: selectedProduct.usageDevice?._id || selectedProduct.usageDevice || null,
             capacity: selectedProduct.capacity ?? '',
-            series: selectedProduct.series ?? '',
             costPrice: selectedProduct.costPrice ?? 0,
             price: selectedProduct.price ?? 0,
             images: selectedProduct.images?.length ? selectedProduct.images : selectedProduct.image ? [selectedProduct.image] : [],
@@ -306,8 +468,10 @@ const ProductListTab = () => {
                     : '',
             voltageV:
                 selectedProduct.voltageV != null && selectedProduct.voltageV !== '' ? String(selectedProduct.voltageV) : '',
-            oilCapacityText: selectedProduct.oilCapacityText ?? '',
-            vehicleModelText: selectedProduct.vehicleModelText ?? '',
+            vatPercent:
+                selectedProduct.vatPercent != null && selectedProduct.vatPercent !== ''
+                    ? String(selectedProduct.vatPercent)
+                    : '',
         });
         setShowDetailModal(false);
         setEditImageIndex(0);
@@ -333,8 +497,8 @@ const ProductListTab = () => {
                 dimensionHeightMm: parseOptNum(editFormData.dimensionHeightMm),
                 weightKg: parseOptNum(editFormData.weightKg),
                 voltageV: parseOptNum(editFormData.voltageV),
-                oilCapacityText: (editFormData.oilCapacityText || '').trim(),
-                vehicleModelText: (editFormData.vehicleModelText || '').trim(),
+                vatPercent: parseVatPercent(editFormData.vatPercent),
+                unit: (editFormData.unit || '').trim() || 'Cái',
             };
             if (currentLocationId) payload.locationId = currentLocationId;
             await updateProduct(selectedProduct._id, payload);
@@ -391,7 +555,6 @@ const ProductListTab = () => {
         const name = (selectedProduct.name || selectedProduct.sku || '').toString();
         const cellInner = buildLabelCellInnerHtml({
             name,
-            series: selectedProduct.series,
             capacity: selectedProduct.capacity,
             sku: selectedProduct.sku,
             barcodeValue,
@@ -421,14 +584,13 @@ const ProductListTab = () => {
     const handleExportBarcodeExcel = () => {
         if (!selectedProduct) return;
         try {
-            const headers = ['Mã hàng', 'Mã vạch', 'Tên sản phẩm', 'Series', 'Giá (VNĐ)', 'Số thứ tự'];
+            const headers = ['Mã hàng', 'Mã vạch', 'Tên sản phẩm', 'Giá (VNĐ)', 'Số thứ tự'];
             const priceVal = barcodeShowPrice && selectedProduct.price != null ? selectedProduct.price : '';
             const qty = Math.min(5000, Math.max(1, parseInt(barcodePrintQty, 10) || 1));
             const rows = Array.from({ length: qty }, (_, i) => [
                 selectedProduct.sku || '',
                 selectedProduct.barcode || selectedProduct.sku || '',
                 selectedProduct.name || '',
-                (selectedProduct.series || '').toString(),
                 priceVal,
                 i + 1,
             ]);
@@ -656,8 +818,8 @@ const ProductListTab = () => {
                 dimensionHeightMm: parseOptNum(createFormData.dimensionHeightMm),
                 weightKg: parseOptNum(createFormData.weightKg),
                 voltageV: parseOptNum(createFormData.voltageV),
-                oilCapacityText: (createFormData.oilCapacityText || '').trim(),
-                vehicleModelText: (createFormData.vehicleModelText || '').trim(),
+                vatPercent: parseVatPercent(createFormData.vatPercent),
+                unit: (createFormData.unit || '').trim() || 'Cái',
             };
             delete payload.category;
             if (currentLocationId) payload.locationId = currentLocationId;
@@ -753,7 +915,6 @@ const ProductListTab = () => {
                         brand: p.brand?._id || p.brand || null,
                         usageDevice: p.usageDevice?._id || p.usageDevice || null,
                         capacity: p.capacity,
-                        series: p.series ?? '',
                         costPrice: p.costPrice,
                         price: p.price,
                         images: p.images || (p.image ? [p.image] : []),
@@ -829,29 +990,82 @@ const ProductListTab = () => {
                         <Plus className='w-4 h-4' />
                         Thêm sản phẩm
                     </button>
-                    <button
-                        type='button'
-                        className='btn btn-ghost btn-sm gap-2'
-                        onClick={handleDownloadSample}
-                    >
-                        <Package className='w-4 h-4' />
-                        Tải file mẫu
-                    </button>
-                    <button
-                        type='button'
-                        className='btn btn-primary btn-sm gap-2'
-                        onClick={handleImportClick}
-                        disabled={importing}
-                    >
-                        <FolderDown className='w-4 h-4' />
-                        {importing ? 'Đang import...' : 'Import từ Excel'}
-                    </button>
+                    <div className='dropdown dropdown-end'>
+                        <div
+                            tabIndex={0}
+                            role='button'
+                            className='btn btn-ghost btn-sm btn-square border border-base-300 min-h-9 h-9 w-9 p-0'
+                            title='File Excel: mẫu, import, xuất danh sách'
+                            aria-label='Menu Excel'
+                        >
+                            <MoreVertical className='w-5 h-5' aria-hidden />
+                        </div>
+                        <ul
+                            tabIndex={-1}
+                            className='dropdown-content menu bg-base-100 rounded-box z-100 w-60 p-2 border border-base-300 shadow-md'
+                        >
+                            <li>
+                                <button
+                                    type='button'
+                                    className='w-full gap-2'
+                                    onClick={handleDownloadSample}
+                                >
+                                    <Download className='w-4 h-4 shrink-0' aria-hidden />
+                                    Tải file mẫu
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    type='button'
+                                    className='w-full gap-2'
+                                    onClick={handleImportClick}
+                                    disabled={importing}
+                                >
+                                    <Upload className='w-4 h-4 shrink-0' aria-hidden />
+                                    {importing ? 'Đang import...' : 'Import từ Excel'}
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    type='button'
+                                    className='w-full gap-2'
+                                    onClick={handleExportProductList}
+                                    disabled={exporting}
+                                >
+                                    <FileSpreadsheet className='w-4 h-4 shrink-0' aria-hidden />
+                                    {exporting ? 'Đang xuất...' : 'Xuất danh sách (Excel)'}
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
             <div className='flex gap-4'>
                 {/* Sidebar bộ lọc */}
                 <div className='w-72 shrink-0 bg-base-100 rounded-lg shadow p-4 space-y-4'>
+                    <div>
+                        <h3 className='text-sm font-semibold mb-2'>Loại hàng</h3>
+                        <select
+                            className='select select-sm select-bordered w-full'
+                            value={filterCategory}
+                            onChange={(e) => {
+                                setFilterCategory(e.target.value);
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
+                        >
+                            <option value=''>Tất cả loại hàng</option>
+                            {categories.map((c) => (
+                                <option
+                                    key={c._id}
+                                    value={c._id}
+                                >
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div>
                         <h3 className='text-sm font-semibold mb-2'>Thiết bị sử dụng</h3>
                         <select
@@ -947,6 +1161,7 @@ const ProductListTab = () => {
                         type='button'
                         className='btn btn-ghost btn-xs w-full'
                         onClick={() => {
+                            setFilterCategory('');
                             setFilterBrand('');
                             setFilterUsageDevice('');
                             setFilterPriceMin(0);
@@ -986,7 +1201,6 @@ const ProductListTab = () => {
                                         <th className='font-medium text-neutral text-xs'>Tên hàng</th>
                                         <th className='font-medium text-neutral text-xs'>Thiết bị sử dụng</th>
                                         <th className='font-medium text-neutral text-xs'>Thương hiệu</th>
-                                        <th className='font-medium text-neutral text-xs'>Series</th>
                                         <th className='font-medium text-neutral text-xs'>Dung lượng (Ah)</th>
                                         <th className='text-right font-medium text-neutral text-xs'>Đơn giá nhập</th>
                                         <th className='text-right font-medium text-neutral text-xs'>Đơn giá bán</th>
@@ -1018,7 +1232,6 @@ const ProductListTab = () => {
                                             <td>{p.name}</td>
                                             <td>{p.usageDevice?.name || p.usageDevice || '...'}</td>
                                             <td>{p.brand?.name || '...'}</td>
-                                            <td>{p.series || '—'}</td>
                                             <td>{p.capacity || '...'}</td>
                                             <td className='text-right'>{formatVND(p.costPrice)}</td>
                                             <td className='text-right'>{formatVND(p.price)}</td>
@@ -1167,10 +1380,6 @@ const ProductListTab = () => {
                                                 <span>{selectedProduct.usageDevice?.name || selectedProduct.usageDevice || '—'}</span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
-                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Series</span>
-                                                <span>{selectedProduct.series || '—'}</span>
-                                            </div>
-                                            <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Dung lượng (Ah)</span>
                                                 <span>{selectedProduct.capacity || '—'}</span>
                                             </div>
@@ -1181,6 +1390,18 @@ const ProductListTab = () => {
                                             <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Đơn giá bán</span>
                                                 <span className='font-medium text-primary'>{formatVND(selectedProduct.price)}</span>
+                                            </div>
+                                            <div className='flex flex-col gap-0.5'>
+                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
+                                                    VAT (%)
+                                                </span>
+                                                <span>
+                                                    {selectedProduct.vatPercent != null && selectedProduct.vatPercent !== ''
+                                                        ? `${selectedProduct.vatPercent}% (riêng mặt hàng)`
+                                                        : storeDefaultVat != null
+                                                          ? `${storeDefaultVat}% (mặc định cửa hàng)`
+                                                          : '—'}
+                                                </span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
@@ -1223,18 +1444,6 @@ const ProductListTab = () => {
                                                     Xuất xứ
                                                 </span>
                                                 <span>{selectedProduct.originCountry?.trim() || '—'}</span>
-                                            </div>
-                                            <div className='flex flex-col gap-0.5'>
-                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
-                                                    Dung tích nhớt
-                                                </span>
-                                                <span>{selectedProduct.oilCapacityText?.trim() || '—'}</span>
-                                            </div>
-                                            <div className='flex flex-col gap-0.5'>
-                                                <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>
-                                                    Đời xe
-                                                </span>
-                                                <span>{selectedProduct.vehicleModelText?.trim() || '—'}</span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
                                                 <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide'>Đang kinh doanh</span>
@@ -1659,31 +1868,30 @@ const ProductListTab = () => {
                                                     required
                                                 />
                                             </div>
-                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Series</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        value={editFormData.series}
-                                                        onChange={(e) => setEditFormData({ ...editFormData, series: e.target.value })}
-                                                        placeholder='VD: MF, AGM, DIN…'
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        value={editFormData.capacity}
-                                                        onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })}
-                                                        placeholder='VD: 100'
-                                                    />
-                                                </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Đơn vị tính</span>
+                                                </label>
+                                                <input
+                                                    type='text'
+                                                    className='input input-bordered input-sm w-full max-w-xs'
+                                                    value={editFormData.unit}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, unit: e.target.value })}
+                                                    placeholder='Cái, Bộ, Hộp…'
+                                                    maxLength={32}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
+                                                </label>
+                                                <input
+                                                    type='text'
+                                                    className='input input-bordered input-sm w-full'
+                                                    value={editFormData.capacity}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, capacity: e.target.value })}
+                                                    placeholder='VD: 100'
+                                                />
                                             </div>
                                         </div>
                                     </section>
@@ -1791,36 +1999,6 @@ const ProductListTab = () => {
                                                 value={editFormData.originCountry}
                                                 onChange={(name) => setEditFormData({ ...editFormData, originCountry: name })}
                                             />
-                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1'>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Dung tích nhớt</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        placeholder='VD: 4.3L 5W-30'
-                                                        value={editFormData.oilCapacityText}
-                                                        onChange={(e) =>
-                                                            setEditFormData({ ...editFormData, oilCapacityText: e.target.value })
-                                                        }
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Đời xe</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        placeholder='VD: 2015–2019'
-                                                        value={editFormData.vehicleModelText}
-                                                        onChange={(e) =>
-                                                            setEditFormData({ ...editFormData, vehicleModelText: e.target.value })
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
@@ -1849,6 +2027,28 @@ const ProductListTab = () => {
                                                     value={editFormData.price || ''}
                                                     onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>VAT (%) cho mặt hàng này</span>
+                                                </label>
+                                                <input
+                                                    type='number'
+                                                    min={0}
+                                                    max={100}
+                                                    step='any'
+                                                    className='input input-bordered input-sm w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
+                                                    placeholder={
+                                                        storeDefaultVat != null
+                                                            ? `Trống = mặc định ${storeDefaultVat}%`
+                                                            : 'Trống = theo cài đặt cửa hàng'
+                                                    }
+                                                    value={editFormData.vatPercent}
+                                                    onChange={(e) =>
+                                                        setEditFormData({ ...editFormData, vatPercent: e.target.value })
+                                                    }
+                                                />
+                                                <p className='text-[11px] text-base-content/50 mt-0.5'>Để trống dùng mức tại Hồ sơ cửa hàng.</p>
                                             </div>
                                             <div className='sm:col-span-2'>
                                                 <label className='label py-0'>
@@ -2199,31 +2399,30 @@ const ProductListTab = () => {
                                                     required
                                                 />
                                             </div>
-                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Series</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        value={createFormData.series}
-                                                        onChange={(e) => setCreateFormData({ ...createFormData, series: e.target.value })}
-                                                        placeholder='VD: MF, AGM, DIN…'
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        value={createFormData.capacity}
-                                                        onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
-                                                        placeholder='VD: 100'
-                                                    />
-                                                </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Đơn vị tính</span>
+                                                </label>
+                                                <input
+                                                    type='text'
+                                                    className='input input-bordered input-sm w-full max-w-xs'
+                                                    value={createFormData.unit}
+                                                    onChange={(e) => setCreateFormData({ ...createFormData, unit: e.target.value })}
+                                                    placeholder='Cái, Bộ, Hộp…'
+                                                    maxLength={32}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>Dung lượng (Ah)</span>
+                                                </label>
+                                                <input
+                                                    type='text'
+                                                    className='input input-bordered input-sm w-full'
+                                                    value={createFormData.capacity}
+                                                    onChange={(e) => setCreateFormData({ ...createFormData, capacity: e.target.value })}
+                                                    placeholder='VD: 100'
+                                                />
                                             </div>
                                         </div>
                                     </section>
@@ -2331,36 +2530,6 @@ const ProductListTab = () => {
                                                 value={createFormData.originCountry}
                                                 onChange={(name) => setCreateFormData({ ...createFormData, originCountry: name })}
                                             />
-                                            <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1'>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Dung tích nhớt</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        placeholder='VD: 4.3L 5W-30'
-                                                        value={createFormData.oilCapacityText}
-                                                        onChange={(e) =>
-                                                            setCreateFormData({ ...createFormData, oilCapacityText: e.target.value })
-                                                        }
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className='label py-0'>
-                                                        <span className='label-text text-xs font-medium'>Đời xe</span>
-                                                    </label>
-                                                    <input
-                                                        type='text'
-                                                        className='input input-bordered input-sm w-full'
-                                                        placeholder='VD: 2015–2019'
-                                                        value={createFormData.vehicleModelText}
-                                                        onChange={(e) =>
-                                                            setCreateFormData({ ...createFormData, vehicleModelText: e.target.value })
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
@@ -2388,6 +2557,27 @@ const ProductListTab = () => {
                                                     className='input input-bordered input-sm w-full'
                                                     value={createFormData.price || ''}
                                                     onChange={(e) => setCreateFormData({ ...createFormData, price: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className='label py-0'>
+                                                    <span className='label-text text-xs font-medium'>VAT (%) cho mặt hàng này</span>
+                                                </label>
+                                                <input
+                                                    type='number'
+                                                    min={0}
+                                                    max={100}
+                                                    step='any'
+                                                    className='input input-bordered input-sm w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
+                                                    placeholder={
+                                                        storeDefaultVat != null
+                                                            ? `Trống = mặc định ${storeDefaultVat}%`
+                                                            : 'Trống = theo cài đặt cửa hàng'
+                                                    }
+                                                    value={createFormData.vatPercent}
+                                                    onChange={(e) =>
+                                                        setCreateFormData({ ...createFormData, vatPercent: e.target.value })
+                                                    }
                                                 />
                                             </div>
                                             <div className='sm:col-span-2'>

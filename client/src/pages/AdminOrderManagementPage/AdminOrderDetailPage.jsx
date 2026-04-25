@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import {
     getOrderById,
     updateOrder,
+    updatePreOrder,
+    deletePreOrder,
     syncPaymentStatus,
     confirmWarehouseOutbound,
+    confirmWarehouseItemsPrepared,
     getRefundTransferQr,
     confirmRefundTransfer,
 } from '@/services/orderService';
+import { getProducts } from '@/services/productService';
+import { getActiveLocations } from '@/services/locationService';
+import { searchCustomersByPhone } from '@/services/customerService';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 
@@ -36,6 +42,7 @@ function hasRefundBankForVietQr(order) {
 
 export default function AdminOrderDetailPage() {
     const { id } = useParams();
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const { hasAnyRole } = useUserRole();
     const [loading, setLoading] = useState(true);
@@ -43,10 +50,25 @@ export default function AdminOrderDetailPage() {
     const [updating, setUpdating] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [confirmingOutbound, setConfirmingOutbound] = useState(false);
+    const [confirmingPrepared, setConfirmingPrepared] = useState(false);
     const [refundQrOpen, setRefundQrOpen] = useState(false);
     const [refundQrLoading, setRefundQrLoading] = useState(false);
     const [refundQrData, setRefundQrData] = useState(null);
     const [confirmingRefund, setConfirmingRefund] = useState(false);
+
+    const [preOrderEditOpen, setPreOrderEditOpen] = useState(false);
+    const [preOrderLines, setPreOrderLines] = useState([]);
+    const [preOrderNote, setPreOrderNote] = useState('');
+    const [preOrderDiscount, setPreOrderDiscount] = useState('0');
+    const [preOrderLocationId, setPreOrderLocationId] = useState('');
+    const [preOrderCustomerId, setPreOrderCustomerId] = useState('');
+    const [locations, setLocations] = useState([]);
+    const [productSearch, setProductSearch] = useState('');
+    const [productHits, setProductHits] = useState([]);
+    const [customerSearch, setCustomerSearch] = useState('');
+    const [customerHits, setCustomerHits] = useState([]);
+    const [savingPreOrder, setSavingPreOrder] = useState(false);
+    const [deletingPreOrder, setDeletingPreOrder] = useState(false);
 
     const canConfirmWarehouse = hasAnyRole('admin', 'manager', 'warehouse_manager');
     const canProcessRefund = hasAnyRole(
@@ -88,13 +110,135 @@ export default function AdminOrderDetailPage() {
         fetchOrder();
     }, [id]);
 
+    useEffect(() => {
+        getActiveLocations()
+            .then((r) => setLocations(r?.data?.locations || []))
+            .catch(() => setLocations([]));
+    }, []);
+
+    useEffect(() => {
+        if (!preOrderEditOpen) return;
+        const q = productSearch.trim();
+        if (q.length < 2) {
+            setProductHits([]);
+            return;
+        }
+        const t = setTimeout(() => {
+            getProducts({ page: 1, limit: 20, search: q }).then((res) => {
+                setProductHits(res?.data?.products || []);
+            });
+        }, 250);
+        return () => clearTimeout(t);
+    }, [productSearch, preOrderEditOpen]);
+
+    useEffect(() => {
+        if (!preOrderEditOpen) return;
+        const q = customerSearch.trim();
+        if (q.length < 2) {
+            setCustomerHits([]);
+            return;
+        }
+        const t = setTimeout(() => {
+            searchCustomersByPhone(q).then((res) => {
+                setCustomerHits(res?.data?.customers || []);
+            });
+        }, 250);
+        return () => clearTimeout(t);
+    }, [customerSearch, preOrderEditOpen]);
+
+    const canEditPreOrder = Boolean(
+        order?.isPreOrder && order?.status === 'pending' && order?.paymentStatus === 'pending',
+    );
+    const canDeletePreOrder = Boolean(order?.isPreOrder && order?.status !== 'completed');
+
+    const beginPreOrderEdit = () => {
+        if (!order) return;
+        const lines = (order.items || []).map((it) => {
+            const p = it.product;
+            const pid = p?._id || it.product;
+            return {
+                lineId: `${String(pid)}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                productId: String(pid),
+                productName: p?.name || 'Sản phẩm',
+                quantity: Math.max(1, Number(it.quantity) || 1),
+                unit: (it.unit && String(it.unit).trim()) || (p?.unit && String(p.unit).trim()) || 'Cái',
+            };
+        });
+        setPreOrderLines(lines);
+        setPreOrderNote(order.note || '');
+        setPreOrderDiscount(String(order.discount ?? 0));
+        setPreOrderLocationId(String(order.location?._id || order.location || ''));
+        const cp = order.customerProfile;
+        if (cp && typeof cp === 'object' && cp._id) {
+            setPreOrderCustomerId(String(cp._id));
+        } else if (order.customerProfile) {
+            setPreOrderCustomerId(String(order.customerProfile));
+        } else {
+            setPreOrderCustomerId('');
+        }
+        setProductSearch('');
+        setProductHits([]);
+        setCustomerSearch('');
+        setCustomerHits([]);
+        setPreOrderEditOpen(true);
+    };
+
+    const handleSavePreOrder = async () => {
+        if (!id) return;
+        if (!preOrderLines.length) {
+            toast.error('Cần ít nhất một sản phẩm');
+            return;
+        }
+        setSavingPreOrder(true);
+        try {
+            const res = await updatePreOrder(id, {
+                items: preOrderLines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+                note: preOrderNote,
+                discount: Number(preOrderDiscount) || 0,
+                locationId: preOrderLocationId || undefined,
+                customerId: preOrderCustomerId || null,
+            });
+            if (res?.data?.order) {
+                setOrder(res.data.order);
+            }
+            toast.success(res?.message || 'Đã cập nhật đơn đặt hàng');
+            setPreOrderEditOpen(false);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không lưu được');
+        } finally {
+            setSavingPreOrder(false);
+        }
+    };
+
+    const handleDeletePreOrder = async () => {
+        if (!id) return;
+        if (!window.confirm('Xóa hẳn đơn đặt hàng này? Thao tác không hoàn tác theo cách tự phục hồi.')) return;
+        setDeletingPreOrder(true);
+        try {
+            await deletePreOrder(id);
+            toast.success('Đã xóa đơn');
+            navigate('/admin/orders/pre-orders');
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không xóa được');
+        } finally {
+            setDeletingPreOrder(false);
+        }
+    };
+
     const handleUpdate = async (field, value) => {
         if (!id) return;
         setUpdating(true);
         try {
             const payload = field === 'status' ? { status: value } : { paymentStatus: value };
-            await updateOrder(id, payload);
-            toast.success('Cập nhật thành công');
+            const res = await updateOrder(id, payload);
+            const warn = res?.data?.reservationWarning;
+            if (warn) {
+                toast.warning(
+                    'Đã lưu trạng thái. Tồn: ' + String(warn).slice(0, 200) + (String(warn).length > 200 ? '…' : '')
+                );
+            } else {
+                toast.success('Cập nhật thành công');
+            }
             fetchOrder();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Lỗi khi cập nhật');
@@ -117,8 +261,28 @@ export default function AdminOrderDetailPage() {
         }
     };
 
+    const handleConfirmPrepared = async () => {
+        if (!id) return;
+        setConfirmingPrepared(true);
+        try {
+            const res = await confirmWarehouseItemsPrepared(id);
+            if (res.success) {
+                setOrder(res?.data?.order || order);
+                toast.success(res.message || 'Đã xác nhận chuẩn bị hàng');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không cập nhật được bước chuẩn bị');
+        } finally {
+            setConfirmingPrepared(false);
+        }
+    };
+
     const handleConfirmWarehouseOutbound = async () => {
         if (!id) return;
+        if (!order?.warehouseItemsPreparedAt) {
+            toast.error('Cần xác nhận "đã chuẩn bị hàng" trước (dùng nút bên dưới hoặc trang Xuất kho nhanh).');
+            return;
+        }
         setConfirmingOutbound(true);
         try {
             const res = await confirmWarehouseOutbound(id, {});
@@ -214,6 +378,251 @@ export default function AdminOrderDetailPage() {
                             )}
                         </h1>
 
+                        {order.isPreOrder && (canEditPreOrder || canDeletePreOrder) && (
+                            <div className="bg-base-100 rounded-lg border border-base-300 p-4 space-y-3">
+                                <p className="text-sm font-medium text-base-content/80">Thao tác đơn đặt hàng</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {canEditPreOrder && !preOrderEditOpen && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-primary"
+                                            onClick={beginPreOrderEdit}
+                                        >
+                                            Chỉnh sửa
+                                        </button>
+                                    )}
+                                    {canDeletePreOrder && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-error btn-outline"
+                                            disabled={deletingPreOrder}
+                                            onClick={handleDeletePreOrder}
+                                        >
+                                            {deletingPreOrder ? (
+                                                <span className="loading loading-spinner loading-sm" />
+                                            ) : (
+                                                'Xóa đơn'
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {preOrderEditOpen && canEditPreOrder && (
+                                    <div className="pt-3 border-t border-base-200 space-y-3 text-sm">
+                                        <div>
+                                            <label className="label py-0">
+                                                <span className="label-text">Chi nhánh</span>
+                                            </label>
+                                            <select
+                                                className="select select-bordered select-sm w-full max-w-md"
+                                                value={preOrderLocationId}
+                                                onChange={(e) => setPreOrderLocationId(e.target.value)}
+                                            >
+                                                {locations.map((loc) => (
+                                                    <option key={loc._id} value={loc._id}>
+                                                        {loc.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="label py-0">
+                                                <span className="label-text">Tìm khách (SĐT / tên, chọn để gán)</span>
+                                            </label>
+                                            <input
+                                                type="search"
+                                                className="input input-bordered input-sm w-full max-w-md"
+                                                value={customerSearch}
+                                                onChange={(e) => setCustomerSearch(e.target.value)}
+                                                placeholder="Gõ từ 2 ký tự…"
+                                            />
+                                            {customerHits.length > 0 && (
+                                                <ul className="menu menu-xs bg-base-200 rounded-box max-h-32 overflow-auto mt-1 max-w-md border border-base-200">
+                                                    {customerHits.map((c) => (
+                                                        <li key={c._id}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setPreOrderCustomerId(String(c._id));
+                                                                    setCustomerSearch(`${c.name} ${c.phone || ''}`);
+                                                                }}
+                                                            >
+                                                                {c.name} — {c.phone || '—'}
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {preOrderCustomerId && (
+                                                <p className="text-xs text-base-content/60 mt-1">
+                                                    Đang gán khách ID: {preOrderCustomerId}{' '}
+                                                    <button
+                                                        type="button"
+                                                        className="link"
+                                                        onClick={() => {
+                                                            setPreOrderCustomerId('');
+                                                            setCustomerSearch('');
+                                                        }}
+                                                    >
+                                                        Bỏ chọn (khách vãng lai)
+                                                </button>
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="label py-0">
+                                                <span className="label-text">Ghi chú</span>
+                                            </label>
+                                            <textarea
+                                                className="textarea textarea-bordered textarea-sm w-full"
+                                                rows={2}
+                                                value={preOrderNote}
+                                                onChange={(e) => setPreOrderNote(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex items-end gap-2 max-w-sm">
+                                            <div className="flex-1">
+                                                <label className="label py-0">
+                                                    <span className="label-text">Giảm giá (₫)</span>
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="input input-bordered input-sm w-full"
+                                                    value={preOrderDiscount}
+                                                    onChange={(e) => setPreOrderDiscount(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="label py-0">
+                                                <span className="label-text">Thêm sản phẩm (tìm từ 2 ký tự)</span>
+                                            </label>
+                                            <input
+                                                type="search"
+                                                className="input input-bordered input-sm w-full max-w-md"
+                                                value={productSearch}
+                                                onChange={(e) => setProductSearch(e.target.value)}
+                                                placeholder="Tên, SKU, mã…"
+                                            />
+                                            {productHits.length > 0 && (
+                                                <ul className="menu menu-xs bg-base-200 rounded-box max-h-40 overflow-auto mt-1 max-w-2xl border border-base-200">
+                                                    {productHits.map((p) => (
+                                                        <li key={p._id}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setPreOrderLines((prev) => [
+                                                                        ...prev,
+                                                                        {
+                                                                            lineId: `${p._id}-${Date.now()}`,
+                                                                            productId: String(p._id),
+                                                                            productName: p.name || 'Sản phẩm',
+                                                                            quantity: 1,
+                                                                            unit: (p.unit && String(p.unit).trim()) || 'Cái',
+                                                                        },
+                                                                    ]);
+                                                                    setProductSearch('');
+                                                                    setProductHits([]);
+                                                                }}
+                                                            >
+                                                                {p.name}{' '}
+                                                                <span className="text-base-content/50 text-xs">
+                                                                    {p.sku ? `· ${p.sku}` : ''}
+                                                                </span>
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="table table-sm w-full table-zebra">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Sản phẩm</th>
+                                                        <th className="w-20">ĐVT</th>
+                                                        <th className="w-24">SL</th>
+                                                        <th className="w-20"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {preOrderLines.map((line) => (
+                                                        <tr key={line.lineId}>
+                                                            <td className="max-w-xs truncate" title={line.productName}>
+                                                                {line.productName}
+                                                            </td>
+                                                            <td className="text-sm text-base-content/80">
+                                                                {line.unit || 'Cái'}
+                                                            </td>
+                                                            <td>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    className="input input-bordered input-xs w-full"
+                                                                    value={line.quantity}
+                                                                    onChange={(e) => {
+                                                                        const v = Math.max(
+                                                                            1,
+                                                                            Number(e.target.value) || 1,
+                                                                        );
+                                                                        setPreOrderLines((prev) =>
+                                                                            prev.map((x) =>
+                                                                                x.lineId === line.lineId
+                                                                                    ? { ...x, quantity: v }
+                                                                                    : x,
+                                                                            ),
+                                                                        );
+                                                                    }}
+                                                                />
+                                                            </td>
+                                                            <td>
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-ghost btn-xs"
+                                                                    onClick={() =>
+                                                                        setPreOrderLines((prev) =>
+                                                                            prev.filter(
+                                                                                (x) => x.lineId !== line.lineId,
+                                                                            ),
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Xóa dòng
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-primary"
+                                                disabled={savingPreOrder}
+                                                onClick={handleSavePreOrder}
+                                            >
+                                                {savingPreOrder ? (
+                                                    <span className="loading loading-spinner loading-sm" />
+                                                ) : (
+                                                    'Lưu thay đổi'
+                                                )}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-ghost"
+                                                disabled={savingPreOrder}
+                                                onClick={() => setPreOrderEditOpen(false)}
+                                            >
+                                                Hủy chỉnh sửa
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="bg-base-100 rounded-lg border border-base-300 p-4 space-y-3">
                             <div className="flex justify-between">
                                 <span className="text-base-content/70">Khách hàng</span>
@@ -229,7 +638,10 @@ export default function AdminOrderDetailPage() {
                             </div>
                             {order.channel === 'online' && (
                                 <p className="text-xs text-base-content/60 bg-base-200/80 rounded-lg px-3 py-2">
-                                    Luồng online: khách thanh toán xong vẫn &quot;Chờ xử lý&quot; — seller chuyển sang &quot;Đã xác nhận&quot; sau đó kho mới xuất hàng và trừ tồn.
+                                    Bán: sau khi <strong>đã thanh toán</strong>, bạn chuyển trạng thái từ &quot;Chờ xử lý&quot; → &quot;Đã
+                                    xác nhận / chờ xuất kho&quot;. Kho: bước 1 <strong>xác nhận chuẩn bị</strong> → bước 2
+                                    quét từng dòng tại màn <strong>Xuất kho nhanh</strong> → bước 3 <strong>đã xuất kho</strong>{' '}
+                                    (trừ tồn).
                                 </p>
                             )}
                             <div className="flex justify-between">
@@ -240,10 +652,7 @@ export default function AdminOrderDetailPage() {
                                     onChange={(e) => handleUpdate('status', e.target.value)}
                                     disabled={updating}
                                 >
-                                    {(order.channel === 'in_store'
-                                        ? Object.entries(STATUS_LABELS).filter(([v]) => v !== 'confirmed')
-                                        : Object.entries(STATUS_LABELS)
-                                    ).map(([v, l]) => (
+                                    {Object.entries(STATUS_LABELS).map(([v, l]) => (
                                         <option key={v} value={v}>{l}</option>
                                     ))}
                                 </select>
@@ -292,22 +701,41 @@ export default function AdminOrderDetailPage() {
                             )}
                             {/* Ẩn thông tin "Kho (online)" để UI báo cáo gọn và đồng bộ. */}
                             {canConfirmWarehouse &&
-                                order.channel === 'online' &&
                                 order.warehouseReservationActive === true &&
                                 order.paymentStatus === 'paid' &&
                                 order.status === 'confirmed' && (
                                     <div className="pt-3 mt-2 border-t border-base-200 space-y-2">
-                                        <p className="text-sm font-medium text-base-content/80">Xác nhận xuất kho</p>
+                                        <p className="text-sm font-medium text-base-content/80">Kho — chuẩn bị & xuất</p>
                                         <p className="text-xs text-base-content/60">
-                                            Trước tiên quét từng sản phẩm đóng gói tại{' '}
-                                            <Link to="/admin/warehouses/outbound-scan" className="link link-primary">
-                                                Xuất kho nhanh
-                                            </Link>
-                                            . Chỉ khi đủ dòng hàng mới bấm xác nhận bên dưới để trừ tồn.
+                                            Khuyên dùng màn <Link to="/admin/warehouses/outbound-scan" className="link link-primary">Quét
+                                            xuất (Tại quầy & Online)</Link> theo từng bước. Trạng thái <strong>Đã xuất kho</strong> chỉ
+                                            tới sau bước thứ 3 dưới hệ thống.
                                         </p>
+                                        <p className="text-xs text-base-content/80">
+                                            Chuẩn bị hàng:{' '}
+                                            {order.warehouseItemsPreparedAt ? (
+                                                <span className="badge badge-success badge-sm">Đã xác nhận chuẩn bị</span>
+                                            ) : (
+                                                <span className="badge badge-ghost badge-sm">Chưa bấm xác nhận chuẩn bị</span>
+                                            )}
+                                        </p>
+                                        {!order.warehouseItemsPreparedAt && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-warning btn-sm w-full sm:w-auto"
+                                                disabled={confirmingPrepared}
+                                                onClick={handleConfirmPrepared}
+                                            >
+                                                {confirmingPrepared ? (
+                                                    <span className="loading loading-spinner loading-sm" />
+                                                ) : (
+                                                    'Bước 1 — Xác nhận đã chuẩn bị hàng (gom đủ tại kho)'
+                                                )}
+                                            </button>
+                                        )}
                                         {Array.isArray(order.items) && order.items.length > 0 && (
                                             <p className="text-xs text-base-content/70">
-                                                Đóng gói:{' '}
+                                                Đóng gói (bước 2, thường tại màn xuất kho nhanh):{' '}
                                                 <span className="font-medium">
                                                     {(order.warehousePackedLineIndexes || []).length}/{order.items.length} dòng
                                                 </span>
@@ -316,13 +744,13 @@ export default function AdminOrderDetailPage() {
                                         <button
                                             type="button"
                                             className="btn btn-primary btn-sm"
-                                            disabled={confirmingOutbound}
+                                            disabled={confirmingOutbound || !order.warehouseItemsPreparedAt}
                                             onClick={handleConfirmWarehouseOutbound}
                                         >
                                             {confirmingOutbound ? (
                                                 <span className="loading loading-spinner loading-sm" />
                                             ) : (
-                                                'Xác nhận đã xuất kho (sau khi quét đủ SP)'
+                                                'Bước 3 — Xác nhận đã xuất kho (khi đã chuẩn bị + quét đủ dòng)'
                                             )}
                                         </button>
                                     </div>
@@ -429,6 +857,7 @@ export default function AdminOrderDetailPage() {
                                     <thead className="bg-base-200/60">
                                         <tr>
                                             <th>Sản phẩm</th>
+                                            <th className="w-20 text-center">ĐVT</th>
                                             <th className="text-right">SL</th>
                                             <th className="text-right">Đơn giá</th>
                                             <th className="text-right">Thành tiền</th>
@@ -460,6 +889,9 @@ export default function AdminOrderDetailPage() {
                                                                 </div>
                                                             </div>
                                                         </div>
+                                                    </td>
+                                                    <td className="text-center text-sm text-base-content/80">
+                                                        {item.unit || 'Cái'}
                                                     </td>
                                                     <td className="text-right font-medium">{qty}</td>
                                                     <td className="text-right">{formatMoney(price)}</td>

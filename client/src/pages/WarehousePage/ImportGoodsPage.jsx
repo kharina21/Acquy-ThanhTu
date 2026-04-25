@@ -39,14 +39,24 @@ const formatDate = (d) => {
 };
 
 const parseSerialText = (raw) => {
-    const lines = String(raw || '')
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    // de-duplicate but keep order
+    const t = String(raw || '').trim();
+    if (!t) return [];
+    /** Một dòng dán từ Excel/CSV: tách theo dấu phẩy hoặc chấm phẩy */
+    let parts;
+    if (!/[\r\n]/.test(t) && /[;,]/.test(t)) {
+        parts = t
+            .split(/[,;]/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+    } else {
+        parts = t
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+    }
     const seen = new Set();
     const out = [];
-    for (const s of lines) {
+    for (const s of parts) {
         if (seen.has(s)) continue;
         seen.add(s);
         out.push(s);
@@ -54,7 +64,19 @@ const parseSerialText = (raw) => {
     return out;
 };
 
-/** HTML in tem nhập hàng — cùng layout/CSS với in tem ở chi tiết sản phẩm (70×22mm, 2 ô, có series). */
+/** 0 seri = không theo dõi từng cái; nếu có thì bắt buộc n === quantity */
+const validateItemSerialsVsQty = (quantity, serials) => {
+    const n = Array.isArray(serials) ? serials.length : 0;
+    const q = Math.max(1, Number(quantity) || 0);
+    if (n === 0) return { ok: true };
+    if (n === q) return { ok: true };
+    if (n > q) {
+        return { ok: false, message: `Có ${n} seri/IMEI nhưng số lượng chỉ ${q} — xóa bớt hoặc tăng số lượng dòng hàng.` };
+    }
+    return { ok: false, message: `Cần đúng ${q} seri/IMEI (hiện ${n}) — bổ sung, sinh tự động, hoặc xóa hết nếu không cần.` };
+};
+
+/** HTML in tem nhập hàng — cùng layout/CSS với in tem ở chi tiết sản phẩm (70×22mm, 2 ô). */
 const buildStockInPrintHtml = ({ product, serials }) => {
     const name = product?.name || '';
     const sku = product?.sku || '';
@@ -76,7 +98,6 @@ const buildStockInPrintHtml = ({ product, serials }) => {
         }
         return buildLabelCellInnerHtml({
             name,
-            series: product?.series,
             capacity: product?.capacity,
             sku,
             barcodeValue,
@@ -395,6 +416,13 @@ const ImportGoodsPage = () => {
             toast.error('Vui lòng thêm ít nhất một sản phẩm');
             return;
         }
+        for (const r of createRows) {
+            const check = validateItemSerialsVsQty(r.quantity, r.serials);
+            if (!check.ok) {
+                toast.error(`${r.product?.sku || 'Dòng hàng'}: ${check.message}`);
+                return;
+            }
+        }
         setSubmitting(true);
         try {
             const payload = {
@@ -456,6 +484,15 @@ const ImportGoodsPage = () => {
             title: 'Xác nhận phiếu nhập hàng',
             message: `Xác nhận phiếu ${si.code} sẽ cộng tồn kho theo số lượng nhập. Bạn có chắc?`,
             onConfirm: async () => {
+                const lines = Array.isArray(si?.items) ? si.items : [];
+                for (const it of lines) {
+                    const v = validateItemSerialsVsQty(it.quantity, it.serials);
+                    if (!v.ok) {
+                        const sku = it.product?.sku || it.product?._id || '—';
+                        toast.error(`${sku}: ${v.message}`);
+                        return;
+                    }
+                }
                 try {
                     await confirmStockIn(si._id);
                     toast.success('Đã xác nhận phiếu và cập nhật tồn kho');
@@ -678,6 +715,13 @@ const ImportGoodsPage = () => {
         const pid = serialModalProductId;
         if (!pid) return;
         const serials = parseSerialText(serialModalText);
+        if (serialModalSource === 'create') {
+            const v = validateItemSerialsVsQty(serialModalQuantity, serials);
+            if (!v.ok) {
+                toast.error(v.message);
+                return;
+            }
+        }
         if (serialModalSource === 'detail' && serialModalDetailItemKey) {
             setDetailSerialOverrides((prev) => ({ ...prev, [serialModalDetailItemKey]: serials }));
             setSerialModalOpen(false);
@@ -1222,6 +1266,10 @@ const ImportGoodsPage = () => {
                                         <label className='label'>
                                             <span className='label-text font-semibold'>Sản phẩm nhập</span>
                                         </label>
+                                        <p className='text-xs text-base-content/60 -mt-1 mb-2'>
+                                            Mỗi dòng hàng = 1 SKU; số lượng N thì nhập đủ N seri/IMEI (hoặc để trống nếu
+                                            không theo dõi) ở cột Tem → Seri/IMEI.
+                                        </p>
                                         <div
                                             className='relative mb-4'
                                             ref={productSearchRef}
@@ -1468,9 +1516,20 @@ const ImportGoodsPage = () => {
                             )}
                             <div className='mt-4 space-y-2'>
                                 <p className='text-sm text-base-content/70'>
-                                    Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong>. In tem dùng cùng khổ và layout với{' '}
-                                    <strong>chi tiết sản phẩm</strong> (70×22mm, 2 tem/hàng): mã vạch CODE128 từ mã vạch hoặc mã hàng
-                                    sản phẩm; mỗi tem ghi thêm một dòng seri tương ứng.
+                                    {serialModalSource === 'create' ? (
+                                        <>
+                                            Số mã hợp lệ (sau bỏ trùng) phải bằng số lượng dòng hàng ({serialModalQuantity}) hoặc
+                                            0. Mỗi seri một dòng; dán 1 cột từ Excel, hoặc 1 dòng tách bằng dấu phẩy/chấm
+                                            phẩy. In tem: layout <strong>chi tiết sản phẩm</strong> (70×22mm) — 1 mã/1
+                                            tem.
+                                        </>
+                                    ) : (
+                                        <>
+                                            Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong> (có thể tách bằng dấu phẩy 1
+                                            dòng). In tem cùng layout <strong>chi tiết sản phẩm</strong> (mã vạch CODE128
+                                            từ mã vạch/mã hàng, thêm từng dòng seri trên mỗi tem).
+                                        </>
+                                    )}
                                 </p>
                                 <textarea
                                     className='textarea textarea-bordered w-full min-h-56 font-mono text-sm'
@@ -1479,7 +1538,15 @@ const ImportGoodsPage = () => {
                                     placeholder={'VD:\n356789012345678\n356789012345679\n...'}
                                 />
                                 <p className='text-xs text-base-content/55'>
-                                    Đã nhập: <strong>{parseSerialText(serialModalText).length}</strong> dòng (tự loại bỏ dòng trống / trùng).
+                                    Đã nhập: <strong>{parseSerialText(serialModalText).length}</strong> mã
+                                    {serialModalSource === 'create' && (
+                                        <>
+                                            {' '}
+                                            / cần <strong>{serialModalQuantity}</strong> nếu nhập (hoặc 0 nếu không theo
+                                            dõi)
+                                        </>
+                                    )}{' '}
+                                    (bỏ trùng, kể cả khi dán CSV)
                                 </p>
                             </div>
                             <div className='modal-action flex-wrap gap-2'>

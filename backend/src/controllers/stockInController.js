@@ -5,6 +5,33 @@ import ProductStock from '../models/ProductStock.js';
 import Product from '../models/Product.js';
 import { generateStockInCode } from '../utils/stockInCode.js';
 
+/**
+ * Mỗi dòng: hoặc không nhập seri (0 mã), hoặc phải đúng bằng số lượng — tránh dở dang 3/5 mã.
+ */
+function assertSerialsCountMatchesQuantity(processedItems) {
+    for (let i = 0; i < processedItems.length; i += 1) {
+        const it = processedItems[i];
+        const q = it.quantity;
+        const n = (it.serials || []).length;
+        if (n > q) {
+            throw Object.assign(
+                new Error(
+                    `Dòng hàng thứ ${i + 1}: có ${n} seri/IMEI, vượt số lượng (${q}). Hãy xóa bớt hoặc tăng số lượng.`,
+                ),
+                { statusCode: 400 },
+            );
+        }
+        if (n > 0 && n < q) {
+            throw Object.assign(
+                new Error(
+                    `Dòng hàng thứ ${i + 1}: cần đúng ${q} seri/IMEI (hiện ${n}) — hoặc xóa hết seri nếu không theo dõi từng cái.`,
+                ),
+                { statusCode: 400 },
+            );
+        }
+    }
+}
+
 /** Gom và kiểm tra seri không trùng trong payload và không trùng với phiếu khác / mã SKU sản phẩm. */
 async function assertSerialsAllowed(processedItems, excludeStockInId) {
     const flat = [];
@@ -148,7 +175,7 @@ export const getStockInById = async (req, res) => {
             .populate('supplier', 'code name phone')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode series capacity price')
+            .populate('items.product', 'name sku barcode capacity price')
             .lean();
 
         if (!stockIn) {
@@ -207,6 +234,7 @@ export const createStockIn = async (req, res) => {
         });
 
         try {
+            assertSerialsCountMatchesQuantity(processedItems);
             await assertSerialsAllowed(processedItems, null);
         } catch (e) {
             const status = e.statusCode || 400;
@@ -232,7 +260,7 @@ export const createStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode series capacity price')
+            .populate('items.product', 'name sku barcode capacity price')
             .lean();
 
         res.status(201).json({
@@ -294,6 +322,7 @@ export const updateStockIn = async (req, res) => {
         });
 
         try {
+            assertSerialsCountMatchesQuantity(processedItems);
             await assertSerialsAllowed(processedItems, id);
         } catch (e) {
             const status = e.statusCode || 400;
@@ -313,7 +342,7 @@ export const updateStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode series capacity price')
+            .populate('items.product', 'name sku barcode capacity price')
             .lean();
 
         res.status(200).json({
@@ -400,6 +429,16 @@ export const confirmStockIn = async (req, res) => {
             return res.status(400).json({ message: 'Phiếu nhập hàng đã được xác nhận' });
         }
 
+        const draftItems = stockIn.items.map((it) => ({
+            quantity: it.quantity,
+            serials: (it.serials || []).map((s) => String(s || '').trim()).filter(Boolean),
+        }));
+        try {
+            assertSerialsCountMatchesQuantity(draftItems);
+        } catch (e) {
+            return res.status(e.statusCode || 400).json({ message: e.message });
+        }
+
         const locationId = stockIn.location;
         for (const it of stockIn.items) {
             await ProductStock.findOneAndUpdate(
@@ -417,7 +456,7 @@ export const confirmStockIn = async (req, res) => {
             .populate('supplier', 'code name')
             .populate('location', 'code name')
             .populate('createdBy', 'firstName lastName')
-            .populate('items.product', 'name sku barcode series capacity price')
+            .populate('items.product', 'name sku barcode capacity price')
             .lean();
 
         res.status(200).json({

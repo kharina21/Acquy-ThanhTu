@@ -35,6 +35,7 @@ import orderRoutes from './routes/orderRoute.js';
 import customerRoutes from './routes/customerRoute.js';
 import paymentRoutes from './routes/paymentRoute.js';
 import dashboardRoutes from './routes/dashboardRoute.js';
+import storeSettingsRoutes from './routes/storeSettingsRoute.js';
 import shippingAddressRoutes from './routes/shippingAddressRoute.js';
 import vietqrBanksRoute from './routes/vietqrBanksRoute.js';
 
@@ -62,6 +63,7 @@ app.use('/api/stock-checks', stockCheckRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/brands', brandRoutes);
 app.use('/api/locations', locationRoutes);
+app.use('/api/store-settings', storeSettingsRoutes);
 app.use('/api/product-stocks', productStockRoutes);
 app.use('/api/usage-devices', usageDeviceRoutes);
 app.use('/api/roles', roleRoutes);

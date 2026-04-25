@@ -36,6 +36,18 @@ export const updateOrder = async (id, data) => {
     return res.data;
 };
 
+/** Cập nhật đơn đặt trước (chỉ khi chưa thanh toán). Body: { items, note?, locationId?, discount?, customerId? } */
+export const updatePreOrder = async (id, data) => {
+    const res = await api.put(`/orders/${id}/pre-order`, data);
+    return res.data;
+};
+
+/** Xóa đơn đặt trước (khi còn cho phép theo nghiệp vụ) */
+export const deletePreOrder = async (id) => {
+    const res = await api.delete(`/orders/${id}/pre-order`);
+    return res.data;
+};
+
 /**
  * Khách hàng chỉnh sửa đơn (địa chỉ, ghi chú) - chỉ khi chưa thanh toán
  */
@@ -68,6 +80,12 @@ export const confirmRefundTransfer = async (id) => {
 /** Xác nhận xuất kho đơn online — chỉ khi đã quét đủ dòng đóng gói (trang xuất kho nhanh). */
 export const confirmWarehouseOutbound = async (id, data = {}) => {
     const res = await api.post(`/orders/${id}/confirm-warehouse-outbound`, data);
+    return res.data;
+};
+
+/** Kho xác nhận đã gom/kiểm hàng (bước trước khi quét đóng gói). */
+export const confirmWarehouseItemsPrepared = async (id) => {
+    const res = await api.post(`/orders/${id}/warehouse-confirm-prepared`, {});
     return res.data;
 };
 

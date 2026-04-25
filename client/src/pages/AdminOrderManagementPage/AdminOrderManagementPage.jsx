@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { getActiveLocations } from '@/services/locationService';
-import { getMyOrders, updateOrder } from '@/services/orderService';
+import { getMyOrders, updateOrder, deletePreOrder } from '@/services/orderService';
+import { printVatInvoiceForOrderId } from '@/lib/vatInvoicePrint';
 import { toast } from 'sonner';
 import { STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
 
@@ -44,6 +46,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
     const [filters, setFilters] = useState({ status: '', paymentStatus: '' });
     const [updatingId, setUpdatingId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
+    const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
 
     useEffect(() => {
         getActiveLocations()
@@ -94,8 +98,13 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
         setUpdatingId(orderId);
         try {
             const payload = field === 'status' ? { status: value } : { paymentStatus: value };
-            await updateOrder(orderId, payload);
-            toast.success('Cập nhật thành công');
+            const res = await updateOrder(orderId, payload);
+            const warn = res?.data?.reservationWarning;
+            if (warn) {
+                toast.warning(String(warn).slice(0, 220) + (String(warn).length > 220 ? '…' : ''));
+            } else {
+                toast.success('Cập nhật thành công');
+            }
             fetchOrders();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Lỗi khi cập nhật');
@@ -120,6 +129,37 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
         return [s.firstName, s.lastName].filter(Boolean).join(' ') || s.username || '—';
     };
 
+    const handleDeletePreOrder = async (order) => {
+        if (!order?._id || type !== 'pre-orders') return;
+        if (order.status === 'completed') {
+            toast.error('Không xóa đơn đã hoàn thành');
+            return;
+        }
+        if (!window.confirm(`Xóa hẳn đơn ${order.code}? Thao tác không hoàn tác tự phục hồi.`)) return;
+        setDeletingId(order._id);
+        try {
+            await deletePreOrder(order._id);
+            toast.success('Đã xóa đơn');
+            fetchOrders();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không xóa được');
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const handleViewPrintInvoice = async (order) => {
+        if (!order?._id || type !== 'invoices') return;
+        setPrintingInvoiceId(order._id);
+        try {
+            await printVatInvoiceForOrderId(order._id);
+        } catch (err) {
+            toast.error(err?.message || err?.response?.data?.message || 'Không in được hóa đơn');
+        } finally {
+            setPrintingInvoiceId(null);
+        }
+    };
+
     return (
         <div className='flex-1 p-6 bg-base-200 overflow-y-auto'>
             <div className='container mx-auto space-y-4'>
@@ -127,7 +167,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     <h1 className='text-2xl font-bold text-base-content'>{type === 'pre-orders' ? 'Đặt hàng' : type === 'invoices' ? 'Hóa đơn' : 'Quản lý đơn hàng'}</h1>
                     {type === 'invoices' && (
                         <p className='text-sm text-base-content/65 mt-1 max-w-3xl'>
-                            Đơn online: sau khi khách thanh toán, trạng thái vẫn &quot;Chờ xử lý&quot; — seller chuyển sang &quot;Đã xác nhận&quot; thì kho mới xuất hàng và trừ tồn thực tế. Bán tại quầy không đổi.
+                            Đơn online: sau khi khách thanh toán, seller chuyển sang &quot;Đã xác nhận&quot; thì kho xuất hàng. Bán tại quầy: sau khi tạo hóa đơn (đã thanh toán hoặc sau khi xác nhận chuyển khoản), kho quét xuất tương tự — trừ tồn thực tế khi xác nhận xuất kho.
                         </p>
                     )}
                 </div>
@@ -240,10 +280,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                 onChange={(e) => handleUpdateStatus(order._id, 'status', e.target.value)}
                                                                 disabled={updatingId === order._id}
                                                             >
-                                                                {(order.channel === 'in_store'
-                                                                    ? Object.entries(STATUS_LABELS).filter(([v]) => v !== 'confirmed')
-                                                                    : Object.entries(STATUS_LABELS)
-                                                                ).map(([v, l]) => (
+                                                                {Object.entries(STATUS_LABELS).map(([v, l]) => (
                                                                     <option
                                                                         key={v}
                                                                         value={v}
@@ -273,7 +310,9 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                 ))}
                                                             </select>
                                                         </td>
-                                                        <td className='text-base-content/70 py-3'>{order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : '—'}</td>
+                                                        <td className='text-base-content/70 py-3'>
+                                                            {order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : '—'}
+                                                        </td>
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr
@@ -339,7 +378,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                                 className='flex justify-between py-2'
                                                                             >
                                                                                 <span>
-                                                                                    {item.product?.name || 'Sản phẩm'} × {item.quantity}
+                                                                                    {item.product?.name || 'Sản phẩm'} × {item.quantity}{' '}
+                                                                                    {item.unit ? `(${item.unit})` : ''}
                                                                                 </span>
                                                                                 <span className='font-medium'>{((item.quantity || 0) * (item.price || 0)).toLocaleString()}đ</span>
                                                                             </div>
@@ -349,6 +389,53 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                         <span>Tổng tiền</span>
                                                                         <span>{(order.totalAmount || 0).toLocaleString()}đ</span>
                                                                     </div>
+                                                                    {type === 'pre-orders' && (
+                                                                        <div className='flex flex-wrap items-center justify-end gap-2 pt-3 mt-1 border-t border-base-200/80'>
+                                                                            <Link
+                                                                                to={`/admin/orders/${order._id}`}
+                                                                                className='link link-hover text-xs font-medium text-base-content'
+                                                                            >
+                                                                                Chi tiết / sửa
+                                                                            </Link>
+                                                                            {order.status !== 'completed' && (
+                                                                                <button
+                                                                                    type='button'
+                                                                                    className='link text-xs text-error no-underline hover:underline p-0 h-auto min-h-0'
+                                                                                    disabled={deletingId === order._id}
+                                                                                    onClick={() => handleDeletePreOrder(order)}
+                                                                                >
+                                                                                    {deletingId === order._id ? (
+                                                                                        <span className='loading loading-spinner loading-xs' />
+                                                                                    ) : (
+                                                                                        'Xóa'
+                                                                                    )}
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {type === 'invoices' && (
+                                                                        <div className='flex flex-wrap items-center justify-end gap-3 pt-3 mt-1 border-t border-base-200/80'>
+                                                                            <Link
+                                                                                to={`/admin/orders/${order._id}`}
+                                                                                className='link link-hover text-xs font-medium text-base-content'
+                                                                            >
+                                                                                Chi tiết đơn
+                                                                            </Link>
+                                                                            <button
+                                                                                type='button'
+                                                                                className='btn btn-sm btn-outline btn-primary gap-1'
+                                                                                disabled={printingInvoiceId === order._id}
+                                                                                onClick={() => handleViewPrintInvoice(order)}
+                                                                            >
+                                                                                {printingInvoiceId === order._id ? (
+                                                                                    <span className='loading loading-spinner loading-xs' />
+                                                                                ) : null}
+                                                                                {printingInvoiceId === order._id
+                                                                                    ? 'Đang mở in…'
+                                                                                    : 'Xem & in hóa đơn'}
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </td>
                                                         </tr>

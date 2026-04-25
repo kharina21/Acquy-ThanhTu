@@ -18,14 +18,14 @@ const productSchema = new mongoose.Schema(
         sku: { type: String, required: true, trim: true },
         barcode: { type: String, default: '' },
         name: { type: String, required: true, trim: true },
+        /** Đơn vị tính (VD: Cái, Bộ) — hiển thị trên hóa đơn */
+        unit: { type: String, default: 'Cái', trim: true, maxlength: 32 },
         usageDevice: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'UsageDevice',
             default: null,
         }, // Thiết bị sử dụng
         capacity: { type: String, default: '' },
-        /** Dòng / series sản phẩm (VD: MF, AGM, DIN…) — hiển thị chi tiết & tem */
-        series: { type: String, default: '', trim: true },
         /** Kiểu ắc quy: khô (MF/AGM…) hoặc nước (nước cất / flooded) */
         batteryType: {
             type: String,
@@ -43,12 +43,16 @@ const productSchema = new mongoose.Schema(
         voltageV: { type: Number, default: null, min: 0 },
         /** Tên quốc gia (tiếng Việt) — chọn từ danh sách có tìm kiếm */
         originCountry: { type: String, default: '', trim: true, maxlength: 120 },
-        /** Dung tích nhớt (Excel / mô tả) */
-        oilCapacityText: { type: String, default: '', trim: true, maxlength: 200 },
-        /** Đời xe (Excel / mô tả) */
-        vehicleModelText: { type: String, default: '', trim: true, maxlength: 200 },
         costPrice: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
+        /**
+         * % VAT áp dụng cho mặt hàng (0–100). null/undefined = dùng mặc định ở Hồ sơ cửa hàng.
+         */
+        vatPercent: {
+            type: Number,
+            min: 0,
+            max: 100,
+        },
         image: { type: String, default: '' },
         images: { type: [String], default: [] },
         isActive: { type: Boolean, default: true },

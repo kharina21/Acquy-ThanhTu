@@ -3,11 +3,13 @@ import api from '@/lib/axios';
 
 /**
  * Service quản lý sản phẩm.
- * File mẫu / import Excel: 21 cột bắt buộc (server parseExcelProduct.EXPECTED_HEADERS).
- * Có thể thêm cột tùy chọn: Series, Đang kinh doanh, Ghi chú (cùng hàng, sau cột tùy thêm ở cuối bảng nếu cần).
+ * File mẫu / import Excel: 19 cột bắt buộc (server `parseExcelProduct.EXPECTED_HEADERS`).
+ * File export thêm 5 cột ở cuối: VAT (%), Đang kinh doanh, Ghi chú, Ngày tạo, Ngày cập nhật (import bỏ qua 2 cột thời gian).
+ * Import chấp nhận 19 cột; nếu có 24 cột như bản xuất thì vẫn hợp lệ nếu đủ 19 tên cột bắt buộc.
  */
 
-const HEADERS = [
+/** 19 cột bắt buộc — cùng thứ tự với `parseExcelProduct.EXPECTED_HEADERS` (file mẫu, import). */
+export const HEADERS = [
     'Loại hàng',
     'Thiết bị sử dụng',
     'Thương hiệu',
@@ -19,7 +21,6 @@ const HEADERS = [
     'Đơn giá bán (VNĐ)',
     'Tồn kho',
     'Hình ảnh',
-    'Dung tích nhớt',
     'Bảo hành',
     'Chiều dài (mm)',
     'Chiều rộng (mm)',
@@ -28,11 +29,10 @@ const HEADERS = [
     'Kiểu ắc quy',
     'Điện áp (V)',
     'Xuất xứ',
-    'Đời xe',
 ];
 
 /**
- * Tạo file Excel mẫu (blob) đúng 21 cột. Dòng dữ liệu phải cùng số cột theo thứ tự HEADERS.
+ * Tạo file Excel mẫu (blob) đúng 19 cột. Dòng dữ liệu phải cùng số cột theo thứ tự HEADERS.
  */
 export const generateSampleExcelBlob = () => {
     const sampleData = [
@@ -49,7 +49,6 @@ export const generateSampleExcelBlob = () => {
             1750000,
             35,
             '',
-            '4.3L 5W-30',
             '12 tháng',
             303,
             171,
@@ -58,7 +57,6 @@ export const generateSampleExcelBlob = () => {
             'Khô',
             12,
             'Hàn Quốc',
-            '2015–2019 (tham khảo)',
         ],
         [
             'Ắc quy',
@@ -72,7 +70,6 @@ export const generateSampleExcelBlob = () => {
             980000,
             25,
             '',
-            '—',
             '12 tháng',
             187,
             127,
@@ -81,7 +78,6 @@ export const generateSampleExcelBlob = () => {
             'Nước',
             12,
             'Việt Nam',
-            '',
         ],
         [
             'Ắc quy',
@@ -95,7 +91,6 @@ export const generateSampleExcelBlob = () => {
             1000000,
             16,
             '',
-            '',
             '30 ngày',
             238,
             129,
@@ -104,7 +99,6 @@ export const generateSampleExcelBlob = () => {
             'Khô',
             12,
             'Việt Nam',
-            'Xe nhỏ',
         ],
     ];
     const ws = XLSX.utils.aoa_to_sheet(sampleData);

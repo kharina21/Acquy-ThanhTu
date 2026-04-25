@@ -201,7 +201,7 @@ const StockOutPage = () => {
                             <h1 className="text-2xl font-bold text-base-content">Xuất kho</h1>
                         </div>
                         <p className="text-sm text-base-content/65 max-w-2xl mt-1 pl-10">
-                            Bán tại quầy: phiếu xuất gắn đơn được ghi nhận tự động theo chi nhánh. Bán online: chỉ có phiếu sau khi kho xác nhận xuất đơn.
+                            Bán online & bán tại quầy: phiếu xuất theo đơn bán được tạo khi nhân viên kho xác nhận xuất (sau khi quét đủ dòng).
                         </p>
                     </div>
                     <button type="button" className="btn btn-primary btn-sm gap-1" onClick={openCreate}>

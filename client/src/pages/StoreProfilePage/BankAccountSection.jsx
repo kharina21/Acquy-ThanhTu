@@ -182,7 +182,7 @@ export default function BankAccountSection({ locations, loading }) {
     };
 
     return (
-        <section className="bg-base-100 rounded-lg shadow p-6 mt-6">
+        <section id="store-section-bank" className="bg-base-100 rounded-lg shadow p-6 scroll-mt-6">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-primary" />

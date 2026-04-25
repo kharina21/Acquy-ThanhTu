@@ -7,11 +7,14 @@ import {
     getOrders,
     getOrderById,
     updateOrder,
+    updatePreOrder,
+    deletePreOrder,
     updateOrderByCustomer,
     cancelOrderByCustomer,
     confirmWarehouseOutbound,
     lookupOnlineOrderForPacking,
     packWarehouseOrderLine,
+    confirmWarehouseItemsPrepared,
     syncPaymentFromPayOS,
     getOrderReport,
     generateVietQRForOrder,
@@ -58,6 +61,11 @@ router.post(
     hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'),
     packWarehouseOrderLine,
 );
+router.post(
+    '/:id/warehouse-confirm-prepared',
+    hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'),
+    confirmWarehouseItemsPrepared,
+);
 router.patch('/:id', hasRole('user', 'customer'), updateOrderByCustomer);
 
 // Bán tại quầy
@@ -85,6 +93,18 @@ router.put(
     '/:id',
     hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     updateOrder,
+);
+
+// Đơn đặt trước: chỉnh sửa / xóa (cùng quyền cập nhật đơn tại quầy)
+router.put(
+    '/:id/pre-order',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    updatePreOrder,
+);
+router.delete(
+    '/:id/pre-order',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    deletePreOrder,
 );
 
 export default router;

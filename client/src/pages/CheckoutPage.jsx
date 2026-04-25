@@ -290,8 +290,10 @@ export default function CheckoutPage() {
   );
   const preview = checkoutPreview;
   const subtotal = preview?.subtotal ?? selectedSubtotalLocal;
+  const vatTotal = preview?.vatTotal ?? 0;
+  const grossSubtotal = preview?.grossSubtotal ?? subtotal + vatTotal;
   const discount = preview?.discount ?? 0;
-  const finalTotal = preview?.finalTotal ?? selectedSubtotalLocal;
+  const finalTotal = preview?.finalTotal ?? grossSubtotal;
   const tierName = preview?.tierName;
   const discountPercent = preview?.discountPercent ?? 0;
 
@@ -510,8 +512,18 @@ export default function CheckoutPage() {
                 </div>
                 <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Tạm tính:</span>
+                    <span>Tiền hàng (chưa thuế):</span>
                     <span>{subtotal.toLocaleString()}đ</span>
+                  </div>
+                  {vatTotal > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Thuế GTGT:</span>
+                      <span>{vatTotal.toLocaleString()}đ</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Cộng (gồm thuế, trước chiết khấu hạng):</span>
+                    <span>{grossSubtotal.toLocaleString()}đ</span>
                   </div>
                   {discount > 0 && (
                     <div className="flex justify-between text-sm text-emerald-600">

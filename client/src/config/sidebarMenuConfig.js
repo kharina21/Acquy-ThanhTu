@@ -122,7 +122,7 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'stock-check', to: '/admin/warehouses/stock-check', label: 'Kiểm kho' },
             { id: 'import', to: '/admin/warehouses/import', label: 'Nhập hàng' },
             { id: 'stock-out', to: '/admin/warehouses/stock-out', label: 'Xuất kho' },
-            { id: 'outbound-scan', to: '/admin/warehouses/outbound-scan', label: 'Quét xuất đơn online' },
+            { id: 'outbound-scan', to: '/admin/warehouses/outbound-scan', label: 'Quét xuất (Tại quầy & Online)' },
             { id: 'nxt-report', to: '/admin/warehouses/nxt-report', label: 'Báo cáo NXT' },
             { id: 'report-stock-in', to: '/admin/warehouses/report-stock-in', label: 'Báo cáo nhập hàng' },
             { id: 'report-stock-out', to: '/admin/warehouses/report-stock-out', label: 'Báo cáo xuất kho' },
