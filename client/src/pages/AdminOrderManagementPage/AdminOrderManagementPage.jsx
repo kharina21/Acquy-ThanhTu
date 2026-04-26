@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, FileStack } from 'lucide-react';
 import { useBranchStore } from '@/stores/useBranchStore';
-import { getActiveLocations } from '@/services/locationService';
+import { getLocations } from '@/services/locationService';
 import { getMyOrders, updateOrder, deletePreOrder } from '@/services/orderService';
 import { printVatInvoiceForOrderId } from '@/lib/vatInvoicePrint';
 import { toast } from 'sonner';
 import { STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
+import { useUserRole } from '@/hooks/useUserRole';
+import LegacyInvoiceImportModal from './LegacyInvoiceImportModal';
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
@@ -38,6 +40,8 @@ const getPaymentSelectClass = (status) => {
 };
 
 export default function AdminOrderManagementPage({ type = 'invoices' }) {
+    const { hasAnyRole } = useUserRole();
+    const canImportLegacy = hasAnyRole('admin', 'manager', 'Quản lý chi nhánh');
     const { currentLocationId, setCurrentLocationId } = useBranchStore();
     const [locations, setLocations] = useState([]);
     const [expandedId, setExpandedId] = useState(null);
@@ -48,15 +52,22 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     const [updatingId, setUpdatingId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
+    const [legacyImportOpen, setLegacyImportOpen] = useState(false);
 
     useEffect(() => {
-        getActiveLocations()
+        // scope=mine: admin thấy mọi cơ sở; quản lý / bán hàng / kho chỉ thấy chi nhánh gán (Employee) — theo getManagerAllowedLocationIds
+        getLocations({ isActive: 'true', scope: 'mine' })
             .then((res) => setLocations(res?.data?.locations || []))
             .catch(() => setLocations([]));
     }, []);
 
     useEffect(() => {
-        if (locations.length > 0 && !currentLocationId) {
+        if (locations.length === 0) {
+            if (currentLocationId) setCurrentLocationId(null);
+            return;
+        }
+        const valid = locations.some((l) => String(l._id) === String(currentLocationId));
+        if (!currentLocationId || !valid) {
             setCurrentLocationId(locations[0]._id);
         }
     }, [locations, currentLocationId, setCurrentLocationId]);
@@ -170,18 +181,21 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     {type === 'invoices' && (
                         <p className='text-sm text-base-content/65 mt-1 max-w-3xl'>
                             Đơn online: sau khi khách thanh toán, seller chuyển sang &quot;Đã xác nhận&quot; thì kho xuất hàng. Bán tại quầy: sau khi tạo hóa đơn (đã thanh toán hoặc sau khi xác nhận chuyển khoản), kho quét xuất tương tự — trừ tồn thực tế khi xác nhận xuất kho.{' '}
-                            <strong>Chứng từ cũ</strong> nhập tại POS (Bán hàng): có ngày trên giấy, không ảnh hưởng tồn kho hiện tại.
+                            <strong>Chứng từ cũ</strong> (số hóa trước khi dùng phần mềm): nút &quot;Nhập hóa đơn&quot; — ghi theo ngày trên giấy, không ảnh hưởng tồn kho hiện tại.
                         </p>
                     )}
                 </div>
 
-                <div className='flex flex-wrap gap-2 items-center'>
+                <div className='flex flex-wrap gap-2 items-end justify-between w-full gap-y-3'>
+                    <div className='flex flex-wrap gap-2 items-end'>
                     <div>
                         <label className='label py-0 text-xs'>Cơ sở</label>
                         <select
                             className='select select-bordered select-sm w-48'
                             value={currentLocationId || ''}
                             onChange={(e) => setCurrentLocationId(e.target.value || null)}
+                            disabled={locations.length <= 1}
+                            title={locations.length <= 1 ? 'Một cơ sở — theo dữ liệu hệ thống hoặc quyền tài khoản' : undefined}
                         >
                             <option value=''>-- Chọn cơ sở --</option>
                             {locations.map((loc) => (
@@ -234,6 +248,18 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                             <option value='only'>Chỉ chứng từ cũ</option>
                             <option value='exclude'>Loại trừ chứng từ cũ</option>
                         </select>
+                    )}
+                    </div>
+                    {type === 'invoices' && canImportLegacy && (
+                        <button
+                            type='button'
+                            className='btn btn-primary btn-sm gap-1.5 shrink-0'
+                            title='Ghi nhận hóa đơn / chứng từ giấy từ trước (số hóa)'
+                            onClick={() => setLegacyImportOpen(true)}
+                        >
+                            <FileStack className='w-4 h-4' />
+                            Nhập hóa đơn
+                        </button>
                     )}
                 </div>
 
@@ -522,6 +548,13 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     )}
                 </div>
             </div>
+            <LegacyInvoiceImportModal
+                open={legacyImportOpen}
+                onClose={() => setLegacyImportOpen(false)}
+                locations={locations}
+                defaultLocationId={currentLocationId}
+                onSuccess={fetchOrders}
+            />
         </div>
     );
 }

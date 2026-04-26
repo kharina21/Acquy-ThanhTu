@@ -544,6 +544,7 @@ const getOrCreateCustomerFromUser = async (user) => {
  * Body: { items, locationId, paymentMethod, note?, isPreOrder?, customerId?,
  *   legacyImport?, documentDate?, legacyPaperCode? }
  * legacyImport + documentDate (chỉ admin/manager/Quản lý CN): ghi nhận chứng từ giấy cũ — không trừ/giữ tồn, không bảo hành, không tích lũy.
+ * legacyImport: mỗi item có thể gửi unitPrice (đơn giá chưa thuế tại thời điểm trên hóa đơn); nếu có thì dùng, không thì theo product.price.
  * customerId: Customer từ bảng khách hàng. Nếu không có thì dùng "Khách vãng lai".
  */
 export const createOrderFromItems = async (req, res) => {
@@ -612,6 +613,11 @@ export const createOrderFromItems = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy chi nhánh hoặc chi nhánh không hoạt động' });
         }
 
+        const { valid: locAllowed } = await validateLocationForUser(userId, locationId);
+        if (!locAllowed) {
+            return res.status(403).json({ message: 'Bạn không có quyền thao tác tại chi nhánh này.' });
+        }
+
         if (!Array.isArray(rawItems) || rawItems.length === 0) {
             return res.status(400).json({ message: 'Danh sách sản phẩm trống' });
         }
@@ -632,7 +638,18 @@ export const createOrderFromItems = async (req, res) => {
             }
 
             const qty = Math.max(1, Number(it.quantity) || 1);
-            const price = typeof product.price === 'number' ? product.price : 0;
+            const catalogUnit = typeof product.price === 'number' ? product.price : 0;
+            const rawOverride = it.unitPrice ?? it.price;
+            let price = catalogUnit;
+            if (legacyImport && rawOverride != null && rawOverride !== '') {
+                const pOverride = Number(rawOverride);
+                if (!Number.isFinite(pOverride) || pOverride < 0) {
+                    return res.status(400).json({
+                        message: `Đơn giá dòng sản phẩm "${product.name}" không hợp lệ (cần số ≥ 0, theo hóa đơn cũ, chưa thuế).`,
+                    });
+                }
+                price = pOverride;
+            }
             const stock = await getStockAtLocation(productId, locationId);
 
             if (!legacyImport && stock < qty) {
