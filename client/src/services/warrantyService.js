@@ -10,31 +10,6 @@ export const lookupWarrantyByOrderCode = async (orderCode) => {
 };
 
 /**
- * Upload ảnh bảo hành lên Cloudinary
- * POST /api/warranties/upload-images
- * Body: FormData, field: images[] (multipart)
- */
-export const uploadWarrantyImages = async (files) => {
-    const formData = new FormData();
-    files.forEach((file) => formData.append('images', file));
-    const res = await api.post('/warranties/upload-images', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 30000,
-    });
-    return res.data;
-};
-
-/**
- * Gửi yêu cầu bảo hành từ mã hóa đơn (Public)
- * POST /api/warranties/claim-from-order
- * Body: { orderCode, productId, reason, description, images[], customerName, customerPhone, customerAddress, notes }
- */
-export const submitClaimFromOrder = async (data) => {
-    const res = await api.post('/warranties/claim-from-order', data);
-    return res.data;
-};
-
-/**
  * Lấy chi tiết một bảo hành
  * GET /api/warranties/:id
  */
@@ -88,5 +63,24 @@ export const getWarrantiesByOrderCode = async (orderCode) => {
  */
 export const getWarrantyStats = async () => {
     const res = await api.get('/warranties/stats');
+    return res.data;
+};
+
+/**
+ * Tạo phiếu bảo hành (Admin)
+ * POST /api/warranties/create-claim
+ * Body: { orderCode, productId, reason, description, customerName, customerPhone, customerAddress, notes }
+ */
+export const createWarrantyClaim = async (data) => {
+    const res = await api.post('/warranties/create-claim', data);
+    return res.data;
+};
+
+/**
+ * Tìm kiếm đơn hàng (Admin - để tạo phiếu BH)
+ * GET /api/orders/search?code=xxx
+ */
+export const searchOrders = async (params) => {
+    const res = await api.get('/orders/search', { params });
     return res.data;
 };

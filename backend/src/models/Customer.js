@@ -18,6 +18,13 @@ const customerSchema = new mongoose.Schema(
             default: '',
             trim: true,
         },
+        /** Email khách hàng (dùng cho liên hệ, tra cứu) */
+        email: {
+            type: String,
+            default: '',
+            trim: true,
+            lowercase: true,
+        },
         type: {
             type: String,
             enum: ['walkin', 'retail', 'registered'],

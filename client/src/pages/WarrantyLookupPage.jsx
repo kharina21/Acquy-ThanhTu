@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { lookupWarrantyByOrderCode } from '@/services/warrantyService';
@@ -12,17 +12,11 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import {
     Search,
     Package,
-    Calendar,
     Shield,
     ShieldCheck,
     ShieldX,
-    Clock,
-    CheckCircle,
-    AlertCircle,
-    ArrowLeft,
     ShoppingBag,
-    FileText,
-    ArrowRight,
+    AlertCircle,
 } from 'lucide-react';
 
 const formatDate = (d) => {
@@ -37,31 +31,8 @@ const getDaysRemaining = (endDate) => {
     return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 };
 
-const REASON_LABELS = {
-    product_damage: 'Sản phẩm bị hư hỏng',
-    product_defect: 'Lỗi từ nhà sản xuất',
-    battery_leak: 'Ắc quy bị chảy nước',
-    charging_issue: 'Không sạc được / sạc yếu',
-    other: 'Lý do khác',
-};
-
-const CLAIM_STATUS_LABELS = {
-    pending: 'Chờ xử lý',
-    approved: 'Đã duyệt',
-    rejected: 'Từ chối',
-    completed: 'Hoàn thành',
-};
-
-const CLAIM_STATUS_STYLES = {
-    pending: 'bg-amber-100 text-amber-900 border-amber-200',
-    approved: 'bg-blue-100 text-blue-900 border-blue-200',
-    rejected: 'bg-red-100 text-red-900 border-red-200',
-    completed: 'bg-emerald-100 text-emerald-900 border-emerald-200',
-};
-
 export default function WarrantyLookupPage() {
     const { user, logout } = useAuthStore();
-    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
 
     const [orderCode, setOrderCode] = useState('');
@@ -194,7 +165,6 @@ export default function WarrantyLookupPage() {
                                         const daysLeft = getDaysRemaining(w.warrantyEndDate);
                                         const isExpired = w.isExpired;
                                         const noWarranty = w.hasWarrantyRecord === false || w.status === 'no_warranty_record';
-                                        const orderDone = result.order.status === 'completed' || result.order.paymentStatus === 'paid';
 
                                         return (
                                             <Card key={w._id || w.product?._id || Math.random()}
@@ -228,10 +198,6 @@ export default function WarrantyLookupPage() {
                                                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
                                                                         <ShieldX className="w-3 h-3" />Hết hạn BH
                                                                     </span>
-                                                                ) : w.hasPendingClaim ? (
-                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                                                                        <Clock className="w-3 h-3" />Chờ xử lý
-                                                                    </span>
                                                                 ) : (
                                                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                                                                         <ShieldCheck className="w-3 h-3" />Còn bảo hành
@@ -255,47 +221,12 @@ export default function WarrantyLookupPage() {
                                                                     Bảo hành: <strong className="text-gray-700">{w.warrantyText}</strong>
                                                                 </div>
                                                             )}
-                                                        </div>
-                                                    </div>
 
-                                                    {/* Yêu cầu BH đã gửi */}
-                                                    {w.latestClaim && (
-                                                        <div className="border-t border-gray-100 bg-amber-50 px-4 py-2.5 flex items-center justify-between gap-3">
-                                                            <div className="flex items-center gap-2 text-xs">
-                                                                <FileText className="w-3.5 h-3.5 text-amber-700" />
-                                                                <span className="text-amber-800">
-                                                                    YC: <strong className="font-mono">{w.latestClaim.claimCode}</strong>
-                                                                    <span className="text-amber-600 ml-1">— {REASON_LABELS[w.latestClaim.reason] || w.latestClaim.reason}</span>
-                                                                </span>
-                                                            </div>
-                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border shrink-0 ${CLAIM_STATUS_STYLES[w.latestClaim.status] || CLAIM_STATUS_STYLES.pending}`}>
-                                                                {CLAIM_STATUS_LABELS[w.latestClaim.status] || w.latestClaim.status}
-                                                            </span>
+                                                            {/* Mã bảo hành */}
+                                                            {w.warrantyCode && (
+                                                                <p className="text-xs text-gray-400 mt-1">Mã BH: <span className="font-mono">{w.warrantyCode}</span></p>
+                                                            )}
                                                         </div>
-                                                    )}
-
-                                                    {/* Actions */}
-                                                    <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
-                                                        {w.warrantyCode ? (
-                                                            <p className="text-xs text-gray-400">Mã BH: <span className="font-mono">{w.warrantyCode}</span></p>
-                                                        ) : (
-                                                            <p className="text-xs text-gray-400 italic">Chưa có mã bảo hành</p>
-                                                        )}
-                                                        {orderDone && !w.hasPendingClaim && (
-                                                            <Button
-                                                                size="sm"
-                                                                className="bg-blue-700 hover:bg-blue-800 gap-1.5 text-xs h-8 px-3"
-                                                                onClick={() => navigate(`/warranty/claim?orderCode=${result.order.code}&productId=${w.product?._id || w.productId}`)}
-                                                            >
-                                                                Yêu cầu bảo hành
-                                                            </Button>
-                                                        )}
-                                                        {!orderDone && (
-                                                            <span className="text-xs text-gray-400 italic">Đơn hàng chưa hoàn thành</span>
-                                                        )}
-                                                        {w.hasPendingClaim && (
-                                                            <span className="text-xs text-amber-600 font-medium">Đang chờ xử lý</span>
-                                                        )}
                                                     </div>
                                                 </CardContent>
                                             </Card>

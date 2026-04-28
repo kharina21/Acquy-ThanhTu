@@ -28,7 +28,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
 
         const now = new Date();
 
-        // Tìm order trước để lấy thông tin
         const order = await Order.findOne({ code: orderCode.trim() })
             .populate('customerProfile', 'name phone type')
             .populate('items.product', 'sku name image warrantyYears warrantyMonths warrantyText')
@@ -38,7 +37,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy hóa đơn với mã này' });
         }
 
-        // Lấy tất cả warranty của order
         const warranties = await Warranty.find({
             orderCode: orderCode.trim(),
             isDeleted: false,
@@ -46,14 +44,12 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
             .populate('productId', 'sku name image')
             .lean();
 
-        // Map warranty theo productId để match nhanh với order items
         const warrantyMap = {};
         for (const w of warranties) {
             const pid = w.productId?._id?.toString();
             if (pid) warrantyMap[pid] = w;
         }
 
-        // Luôn hiện order items — có warranty hay không đều hiện
         const warrantyResults = (order.items || []).map((item) => {
             const w = warrantyMap[item.product?._id?.toString()];
             if (!w) {
@@ -69,10 +65,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
                     warrantyText: item.product?.warrantyText || '',
                     warrantyMonths: (item.product?.warrantyYears || 0) * 12 + (item.product?.warrantyMonths || 0),
                     hasWarrantyRecord: false,
-                    canClaim: false,
-                    hasPendingClaim: false,
-                    claimsCount: 0,
-                    latestClaim: null,
                     purchaseDate: order.createdAt,
                     warrantyStartDate: null,
                     warrantyEndDate: null,
@@ -82,7 +74,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
             }
 
             const isExpired = new Date(w.warrantyEndDate) < now;
-            const hasPendingClaim = w.claims?.some((c) => c.status === 'pending') ?? false;
             return {
                 _id: w._id,
                 warrantyCode: w.warrantyCode,
@@ -100,12 +91,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
                 warrantyEndDate: w.warrantyEndDate,
                 status: isExpired ? 'expired' : w.status,
                 isExpired,
-                canClaim: !isExpired && !hasPendingClaim,
-                hasPendingClaim,
-                claimsCount: w.claims?.length || 0,
-                latestClaim: w.claims?.length
-                    ? w.claims.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
-                    : null,
             };
         });
 
@@ -121,7 +106,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
                     paymentStatus: order.paymentStatus,
                     customerName: order.customerProfile?.name || '',
                     customerPhone: order.customerProfile?.phone || '',
-                    // Trả thêm items để frontend biết productId của từng sản phẩm
                     items: (order.items || []).map((item) => ({
                         productId: item.product?._id,
                         sku: item.product?.sku || '',
@@ -141,162 +125,6 @@ export const lookupWarrantyByOrderCode = async (req, res) => {
         console.error('lookupWarrantyByOrderCode error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi tra cứu bảo hành',
-            error: error.message,
-        });
-    }
-};
-
-// ────────────────────────────────────────────────────────────────────────
-// 2. Gửi yêu cầu bảo hành từ mã hóa đơn (không cần warranty record có sẵn)
-// POST /api/warranties/claim-from-order
-// Body: { orderCode, productId, reason, description, images[], customerName, customerPhone, customerAddress, notes }
-// ────────────────────────────────────────────────────────────────────────
-export const submitClaimFromOrder = async (req, res) => {
-    try {
-        const {
-            orderCode,
-            productId,
-            reason,
-            description,
-            images,
-            customerName,
-            customerPhone,
-            customerAddress,
-            notes,
-        } = req.body || {};
-
-        // Validate
-        if (!orderCode || typeof orderCode !== 'string' || orderCode.trim().length < 3) {
-            return res.status(400).json({ message: 'Mã hóa đơn không hợp lệ' });
-        }
-        if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
-            return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
-        }
-        if (!reason) {
-            return res.status(400).json({ message: 'Vui lòng chọn lý do bảo hành' });
-        }
-        const validReasons = ['product_damage', 'product_defect', 'battery_leak', 'charging_issue', 'other'];
-        if (!validReasons.includes(reason)) {
-            return res.status(400).json({ message: 'Lý do bảo hành không hợp lệ' });
-        }
-        if (!Array.isArray(images) || images.length < 2) {
-            return res.status(400).json({ message: 'Vui lòng upload ít nhất 2 ảnh sản phẩm thực tế' });
-        }
-        if (!customerName?.trim()) {
-            return res.status(400).json({ message: 'Vui lòng nhập họ tên' });
-        }
-        if (!customerPhone?.trim()) {
-            return res.status(400).json({ message: 'Vui lòng nhập số điện thoại' });
-        }
-
-        // Tìm order
-        const order = await Order.findOne({ code: orderCode.trim() })
-            .populate('customerProfile', 'name phone')
-            .populate('items.product', 'sku name image warrantyYears warrantyMonths warrantyText')
-            .lean();
-
-        if (!order) {
-            return res.status(404).json({ message: 'Không tìm thấy hóa đơn với mã này' });
-        }
-
-        // Kiểm tra order đã hoàn thành chưa
-        if (order.status !== 'completed' && order.paymentStatus !== 'paid') {
-            return res.status(400).json({ message: 'Đơn hàng chưa hoàn thành. Vui lòng liên hệ cửa hàng.' });
-        }
-
-        // Tìm item trong order
-        const orderItem = (order.items || []).find(
-            (item) => item.product?._id?.toString() === productId
-        );
-        if (!orderItem) {
-            return res.status(404).json({ message: 'Sản phẩm không thuộc đơn hàng này' });
-        }
-
-        // Tìm warranty record đã có
-        let warranty = await Warranty.findOne({
-            orderCode: orderCode.trim(),
-            productId: new mongoose.Types.ObjectId(productId),
-            isDeleted: false,
-        }).lean();
-
-        const purchaseDate = order.createdAt;
-        const product = orderItem.product;
-
-        if (!warranty) {
-            // Tạo warranty record mới nếu chưa có
-            const warrantyMonths =
-                (product.warrantyYears || 0) * 12 + (product.warrantyMonths || 0);
-            const warrantyEndDate = addMonths(purchaseDate, warrantyMonths || 12);
-            const warrantyCode = await generateWarrantyCode();
-
-            const newWarranty = new Warranty({
-                warrantyCode,
-                orderId: order._id,
-                orderCode: order.code,
-                productId: new mongoose.Types.ObjectId(productId),
-                productSnapshot: {
-                    sku: product.sku || '',
-                    name: product.name || '',
-                    price: orderItem.price || 0,
-                    image: product.image || '',
-                    warrantyText: product.warrantyText || '',
-                },
-                customerId: order.customerProfile?._id || null,
-                customerName: order.customerProfile?.name || customerName,
-                customerPhone: order.customerProfile?.phone || customerPhone,
-                purchaseDate,
-                warrantyStartDate: purchaseDate,
-                warrantyEndDate: warrantyEndDate,
-                warrantyMonths: warrantyMonths || 12,
-                status: 'claimed',
-            });
-            await newWarranty.save();
-            warranty = newWarranty;
-        } else {
-            // Kiểm tra đã có claim pending chưa
-            const hasPending = warranty.claims?.some((c) => c.status === 'pending');
-            if (hasPending) {
-                return res.status(400).json({ message: 'Đã có yêu cầu bảo hành đang chờ xử lý cho sản phẩm này' });
-            }
-            warranty.status = 'claimed';
-        }
-
-        // Tạo claim
-        const claimCode = await generateClaimCode();
-        const newClaim = {
-            claimCode,
-            reason,
-            description: String(description || '').trim().slice(0, 1000),
-            images: images.slice(0, 10), // tối đa 10 ảnh
-            customerName: String(customerName).trim().slice(0, 100),
-            customerPhone: String(customerPhone).trim().slice(0, 20),
-            customerAddress: String(customerAddress || '').trim().slice(0, 300),
-            notes: String(notes || '').trim().slice(0, 500),
-            status: 'pending',
-            createdAt: new Date(),
-            resolvedAt: null,
-            resolutionNotes: '',
-            resolvedBy: null,
-        };
-
-        warranty.claims.push(newClaim);
-        await warranty.save();
-
-        const savedClaim = warranty.claims[warranty.claims.length - 1];
-
-        return res.status(201).json({
-            success: true,
-            message: 'Yêu cầu bảo hành đã được gửi thành công! Cửa hàng sẽ liên hệ trong thời gian sớm nhất.',
-            data: {
-                warrantyCode: warranty.warrantyCode,
-                claimCode: savedClaim.claimCode,
-                claim: savedClaim,
-            },
-        });
-    } catch (error) {
-        console.error('submitClaimFromOrder error:', error.message);
-        return res.status(500).json({
-            message: 'Lỗi khi gửi yêu cầu bảo hành',
             error: error.message,
         });
     }
@@ -842,6 +670,139 @@ export const getWarrantyStats = async (req, res) => {
         console.error('getWarrantyStats error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi lấy thống kê bảo hành',
+            error: error.message,
+        });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// 9. Tạo phiếu bảo hành (Admin tự tạo)
+// POST /api/warranties/create-claim
+// Body: { orderCode, productId, reason, description, customerName, customerPhone, customerEmail, customerAddress, notes }
+// ────────────────────────────────────────────────────────────────────────
+export const createWarrantyClaim = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const {
+            orderCode,
+            productId,
+            reason,
+            description,
+            customerName,
+            customerPhone,
+            customerEmail,
+            customerAddress,
+            notes,
+        } = req.body || {};
+
+        if (!orderCode || typeof orderCode !== 'string' || orderCode.trim().length < 3) {
+            return res.status(400).json({ message: 'Mã hóa đơn không hợp lệ' });
+        }
+        if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+            return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
+        }
+        if (!reason) {
+            return res.status(400).json({ message: 'Vui lòng chọn lý do bảo hành' });
+        }
+        const validReasons = ['product_damage', 'product_defect', 'battery_leak', 'charging_issue', 'other'];
+        if (!validReasons.includes(reason)) {
+            return res.status(400).json({ message: 'Lý do bảo hành không hợp lệ' });
+        }
+
+        const order = await Order.findOne({ code: orderCode.trim() })
+            .populate('customerProfile', 'name phone email')
+            .populate('items.product', 'sku name image warrantyYears warrantyMonths warrantyText')
+            .lean();
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy hóa đơn với mã này' });
+        }
+
+        const orderItem = (order.items || []).find(
+            (item) => item.product?._id?.toString() === productId
+        );
+        if (!orderItem) {
+            return res.status(404).json({ message: 'Sản phẩm không thuộc đơn hàng này' });
+        }
+
+        let warranty = await Warranty.findOne({
+            orderCode: orderCode.trim(),
+            productId: new mongoose.Types.ObjectId(productId),
+            isDeleted: false,
+        });
+
+        const purchaseDate = order.createdAt;
+        const product = orderItem.product;
+
+        if (!warranty) {
+            const warrantyMonths =
+                (product.warrantyYears || 0) * 12 + (product.warrantyMonths || 0);
+            const warrantyEndDate = addMonths(purchaseDate, warrantyMonths || 12);
+            const warrantyCode = await generateWarrantyCode();
+
+            warranty = new Warranty({
+                warrantyCode,
+                orderId: order._id,
+                orderCode: order.code,
+                productId: new mongoose.Types.ObjectId(productId),
+                productSnapshot: {
+                    sku: product.sku || '',
+                    name: product.name || '',
+                    price: orderItem.price || 0,
+                    image: product.image || '',
+                    warrantyText: product.warrantyText || '',
+                },
+                customerId: order.customerProfile?._id || null,
+                customerName: order.customerProfile?.name || customerName || '',
+                customerPhone: order.customerProfile?.phone || customerPhone || '',
+                purchaseDate,
+                warrantyStartDate: purchaseDate,
+                warrantyEndDate: warrantyEndDate,
+                warrantyMonths: warrantyMonths || 12,
+                status: 'claimed',
+            });
+            await warranty.save();
+        } else {
+            warranty.status = 'claimed';
+        }
+
+        const claimCode = await generateClaimCode();
+        const newClaim = {
+            claimCode,
+            reason,
+            description: String(description || '').trim().slice(0, 1000),
+            images: [],
+            customerName: String(customerName || '').trim().slice(0, 100),
+            customerPhone: String(customerPhone || '').trim().slice(0, 20),
+            customerEmail: String(customerEmail || order.customerProfile?.email || '').trim().slice(0, 100),
+            customerAddress: String(customerAddress || '').trim().slice(0, 300),
+            notes: String(notes || '').trim().slice(0, 500),
+            status: 'pending',
+            createdAt: new Date(),
+            resolvedAt: null,
+            resolutionNotes: '',
+            resolvedBy: null,
+        };
+
+        warranty.claims.push(newClaim);
+        await warranty.save();
+
+        const savedClaim = warranty.claims[warranty.claims.length - 1];
+
+        return res.status(201).json({
+            success: true,
+            message: 'Tạo phiếu bảo hành thành công!',
+            data: {
+                warrantyCode: warranty.warrantyCode,
+                claimCode: savedClaim.claimCode,
+                claim: savedClaim,
+                createdBy: userId,
+            },
+        });
+    } catch (error) {
+        console.error('createWarrantyClaim error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi tạo phiếu bảo hành',
             error: error.message,
         });
     }
