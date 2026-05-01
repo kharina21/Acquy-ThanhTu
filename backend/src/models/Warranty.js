@@ -133,6 +133,8 @@ const warrantySchema = new mongoose.Schema(
                     customerName: { type: String, default: '', trim: true },
                     /** SĐT người yêu cầu BH */
                     customerPhone: { type: String, default: '', trim: true },
+                    /** Email người yêu cầu BH */
+                    customerEmail: { type: String, default: '', trim: true, lowercase: true },
                     /** Địa chỉ người yêu cầu BH */
                     customerAddress: { type: String, default: '', trim: true },
                     /** Ghi chú từ khách */

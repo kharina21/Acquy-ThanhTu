@@ -80,3 +80,9 @@ export const formatDateTime = (dateString) => {
     minute: '2-digit',
   });
 };
+
+// Format VND currency
+export const formatVND = (num) => {
+  if (num == null || isNaN(num)) return '0 ₫';
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
+};

@@ -514,7 +514,7 @@ const ProductDetailPage = () => {
                                         onClick={() => !isSoldOut && navigate(`/product/${p._id}`)}
                                     >
                                         {isSoldOut && (
-                                            <div className='absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl pointer-events-auto'>
+                                            <div className='absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl pointer-events-none'>
                                                 <img
                                                     src='/assets/sold_out.png'
                                                     alt='Hết hàng'
