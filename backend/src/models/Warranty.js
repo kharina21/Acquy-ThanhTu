@@ -170,7 +170,6 @@ const warrantySchema = new mongoose.Schema(
 );
 
 // ── Indexes ──────────────────────────────────────────────────────────
-warrantySchema.index({ warrantyCode: 1 }, { unique: true });
 /** Tra cứu nhanh bằng mã hóa đơn */
 warrantySchema.index({ orderCode: 1 });
 /** Liên kết với Order */
