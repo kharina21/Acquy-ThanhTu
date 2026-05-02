@@ -1,9 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router';
-import { ScanLine, ChevronDown } from 'lucide-react';
+import { ScanLine, ChevronDown, Printer } from 'lucide-react';
 import { getOnlineLocation } from '@/services/locationService';
+import { printWarehouseOrderSlip } from '@/lib/warehouseOrderSlipPrint';
 import {
     getMyOrders,
+    getOrderById,
     lookupOnlineOrderForPacking,
     packWarehouseOrderLine,
     confirmWarehouseOutbound,
@@ -28,11 +30,19 @@ const channelStyles = {
     },
 };
 
+/** Lọc hàng chờ xuất: rỗng = tất cả; 'in_store' = đặt/bán tại quầy; 'online' = đơn web */
+const QUEUE_FILTERS = [
+    { value: '', label: 'Tất cả' },
+    { value: 'in_store', label: 'Đặt tại quầy' },
+    { value: 'online', label: 'Online (web)' },
+];
+
 const WarehouseOutboundScanPage = () => {
     const [onlineInfo, setOnlineInfo] = useState({ location: null, resolvedAs: null });
     const [onlineLoading, setOnlineLoading] = useState(true);
     const onlineLocation = onlineInfo.location;
 
+    const [queueChannelFilter, setQueueChannelFilter] = useState('');
     const [queue, setQueue] = useState([]);
     const [queueLoading, setQueueLoading] = useState(false);
 
@@ -47,6 +57,7 @@ const WarehouseOutboundScanPage = () => {
     const [packLoading, setPackLoading] = useState(false);
     const [confirmLoading, setConfirmLoading] = useState(false);
     const [preparedLoading, setPreparedLoading] = useState(false);
+    const [printLoadingId, setPrintLoadingId] = useState(null);
     const skuInputRef = useRef(null);
 
     useEffect(() => {
@@ -72,13 +83,14 @@ const WarehouseOutboundScanPage = () => {
         };
     }, []);
 
-    const loadQueue = async () => {
+    const loadQueue = useCallback(async () => {
         setQueueLoading(true);
         try {
             const res = await getMyOrders({
                 warehouseQueue: true,
                 limit: 50,
                 page: 1,
+                ...(queueChannelFilter && { channel: queueChannelFilter }),
             });
             setQueue(res?.data?.orders || []);
         } catch {
@@ -86,11 +98,11 @@ const WarehouseOutboundScanPage = () => {
         } finally {
             setQueueLoading(false);
         }
-    };
+    }, [queueChannelFilter]);
 
     useEffect(() => {
         loadQueue();
-    }, []);
+    }, [loadQueue]);
 
     const applyPackingResponse = (res) => {
         const d = res?.data;
@@ -240,6 +252,33 @@ const WarehouseOutboundScanPage = () => {
         return line || null;
     };
 
+    /** In phiếu soạn hàng — ưu tiên dữ liệu đã mở đơn (kèm tiến độ đóng gói). */
+    const handlePrintWarehouseSlip = async (queueOrder) => {
+        if (!queueOrder?._id) return;
+        const sameExpanded =
+            activeOrder &&
+            packingProgress &&
+            String(activeOrder._id) === String(queueOrder._id);
+        if (sameExpanded) {
+            printWarehouseOrderSlip(activeOrder, packingProgress);
+            return;
+        }
+        setPrintLoadingId(queueOrder._id);
+        try {
+            const res = await getOrderById(queueOrder._id);
+            const ord = res?.data?.order;
+            if (!ord) {
+                toast.error('Không lấy được chi tiết đơn');
+                return;
+            }
+            printWarehouseOrderSlip(ord, null);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không in được phiếu');
+        } finally {
+            setPrintLoadingId(null);
+        }
+    };
+
     /** Chi tiết đơn dùng cho panel (ưu tiên activeOrder sau khi lookup). */
     const OrderDetailCard = ({ order: ord }) => {
         if (!ord) return null;
@@ -364,6 +403,23 @@ const WarehouseOutboundScanPage = () => {
                                 {queueLoading ? <span className="loading loading-spinner loading-xs" /> : 'Làm mới'}
                             </button>
                         </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <span className="text-xs text-base-content/60 shrink-0">Lọc theo kênh:</span>
+                            <div className="join join-horizontal flex-wrap">
+                                {QUEUE_FILTERS.map((opt) => (
+                                    <button
+                                        key={opt.value || 'all'}
+                                        type="button"
+                                        className={`btn btn-xs join-item min-h-8 ${
+                                            queueChannelFilter === opt.value ? 'btn-primary' : 'btn-ghost border border-base-300'
+                                        }`}
+                                        onClick={() => setQueueChannelFilter(opt.value)}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                         <div className="text-xs text-base-content/60">
                             <span className="label-text">Kho bán online (giao từ xa):</span>{' '}
                             {onlineLoading ? (
@@ -400,9 +456,10 @@ const WarehouseOutboundScanPage = () => {
                                 const chStyle = channelStyles[ch];
                                 return (
                                     <li key={o._id} className={`bg-base-100 pl-0 ${chStyle.rowBorder}`}>
+                                        <div className="flex items-stretch">
                                         <button
                                             type="button"
-                                            className="w-full pl-3 pr-4 py-3 flex items-center gap-3 text-left hover:bg-base-200/60 transition-colors"
+                                            className="flex-1 min-w-0 pl-3 pr-2 py-3 flex items-center gap-3 text-left hover:bg-base-200/60 transition-colors"
                                             onClick={() => handleToggleOrder(o._id)}
                                         >
                                             <ChevronDown
@@ -448,6 +505,23 @@ const WarehouseOutboundScanPage = () => {
                                                 <span className="badge badge-warning badge-sm">Chờ xuất kho</span>
                                             </div>
                                         </button>
+                                        <button
+                                            type="button"
+                                            className="shrink-0 px-3 py-3 border-l border-base-200 hover:bg-base-200/80 transition-colors flex items-center justify-center"
+                                            title="In phiếu soạn hàng (không cần mở đơn)"
+                                            disabled={printLoadingId === o._id}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePrintWarehouseSlip(o);
+                                            }}
+                                        >
+                                            {printLoadingId === o._id ? (
+                                                <span className="loading loading-spinner loading-sm text-primary" />
+                                            ) : (
+                                                <Printer className="w-5 h-5 text-base-content/70" aria-hidden />
+                                            )}
+                                        </button>
+                                        </div>
 
                                         {expanded && (
                                             <div className="px-4 pb-4 pt-0 border-t border-base-200 bg-base-200/30">
@@ -457,6 +531,17 @@ const WarehouseOutboundScanPage = () => {
                                                     </div>
                                                 ) : isActive && packingProgress && activeOrder ? (
                                                     <div className="space-y-3 pt-3">
+                                                        <div className="flex flex-wrap gap-2 items-center">
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-outline btn-sm gap-1"
+                                                                onClick={() => handlePrintWarehouseSlip(activeOrder)}
+                                                                title="In phiếu soạn hàng cho nhân viên kho (A4)"
+                                                            >
+                                                                <Printer className="w-4 h-4" aria-hidden />
+                                                                In phiếu soạn hàng
+                                                            </button>
+                                                        </div>
                                                         <OrderDetailCard order={activeOrder} />
                                                         {!isItemsPrepared() ? (
                                                             <div className="rounded-lg border border-amber-300/80 bg-amber-50/90 dark:bg-amber-950/20 p-3 space-y-2">

@@ -856,8 +856,17 @@ export const getOrders = async (req, res) => {
 
         const user = await User.findById(userId).populate('roles', 'name').lean();
         const roleNames = user?.roles?.map((r) => r.name) || [];
-        const { page = 1, limit = 10, status, paymentStatus, locationId, isPreOrder, warehouseQueue, isLegacyImport } =
-            req.query;
+        const {
+            page = 1,
+            limit = 10,
+            status,
+            paymentStatus,
+            locationId,
+            isPreOrder,
+            warehouseQueue,
+            isLegacyImport,
+            channel: channelParam,
+        } = req.query;
         const useWarehouseQueue = warehouseQueue === 'true' || warehouseQueue === '1';
         const canViewAll = roleNames.some((r) => ['admin', 'manager', 'Quản lý chi nhánh'].includes(r));
 
@@ -957,6 +966,9 @@ export const getOrders = async (req, res) => {
             filter.isLegacyImport = true;
         } else if (isLegacyImport === 'false') {
             filter.isLegacyImport = { $ne: true };
+        }
+        if (channelParam === 'online' || channelParam === 'in_store') {
+            filter.channel = channelParam;
         }
 
         const [orders, total] = await Promise.all([
@@ -1382,7 +1394,16 @@ export const getOrderById = async (req, res) => {
         const canViewAll = await canViewAllOrders(userId);
 
         if (!canViewAll && order.customer?._id?.toString() !== userId.toString()) {
-            return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+            const userForRoles = await User.findById(userId).populate('roles', 'name').lean();
+            const roleNames = userForRoles?.roles?.map((r) => r.name) || [];
+            const warehouseRole = userHasEquivalentRole(roleNames, 'warehouse_manager');
+            const { valid: warehouseLocOk } = await validateLocationForUser(
+                userId,
+                order.location?._id || order.location,
+            );
+            if (!warehouseRole || !warehouseLocOk) {
+                return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+            }
         }
 
         if (canViewAll) {

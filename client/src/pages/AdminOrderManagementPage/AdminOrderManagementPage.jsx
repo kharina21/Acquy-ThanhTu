@@ -48,7 +48,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
-    const [filters, setFilters] = useState({ status: '', paymentStatus: '', legacy: '' });
+    const [filters, setFilters] = useState({ status: '', paymentStatus: '', legacy: '', channel: '' });
     const [updatingId, setUpdatingId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
@@ -84,6 +84,9 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
             if (filters.paymentStatus) params.paymentStatus = filters.paymentStatus;
             if (filters.legacy === 'only') params.isLegacyImport = 'true';
             if (filters.legacy === 'exclude') params.isLegacyImport = 'false';
+            if (filters.channel === 'online' || filters.channel === 'in_store') {
+                params.channel = filters.channel;
+            }
             if (type === 'pre-orders') params.isPreOrder = true;
             if (type === 'invoices') params.isPreOrder = false;
             const res = await getMyOrders(params);
@@ -105,7 +108,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
 
     useEffect(() => {
         fetchOrders();
-    }, [pagination.page, filters.status, filters.paymentStatus, filters.legacy, currentLocationId, type]);
+    }, [pagination.page, filters.status, filters.paymentStatus, filters.legacy, filters.channel, currentLocationId, type]);
 
     const handleUpdateStatus = async (orderId, field, value) => {
         setUpdatingId(orderId);
@@ -211,7 +214,10 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     <select
                         className='select select-bordered select-sm w-40'
                         value={filters.status}
-                        onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                        onChange={(e) => {
+                            setFilters((f) => ({ ...f, status: e.target.value }));
+                            setPagination((p) => ({ ...p, page: 1 }));
+                        }}
                     >
                         <option value=''>Tất cả trạng thái</option>
                         {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -226,7 +232,10 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     <select
                         className='select select-bordered select-sm w-40'
                         value={filters.paymentStatus}
-                        onChange={(e) => setFilters((f) => ({ ...f, paymentStatus: e.target.value }))}
+                        onChange={(e) => {
+                            setFilters((f) => ({ ...f, paymentStatus: e.target.value }));
+                            setPagination((p) => ({ ...p, page: 1 }));
+                        }}
                     >
                         <option value=''>Tất cả thanh toán</option>
                         {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
@@ -238,11 +247,32 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                             </option>
                         ))}
                     </select>
+                    <div>
+                        <label className='label py-0 text-xs'>Loại đơn</label>
+                        <select
+                            className='select select-bordered select-sm w-44'
+                            value={filters.channel}
+                            onChange={(e) => {
+                                setFilters((f) => ({ ...f, channel: e.target.value }));
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
+                        >
+                            <option value=''>Tất cả</option>
+                            {Object.entries(ORDER_TYPE_LABELS).map(([v, l]) => (
+                                <option key={v} value={v}>
+                                    {l}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     {type === 'invoices' && (
                         <select
                             className='select select-bordered select-sm w-44'
                             value={filters.legacy}
-                            onChange={(e) => setFilters((f) => ({ ...f, legacy: e.target.value }))}
+                            onChange={(e) => {
+                                setFilters((f) => ({ ...f, legacy: e.target.value }));
+                                setPagination((p) => ({ ...p, page: 1 }));
+                            }}
                         >
                             <option value=''>Mọi hóa đơn</option>
                             <option value='only'>Chỉ chứng từ cũ</option>
