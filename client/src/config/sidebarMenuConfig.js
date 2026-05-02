@@ -1,28 +1,5 @@
-import {
-    BadgePercent,
-    Boxes,
-    LayoutDashboard,
-    Package,
-    Receipt,
-    RotateCw,
-    ShoppingCart,
-    UserRound,
-    UserRoundPen,
-    UsersRound,
-    ShieldCheck,
-} from 'lucide-react';
+import { BadgePercent, Boxes, LayoutDashboard, Package, Receipt, RotateCw, ShoppingCart, UserRound, UserRoundPen, UsersRound, ShieldCheck } from 'lucide-react';
 
-/**
- * Menu sidebar — RBAC theo vai trò.
- * allowedRoles: null = luôn hiển thị (vd: Tài khoản).
- *
- * Phạm vi tóm tắt:
- * - admin: toàn bộ; chọn mọi chi nhánh (scope all ở layout).
- * - manager: tổng quan, bán hàng, sản phẩm, thu cũ, đơn, khách, kho, tài khoản (theo chi nhánh được phân).
- * - Quản lý chi nhánh: tổng quan, khách, kho, sản phẩm, thu cũ (lịch theo cơ sở), đơn hàng, bán hàng.
- * - warehouse_manager: chỉ sản phẩm + kho hàng.
- * - seller / staff / Nhân viên bán hàng: bán hàng, thu cũ (theo cơ sở), tài khoản.
- */
 const SELLER_ROLES = ['seller', 'staff', 'Nhân viên bán hàng'];
 
 export const SIDEBAR_MENU_ITEMS = [
@@ -45,36 +22,6 @@ export const SIDEBAR_MENU_ITEMS = [
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
     },
     {
-        id: 'products',
-        icon: Package,
-        label: 'Sản phẩm',
-        ariaLabel: 'Quản lý sản phẩm',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', 'warehouse_manager'],
-        subItems: [
-            { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
-            { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
-            { id: 'usage-devices', to: '/admin/usage-devices', label: 'Thiết bị sử dụng' },
-            { id: 'brands', to: '/admin/brands', label: 'Thương hiệu' },
-        ],
-    },
-    {
-        id: 'users',
-        to: '/users',
-        icon: UsersRound,
-        label: 'Người dùng',
-        ariaLabel: 'Quản lý người dùng',
-        allowedRoles: ['admin'],
-    },
-    {
-        id: 'staffs',
-        to: '/admin/staffs',
-        icon: UserRoundPen,
-        label: 'Nhân viên',
-        ariaLabel: 'Quản lý nhân viên',
-        allowedRoles: ['admin'],
-        activePaths: ['/admin/staffs'],
-    },
-    {
         id: 'orders',
         icon: Receipt,
         label: 'Đơn hàng',
@@ -86,28 +33,6 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'invoices', to: '/admin/orders/invoices', label: 'Hóa đơn' },
             { id: 'returns', to: '/admin/orders/returns', label: 'Trả hàng' },
             { id: 'orders-report', to: '/admin/orders/report', label: 'Báo cáo đơn hàng' },
-        ],
-    },
-    {
-        id: 'battery-trade-in',
-        to: '/admin/battery-trade-in',
-        icon: RotateCw,
-        label: 'Thu cũ acquy',
-        ariaLabel: 'Quản lý yêu cầu thu cũ acquy',
-        activePaths: ['/admin/battery-trade-in'],
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
-    },
-    {
-        id: 'warranty',
-        to: '/admin/warranties',
-        icon: ShieldCheck,
-        label: 'Bảo hành',
-        ariaLabel: 'Quản lý bảo hành',
-        activePaths: ['/admin/warranties', '/admin/warranties/create'],
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
-        subItems: [
-            { id: 'warranty-list', to: '/admin/warranties', label: 'Danh sách yêu cầu' },
-            { id: 'warranty-create', to: '/admin/warranties/create', label: 'Tạo phiếu bảo hành' },
         ],
     },
     {
@@ -127,6 +52,41 @@ export const SIDEBAR_MENU_ITEMS = [
         allowedRoles: ['admin'],
     },
     {
+        id: 'warranty',
+        to: '/admin/warranties',
+        icon: ShieldCheck,
+        label: 'Bảo hành',
+        ariaLabel: 'Quản lý bảo hành',
+        activePaths: ['/admin/warranties', '/admin/warranties/create'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
+        subItems: [
+            { id: 'warranty-list', to: '/admin/warranties', label: 'Danh sách yêu cầu' },
+            { id: 'warranty-create', to: '/admin/warranties/create', label: 'Tạo phiếu bảo hành' },
+        ],
+    },
+    {
+        id: 'battery-trade-in',
+        to: '/admin/battery-trade-in',
+        icon: RotateCw,
+        label: 'Thu cũ acquy',
+        ariaLabel: 'Quản lý yêu cầu thu cũ acquy',
+        activePaths: ['/admin/battery-trade-in'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
+    },
+    {
+        id: 'products',
+        icon: Package,
+        label: 'Sản phẩm',
+        ariaLabel: 'Quản lý sản phẩm',
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', 'warehouse_manager'],
+        subItems: [
+            { id: 'products-list', to: '/admin/products', label: 'Danh sách sản phẩm' },
+            { id: 'categories', to: '/admin/categories', label: 'Loại hàng' },
+            { id: 'usage-devices', to: '/admin/usage-devices', label: 'Thiết bị sử dụng' },
+            { id: 'brands', to: '/admin/brands', label: 'Thương hiệu' },
+        ],
+    },
+    {
         id: 'warehouses',
         icon: Boxes,
         label: 'Kho hàng',
@@ -143,6 +103,23 @@ export const SIDEBAR_MENU_ITEMS = [
             { id: 'stock-returns', to: '/admin/warehouses/stock-returns', label: 'Trả hàng nhập' },
             { id: 'suppliers', to: '/admin/warehouses/suppliers', label: 'Nhà cung cấp' },
         ],
+    },
+    {
+        id: 'users',
+        to: '/users',
+        icon: UsersRound,
+        label: 'Người dùng',
+        ariaLabel: 'Quản lý người dùng',
+        allowedRoles: ['admin'],
+    },
+    {
+        id: 'staffs',
+        to: '/admin/staffs',
+        icon: UserRoundPen,
+        label: 'Nhân viên',
+        ariaLabel: 'Quản lý nhân viên',
+        allowedRoles: ['admin'],
+        activePaths: ['/admin/staffs'],
     },
     {
         id: 'profile',
