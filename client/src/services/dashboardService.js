@@ -55,3 +55,17 @@ export const getDashboardStats = async (params = {}) => {
         };
     }
 };
+
+/**
+ * Lấy dữ liệu biểu đồ dashboard
+ * @param {{ period?: 'week'|'month', locationId?: string }} params
+ */
+export const getDashboardChartData = async (params = {}) => {
+    try {
+        const res = await api.get('/dashboard/chart-data', { params });
+        return res.data?.data || { dailyRevenue: [], invoiceDistribution: [] };
+    } catch (error) {
+        console.error('getDashboardChartData error:', error);
+        return { dailyRevenue: [], invoiceDistribution: [] };
+    }
+};

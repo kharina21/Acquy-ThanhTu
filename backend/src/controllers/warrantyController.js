@@ -3,6 +3,7 @@ import Warranty from '../models/Warranty.js';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import { addMonths } from '../utils/parseWarrantyText.js';
+import { sendWarrantyClaimConfirmationEmail, sendWarrantyClaimStatusUpdateEmail } from '../libs/emailHelper.js';
 
 /**
  * Sinh mã bảo hành.
@@ -549,6 +550,8 @@ export const updateWarrantyClaim = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy yêu cầu bảo hành' });
         }
 
+        const oldStatus = claim.status;
+
         // Cập nhật claim
         claim.status = status;
         if (resolutionNotes !== undefined) {
@@ -567,6 +570,27 @@ export const updateWarrantyClaim = async (req, res) => {
         }
 
         await warranty.save();
+
+        // Gửi email thông báo cho khách khi trạng thái thay đổi (trừ pending)
+        if (oldStatus !== status && status !== 'pending') {
+            const customerEmail = claim.customerEmail || warranty.customerPhone; // fallback
+            if (customerEmail && typeof customerEmail === 'string' && customerEmail.includes('@')) {
+                try {
+                    await sendWarrantyClaimStatusUpdateEmail({
+                        toEmail: customerEmail,
+                        customerName: claim.customerName || warranty.customerName || 'Quý khách',
+                        warrantyCode: warranty.warrantyCode,
+                        claimCode: claim.claimCode,
+                        productName: warranty.productSnapshot?.name || '',
+                        oldStatus,
+                        newStatus: status,
+                        resolutionNotes: claim.resolutionNotes || '',
+                    });
+                } catch (emailErr) {
+                    console.error('Gửi email cập nhật trạng thái BH thất bại:', emailErr.message);
+                }
+            }
+        }
 
         return res.status(200).json({
             success: true,
@@ -731,6 +755,16 @@ export const createWarrantyClaim = async (req, res) => {
             isDeleted: false,
         });
 
+        // Chặn nếu đã có claim đang chờ xử lý
+        if (warranty) {
+            const hasPendingClaim = warranty.claims?.some((c) => c.status === 'pending') ?? false;
+            if (hasPendingClaim) {
+                return res.status(400).json({
+                    message: 'Sản phẩm này đã có yêu cầu bảo hành đang chờ xử lý. Vui lòng chờ hoàn tất trước khi tạo yêu cầu mới.',
+                });
+            }
+        }
+
         const purchaseDate = order.createdAt;
         const product = orderItem.product;
 
@@ -788,6 +822,24 @@ export const createWarrantyClaim = async (req, res) => {
         await warranty.save();
 
         const savedClaim = warranty.claims[warranty.claims.length - 1];
+
+        // Gửi email xác nhận cho khách
+        const claimEmail = savedClaim.customerEmail;
+        if (claimEmail && typeof claimEmail === 'string' && claimEmail.includes('@')) {
+            try {
+                await sendWarrantyClaimConfirmationEmail({
+                    toEmail: claimEmail,
+                    customerName: savedClaim.customerName || order.customerProfile?.name || '',
+                    warrantyCode: warranty.warrantyCode,
+                    claimCode: savedClaim.claimCode,
+                    productName: product?.name || '',
+                    reason: savedClaim.reason,
+                    createdAt: savedClaim.createdAt,
+                });
+            } catch (emailErr) {
+                console.error('Gửi email xác nhận BH thất bại:', emailErr.message);
+            }
+        }
 
         return res.status(201).json({
             success: true,

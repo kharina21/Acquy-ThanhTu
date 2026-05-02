@@ -14,6 +14,9 @@ import {
     updateBatteryTradeInByLookup,
     deleteBatteryTradeInByLookup,
     updateBatteryTradeInDetailsByAdmin,
+    createBatteryTradeInOffline,
+    sellBatteryTradeIn,
+    getBatteryTradeInStats,
 } from '../controllers/batteryTradeInController.js';
 
 const uploadImage = multer({
@@ -47,9 +50,12 @@ router.get('/mine', authenticate, getMyBatteryTradeIns);
 router.use(authenticate);
 router.use(hasRole('admin', 'manager', 'Quản lý chi nhánh', 'seller'));
 
+router.get('/stats', getBatteryTradeInStats);
 router.get('/', getBatteryTradeInList);
+router.post('/create-offline', createBatteryTradeInOffline);
 router.get('/:id', getBatteryTradeInById);
 router.patch('/:id/details', updateBatteryTradeInDetailsByAdmin);
 router.patch('/:id', updateBatteryTradeInStatus);
+router.post('/:id/sell', sellBatteryTradeIn);
 
 export default router;

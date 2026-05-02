@@ -7,21 +7,22 @@ import {
     TrendingUp,
     TrendingDown,
     FileText,
-    AlertCircle,
     ChevronRight,
     RotateCw,
     ShoppingCart,
-    Clock,
-    CheckCircle2,
-    XCircle,
-    Eye,
     BarChart3,
     PieChart,
     Activity,
-    Wrench,
     Truck,
     UserPlus,
     Receipt,
+    CreditCard,
+    Smartphone,
+    Package2,
+    RefreshCw,
+    ShieldCheck,
+    ClipboardList,
+    PlusSquare,
 } from 'lucide-react';
 import {
     BarChart,
@@ -39,10 +40,10 @@ import {
     Legend,
 } from 'recharts';
 import { useBranchStore } from '@/stores/useBranchStore';
-import { getDashboardStats } from '@/services/dashboardService';
+import { getDashboardStats, getDashboardChartData } from '@/services/dashboardService';
 import { formatVND } from '@/lib/utils';
 
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
+const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#3b82f6'];
 
 const formatCurrency = (value) => {
     if (value >= 1000000000) return `${(value / 1000000000).toFixed(1)}B`;
@@ -73,12 +74,103 @@ const StatCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, color
     </div>
 );
 
-const RevenueBarChart = ({ data }) => {
+// Thao tác nhanh
+const QuickActions = () => (
+    <div className="bg-base-100 rounded-xl p-4 border border-base-200">
+        <div className="flex items-center justify-between mb-3">
+            <div>
+                <h3 className="font-semibold text-base-content text-sm">Thao tác nhanh</h3>
+                <p className="text-xs text-base-content/50">Chức năng thường dùng</p>
+            </div>
+            <BarChart3 className="w-4 h-4 text-base-content/40" />
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+            <Link
+                to="/sales"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-primary/5 hover:border-primary/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <ShoppingCart className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium">Tạo đơn</span>
+            </Link>
+            <Link
+                to="/admin/orders/invoices"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-secondary/5 hover:border-secondary/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-secondary/10 text-secondary">
+                    <FileText className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium">Quản lý đơn</span>
+            </Link>
+            <Link
+                to="/admin/warehouses/import"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-success/5 hover:border-success/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-success/10 text-success">
+                    <Truck className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium">Nhập kho</span>
+            </Link>
+            <Link
+                to="/admin/warehouses/nxt-report"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-info/5 hover:border-info/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-info/10 text-info">
+                    <Activity className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium">Báo cáo NXT</span>
+            </Link>
+            {/* Hàng 2 - Thêm mới */}
+            <Link
+                to="/admin/battery-trade-in/create"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-warning/5 hover:border-warning/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-warning/10 text-warning">
+                    <RefreshCw className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium text-center">Thu cũ</span>
+            </Link>
+            <Link
+                to="/admin/warranties/create"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-error/5 hover:border-error/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-error/10 text-error">
+                    <ShieldCheck className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium text-center">Bảo hành</span>
+            </Link>
+            <Link
+                to="/admin/warehouses/stock-check"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-accent/5 hover:border-accent/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-accent/10 text-accent">
+                    <ClipboardList className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium text-center">Kiểm kho</span>
+            </Link>
+            <Link
+                to="/admin/products"
+                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-primary/5 hover:border-primary/30 transition-all"
+            >
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <PlusSquare className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-medium text-center">Thêm SP</span>
+            </Link>
+        </div>
+    </div>
+);
+
+// Biểu đồ doanh thu theo ngày
+const DailyRevenueChart = ({ data, period }) => {
     const chartData = useMemo(() => {
-        return data?.map((item) => ({
-            name: item.date || item.label || item.name,
-            doanhThu: item.revenue || item.value || 0,
-        })) || [];
+        if (!data || data.length === 0) return [];
+        return data.map((item) => ({
+            name: item.label || item.date,
+            doanhThu: item.revenue || 0,
+            thuCu: item.batteryTradeIn || 0,
+        }));
     }, [data]);
 
     return (
@@ -86,193 +178,114 @@ const RevenueBarChart = ({ data }) => {
             <div className="flex items-center justify-between mb-3">
                 <div>
                     <h3 className="font-semibold text-base-content text-sm">Doanh thu theo ngày</h3>
-                    <p className="text-xs text-base-content/50">7 ngày gần nhất</p>
+                    <p className="text-xs text-base-content/50">
+                        {period === 'week' ? '7 ngày gần nhất' : 'Trong tháng'}
+                    </p>
                 </div>
                 <BarChart3 className="w-4 h-4 text-base-content/40" />
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" />
-                    <YAxis tickFormatter={formatCurrency} tick={{ fontSize: 10 }} stroke="#9ca3af" />
-                    <Tooltip
-                        formatter={(value) => [formatVND(value), 'Doanh thu']}
-                        contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-                    />
-                    <Bar dataKey="doanhThu" fill="#6366f1" radius={[4, 4, 0, 0]} name="Doanh thu" />
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
-    );
-};
-
-const RevenueLineChart = ({ data }) => {
-    const chartData = useMemo(() => {
-        return data?.map((item) => ({
-            name: item.date || item.label || item.name,
-            doanhThu: item.revenue || item.value || 0,
-            loiNhuan: item.profit || item.loiNhuan || 0,
-        })) || [];
-    }, [data]);
-
-    return (
-        <div className="bg-base-100 rounded-xl p-4 border border-base-200">
-            <div className="flex items-center justify-between mb-3">
-                <div>
-                    <h3 className="font-semibold text-base-content text-sm">Xu hướng doanh thu</h3>
-                    <p className="text-xs text-base-content/50">30 ngày gần nhất</p>
-                </div>
-                <Activity className="w-4 h-4 text-base-content/40" />
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" />
-                    <YAxis tickFormatter={formatCurrency} tick={{ fontSize: 10 }} stroke="#9ca3af" />
-                    <Tooltip
-                        formatter={(value) => formatVND(value)}
-                        contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="doanhThu"
-                        stroke="#6366f1"
-                        strokeWidth={2}
-                        dot={{ fill: '#6366f1', r: 3 }}
-                        name="Doanh thu"
-                    />
-                    {chartData[0]?.loiNhuan !== undefined && (
-                        <Line
-                            type="monotone"
-                            dataKey="loiNhuan"
-                            stroke="#10b981"
-                            strokeWidth={2}
-                            dot={{ fill: '#10b981', r: 3 }}
-                            name="Lợi nhuận"
-                        />
-                    )}
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                </LineChart>
-            </ResponsiveContainer>
-        </div>
-    );
-};
-
-const CategoryPieChart = ({ data }) => {
-    const chartData = useMemo(() => {
-        return data?.map((item, index) => ({
-            name: item.category || item.name,
-            value: item.value || item.revenue || 0,
-            color: COLORS[index % COLORS.length],
-        })) || [];
-    }, [data]);
-
-    const total = chartData.reduce((sum, item) => sum + item.value, 0);
-
-    return (
-        <div className="bg-base-100 rounded-xl p-4 border border-base-200">
-            <div className="flex items-center justify-between mb-3">
-                <div>
-                    <h3 className="font-semibold text-base-content text-sm">Phân bổ doanh thu</h3>
-                    <p className="text-xs text-base-content/50">Theo danh mục</p>
-                </div>
-                <PieChart className="w-4 h-4 text-base-content/40" />
-            </div>
-            <div className="flex items-center gap-3">
-                <ResponsiveContainer width="45%" height={150}>
-                    <RechartsPie>
-                        <Pie
-                            data={chartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={35}
-                            outerRadius={60}
-                            paddingAngle={2}
-                            dataKey="value"
-                        >
-                            {chartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                        </Pie>
+            {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" />
+                        <YAxis tickFormatter={formatCurrency} tick={{ fontSize: 10 }} stroke="#9ca3af" />
                         <Tooltip
                             formatter={(value) => [formatVND(value), 'Doanh thu']}
                             contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
                         />
-                    </RechartsPie>
+                        <Bar dataKey="doanhThu" fill="#6366f1" radius={[4, 4, 0, 0]} name="Doanh thu" />
+                    </BarChart>
                 </ResponsiveContainer>
-                <div className="flex-1 space-y-1.5">
-                    {chartData.slice(0, 5).map((item, index) => (
-                        <div key={index} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                                <span className="text-base-content/70 truncate max-w-[80px]">{item.name}</span>
-                            </div>
-                            <span className="font-medium text-[11px]">
-                                {total > 0 ? Math.round((item.value / total) * 100) : 0}%
-                            </span>
-                        </div>
-                    ))}
+            ) : (
+                <div className="h-[220px] flex items-center justify-center text-base-content/40 text-sm">
+                    Chưa có dữ liệu
                 </div>
-            </div>
+            )}
         </div>
     );
 };
 
-const OrderStatusMini = ({ data }) => {
-    const stats = data || { pending: 0, completed: 0, cancelled: 0, processing: 0 };
-    const items = [
-        { key: 'pending', label: 'Chờ xử lý', value: stats.pending || 0, color: '#f59e0b', icon: Clock },
-        { key: 'processing', label: 'Đang xử lý', value: stats.processing || 0, color: '#3b82f6', icon: Wrench },
-        { key: 'completed', label: 'Hoàn thành', value: stats.completed || 0, color: '#10b981', icon: CheckCircle2 },
-        { key: 'cancelled', label: 'Đã hủy', value: stats.cancelled || 0, color: '#ef4444', icon: XCircle },
-    ].filter(item => item.value > 0);
+// Biểu đồ phân bổ theo loại hóa đơn
+const InvoiceDistributionChart = ({ data }) => {
+    const chartData = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        return data.map((item, index) => ({
+            name: item.name,
+            value: item.value || 0,
+            count: item.count || 0,
+            color: COLORS[index % COLORS.length],
+        }));
+    }, [data]);
+
+    const total = chartData.reduce((sum, item) => sum + item.value, 0);
+
+    const getIcon = (name) => {
+        if (name === 'Bán POS') return CreditCard;
+        if (name === 'Thu cũ') return RotateCw;
+        if (name === 'Bán Online') return Smartphone;
+        return Receipt;
+    };
 
     return (
         <div className="bg-base-100 rounded-xl p-4 border border-base-200">
             <div className="flex items-center justify-between mb-3">
                 <div>
-                    <h3 className="font-semibold text-base-content text-sm">Trạng thái đơn hàng</h3>
-                    <p className="text-xs text-base-content/50">Tổng quan</p>
+                    <h3 className="font-semibold text-base-content text-sm">Phân bổ theo loại hóa đơn</h3>
+                    <p className="text-xs text-base-content/50">Theo nguồn doanh thu</p>
                 </div>
-                <Link to="/admin/orders/invoices" className="btn btn-ghost btn-xs">
-                    Chi tiết <ChevronRight className="w-3 h-3" />
-                </Link>
+                <PieChart className="w-4 h-4 text-base-content/40" />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-                {items.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                        <div key={item.key} className="flex items-center gap-2 p-2 rounded-lg bg-base-200/50">
-                            <div className="p-1.5 rounded-md" style={{ backgroundColor: `${item.color}20`, color: item.color }}>
-                                <Icon className="w-3.5 h-3.5" />
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-                                <p className="text-[10px] text-base-content/60 truncate">{item.label}</p>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+            {chartData.length > 0 ? (
+                <div className="flex items-center gap-3">
+                    <ResponsiveContainer width="45%" height={150}>
+                        <RechartsPie>
+                            <Pie
+                                data={chartData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={35}
+                                outerRadius={60}
+                                paddingAngle={2}
+                                dataKey="value"
+                            >
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Pie>
+                            <Tooltip
+                                formatter={(value) => [formatVND(value), 'Doanh thu']}
+                                contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                            />
+                        </RechartsPie>
+                    </ResponsiveContainer>
+                    <div className="flex-1 space-y-2">
+                        {chartData.map((item, index) => {
+                            const Icon = getIcon(item.name);
+                            return (
+                                <div key={index} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 rounded-md" style={{ backgroundColor: `${item.color}20`, color: item.color }}>
+                                            <Icon className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="text-xs text-base-content/70">{item.name}</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-xs font-medium">{total > 0 ? Math.round((item.value / total) * 100) : 0}%</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : (
+                <div className="h-[150px] flex items-center justify-center text-base-content/40 text-sm">
+                    Chưa có dữ liệu
+                </div>
+            )}
         </div>
     );
 };
-
-const NotificationCard = ({ type, count, label, link, colorClass, bgClass, icon: Icon }) => (
-    <Link
-        to={link}
-        className={`flex items-center gap-2 p-2.5 rounded-lg border ${bgClass} hover:scale-[1.02] transition-transform`}
-    >
-        <div className={`p-2 rounded-lg ${colorClass}`}>
-            <Icon className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-            <p className="text-lg font-bold">{count}</p>
-            <p className="text-xs text-base-content/60">{label}</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-base-content/40" />
-    </Link>
-);
 
 const AdminDashboard = () => {
     const { currentLocationId, locations } = useBranchStore();
@@ -281,7 +294,6 @@ const AdminDashboard = () => {
     const [period, setPeriod] = useState('month');
     const [stats, setStats] = useState({
         revenue: { total: 0, period: '', changePercent: 0 },
-        ordersByStatus: { pending: 0, completed: 0, cancelled: 0, processing: 0 },
         paidOrderCount: 0,
         pendingCount: 0,
         totalCustomers: 0,
@@ -289,50 +301,33 @@ const AdminDashboard = () => {
         topCustomers: [],
         topProducts: [],
     });
-
-    const [chartData] = useState({
-        dailyRevenue: [
-            { name: 'T2', doanhThu: 45000000 },
-            { name: 'T3', doanhThu: 52000000 },
-            { name: 'T4', doanhThu: 48000000 },
-            { name: 'T5', doanhThu: 61000000 },
-            { name: 'T6', doanhThu: 55000000 },
-            { name: 'T7', doanhThu: 72000000 },
-            { name: 'CN', doanhThu: 38000000 },
-        ],
-        monthlyRevenue: Array.from({ length: 12 }, (_, i) => ({
-            name: `T${i + 1}`,
-            doanhThu: Math.random() * 2000000000 + 500000000,
-            loiNhuan: Math.random() * 400000000 + 100000000,
-        })),
-        categoryRevenue: [
-            { name: 'Ắc quy xe máy', value: 450000000 },
-            { name: 'Ắc quy ô tô', value: 680000000 },
-            { name: 'Ắc quy xe tải', value: 320000000 },
-            { name: 'Ắc quy công nghiệp', value: 180000000 },
-            { name: 'Phụ kiện', value: 95000000 },
-        ],
-    });
+    const [chartData, setChartData] = useState({ dailyRevenue: [], invoiceDistribution: [] });
 
     useEffect(() => {
-        const fetchStats = async () => {
+        const fetchData = async () => {
             setLoading(true);
             try {
-                const data = await getDashboardStats({
+                const params = {
                     period,
                     locationId: currentLocationId && currentLocationId !== 'all' ? currentLocationId : undefined,
-                });
-                setStats(data);
+                };
+                const [statsData, chartRes] = await Promise.all([
+                    getDashboardStats(params),
+                    getDashboardChartData(params),
+                ]);
+                console.log('[Dashboard Chart Data]', period, chartRes);
+                setStats(statsData);
+                setChartData(chartRes || { dailyRevenue: [], invoiceDistribution: [] });
             } catch (error) {
-                console.error('Error fetching dashboard stats:', error);
+                console.error('Error fetching dashboard data:', error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchStats();
+        fetchData();
     }, [period, currentLocationId]);
 
-    const { revenue, paidOrderCount, pendingCount, totalCustomers, totalProducts, topCustomers, topProducts, ordersByStatus } = stats;
+    const { revenue, paidOrderCount, pendingCount, totalCustomers, totalProducts, topCustomers, topProducts } = stats;
     const grossSales = revenue?.grossSales ?? revenue?.revenueOrders ?? 0;
     const tradeInExpense = revenue?.tradeInExpense ?? revenue?.revenueBatteryTradeIn ?? 0;
     const netSales = revenue?.netSales ?? (grossSales - tradeInExpense);
@@ -344,13 +339,6 @@ const AdminDashboard = () => {
             </div>
         );
     }
-
-    const mockNotifications = [
-        { type: 'pending', count: pendingCount || 5, label: 'Đơn chờ xử lý', link: '/admin/orders/invoices?status=pending', colorClass: 'bg-warning/15 text-warning', bgClass: 'border-warning/25 hover:border-warning/40', icon: Clock },
-        { type: 'low-stock', count: 12, label: 'Sản phẩm sắp hết', link: '/admin/warehouses/nxt-report', colorClass: 'bg-error/15 text-error', bgClass: 'border-error/25 hover:border-error/40', icon: Package },
-        { type: 'trade-in', count: 3, label: 'Yêu cầu thu cũ', link: '/admin/battery-trade-in', colorClass: 'bg-accent/15 text-accent', bgClass: 'border-accent/25 hover:border-accent/40', icon: RotateCw },
-        { type: 'new-customer', count: 8, label: 'Khách hàng mới', link: '/admin/customers', colorClass: 'bg-info/15 text-info', bgClass: 'border-info/25 hover:border-info/40', icon: UserPlus },
-    ];
 
     return (
         <div className="flex-1 p-4 sm:p-6 bg-base-200 overflow-y-auto">
@@ -390,54 +378,10 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* Notifications Row */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                    {mockNotifications.map((item) => (
-                        <NotificationCard key={item.type} {...item} />
-                    ))}
-                </div>
+                {/* THAO TÁC NHANH - Đặt lên trên cùng */}
+                <QuickActions />
 
-                {/* KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <StatCard
-                        title="Doanh thu thuần"
-                        value={formatVND(netSales || 125000000)}
-                        subtitle="Bán hàng - Thu cũ"
-                        icon={DollarSign}
-                        trend={revenue?.changePercent || 15}
-                        colorClass="text-primary"
-                        bgClass="bg-primary/10"
-                    />
-                    <StatCard
-                        title="Đơn đã TT"
-                        value={paidOrderCount || 47}
-                        subtitle="Kỳ này"
-                        icon={Receipt}
-                        trend={8}
-                        colorClass="text-success"
-                        bgClass="bg-success/10"
-                    />
-                    <StatCard
-                        title="Khách hàng"
-                        value={totalCustomers || 128}
-                        subtitle="Tổng KH"
-                        icon={Users}
-                        trend={12}
-                        colorClass="text-info"
-                        bgClass="bg-info/10"
-                    />
-                    <StatCard
-                        title="Sản phẩm"
-                        value={totalProducts || 156}
-                        subtitle="Trong kho"
-                        icon={Package}
-                        trend={-2}
-                        colorClass="text-secondary"
-                        bgClass="bg-secondary/10"
-                    />
-                </div>
-
-                {/* Revenue Main Card */}
+                {/* Revenue Main Card - Chỉ giữ lại 1 ô */}
                 <div className="card bg-base-100 shadow-sm border border-base-200 overflow-hidden">
                     <div className="p-4 sm:p-5">
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -450,10 +394,10 @@ const AdminDashboard = () => {
                                         Doanh thu thuần ({revenue?.period || 'tháng này'})
                                     </p>
                                     <p className="text-2xl sm:text-3xl font-bold text-primary tracking-tight mt-0.5">
-                                        {formatVND(netSales || 125000000)}
+                                        {formatVND(netSales || 0)}
                                     </p>
                                     <p className="text-xs text-base-content/50 mt-1">
-                                        Bán hàng: {formatVND(grossSales || 135000000)} | Thu cũ: {formatVND(tradeInExpense || 10000000)}
+                                        Bán hàng: {formatVND(grossSales || 0)} | Thu cũ: {formatVND(tradeInExpense || 0)}
                                     </p>
                                 </div>
                             </div>
@@ -474,61 +418,71 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* Charts Row 1 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <RevenueBarChart data={chartData.dailyRevenue} />
-                    <RevenueLineChart data={chartData.monthlyRevenue} />
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <StatCard
+                        title="Đơn đã TT"
+                        value={paidOrderCount || 0}
+                        subtitle="Kỳ này"
+                        icon={Receipt}
+                        trend={8}
+                        colorClass="text-success"
+                        bgClass="bg-success/10"
+                    />
+                    <StatCard
+                        title="Khách hàng"
+                        value={totalCustomers || 0}
+                        subtitle="Tổng KH"
+                        icon={Users}
+                        trend={12}
+                        colorClass="text-info"
+                        bgClass="bg-info/10"
+                    />
+                    <StatCard
+                        title="Sản phẩm"
+                        value={totalProducts || 0}
+                        subtitle="Trong kho"
+                        icon={Package}
+                        trend={-2}
+                        colorClass="text-secondary"
+                        bgClass="bg-secondary/10"
+                    />
+                    <StatCard
+                        title="Đơn chờ"
+                        value={pendingCount || 0}
+                        subtitle="Cần xử lý"
+                        icon={RotateCw}
+                        colorClass="text-warning"
+                        bgClass="bg-warning/10"
+                    />
                 </div>
 
-                {/* Charts Row 2 */}
+                {/* Charts Row */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <CategoryPieChart data={chartData.categoryRevenue} />
-                    <OrderStatusMini data={ordersByStatus} />
+                    <DailyRevenueChart data={chartData.dailyRevenue} period={period} />
+                    <InvoiceDistributionChart data={chartData.invoiceDistribution} />
                     <div className="bg-base-100 rounded-xl p-4 border border-base-200">
                         <div className="flex items-center justify-between mb-3">
                             <div>
-                                <h3 className="font-semibold text-base-content text-sm">Thao tác nhanh</h3>
-                                <p className="text-xs text-base-content/50">Chức năng thường dùng</p>
+                                <h3 className="font-semibold text-base-content text-sm">Phân bổ doanh thu</h3>
+                                <p className="text-xs text-base-content/50">So với kỳ trước</p>
                             </div>
-                            <Eye className="w-4 h-4 text-base-content/40" />
+                            <Activity className="w-4 h-4 text-base-content/40" />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <Link
-                                to="/sales"
-                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-primary/5 hover:border-primary/30 transition-all"
-                            >
-                                <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                                    <ShoppingCart className="w-5 h-5" />
-                                </div>
-                                <span className="text-xs font-medium">Tạo đơn</span>
-                            </Link>
-                            <Link
-                                to="/admin/orders/invoices"
-                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-secondary/5 hover:border-secondary/30 transition-all"
-                            >
-                                <div className="p-2 rounded-lg bg-secondary/10 text-secondary">
-                                    <FileText className="w-5 h-5" />
-                                </div>
-                                <span className="text-xs font-medium">Quản lý đơn</span>
-                            </Link>
-                            <Link
-                                to="/admin/warehouses/import"
-                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-success/5 hover:border-success/30 transition-all"
-                            >
-                                <div className="p-2 rounded-lg bg-success/10 text-success">
-                                    <Truck className="w-5 h-5" />
-                                </div>
-                                <span className="text-xs font-medium">Nhập kho</span>
-                            </Link>
-                            <Link
-                                to="/admin/warehouses/nxt-report"
-                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-info/5 hover:border-info/30 transition-all"
-                            >
-                                <div className="p-2 rounded-lg bg-info/10 text-info">
-                                    <BarChart3 className="w-5 h-5" />
-                                </div>
-                                <span className="text-xs font-medium">Báo cáo NXT</span>
-                            </Link>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-base-content/60">Bán hàng</span>
+                                <span className="text-sm font-medium">{formatVND(grossSales || 0)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-base-content/60">Thu cũ</span>
+                                <span className="text-sm font-medium text-warning">-{formatVND(tradeInExpense || 0)}</span>
+                            </div>
+                            <div className="divider my-1"></div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium">Doanh thu thuần</span>
+                                <span className="text-sm font-bold text-primary">{formatVND(netSales || 0)}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -536,44 +490,45 @@ const AdminDashboard = () => {
                 {/* Top Products */}
                 <div className="bg-base-100 rounded-xl p-4 border border-base-200">
                     <div className="flex items-center justify-between mb-3">
-                        <div>
-                            <h3 className="font-semibold text-base-content text-sm">Top sản phẩm bán chạy</h3>
-                            <p className="text-xs text-base-content/50">Theo số lượng bán ra</p>
+                        <div className="flex items-center gap-2">
+                            <Package2 className="w-5 h-5 text-primary" />
+                            <h2 className="font-semibold text-sm">Hàng bán chạy</h2>
                         </div>
                         <Link to="/admin/products" className="btn btn-ghost btn-xs">
                             Xem tất cả <ChevronRight className="w-3 h-3" />
                         </Link>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="table table-sm">
-                            <thead>
-                                <tr className="text-xs">
-                                    <th>#</th>
-                                    <th>Sản phẩm</th>
-                                    <th className="text-right">Đã bán</th>
-                                    <th className="text-right">Tồn kho</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(topProducts || [
-                                    { rank: 1, name: 'Ắc quy GS 12V 7Ah', quantitySold: 45, stock: 23 },
-                                    { rank: 2, name: 'Ắc quy Rocket 12V 9Ah', quantitySold: 38, stock: 15 },
-                                    { rank: 3, name: 'Ắc quy Globe 12V 5Ah', quantitySold: 32, stock: 28 },
-                                    { rank: 4, name: 'Ắc quy Fusion 12V 12Ah', quantitySold: 28, stock: 8 },
-                                    { rank: 5, name: 'Ắc quy Panasonic 12V 8Ah', quantitySold: 25, stock: 19 },
-                                ]).slice(0, 5).map((p) => (
-                                    <tr key={p.rank}>
-                                        <td className="font-medium text-sm">{p.rank}</td>
-                                        <td className="text-sm">{p.name}</td>
-                                        <td className="text-right text-sm">{p.quantitySold || p.quantitySold}</td>
-                                        <td className={`text-right text-sm ${(p.stock || 10) < 10 ? 'text-error font-medium' : 'text-base-content/70'}`}>
-                                            {p.stock || 10}
-                                        </td>
+                    {topProducts && topProducts.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="table table-sm">
+                                <thead>
+                                    <tr className="text-xs">
+                                        <th>#</th>
+                                        <th>Sản phẩm</th>
+                                        <th className="text-right">Đã bán</th>
+                                        <th className="text-right">Doanh thu</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {topProducts.slice(0, 5).map((p) => (
+                                        <tr key={p.rank}>
+                                            <td className="font-medium text-sm">{p.rank}</td>
+                                            <td>
+                                                <div className="font-medium text-sm">{p.name}</div>
+                                                <div className="text-xs text-base-content/50">{p.sku}</div>
+                                            </td>
+                                            <td className="text-right text-sm">{p.quantitySold || 0}</td>
+                                            <td className="text-right text-sm font-medium">{formatVND(p.revenue || 0)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="py-8 text-center text-base-content/40 text-sm">
+                            Chưa có dữ liệu sản phẩm bán chạy
+                        </div>
+                    )}
                 </div>
 
                 {/* Top Customers */}
@@ -587,41 +542,37 @@ const AdminDashboard = () => {
                             Xem tất cả <ChevronRight className="w-3 h-3" />
                         </Link>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="table table-sm">
-                            <thead>
-                                <tr className="text-xs">
-                                    <th className="w-8">#</th>
-                                    <th>Khách hàng</th>
-                                    <th className="text-right">Đơn hàng</th>
-                                    <th className="text-right">Tổng chi tiêu</th>
-                                    <th className="text-center">Hạng</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(topCustomers || [
-                                    { rank: 1, name: 'Nguyễn Văn A', email: 'nva@email.com', orderCount: 12, totalSpent: 45000000, tier: 'VIP' },
-                                    { rank: 2, name: 'Trần Thị B', email: 'ttb@email.com', orderCount: 8, totalSpent: 32000000, tier: 'VIP' },
-                                    { rank: 3, name: 'Lê Văn C', email: 'lvc@email.com', orderCount: 6, totalSpent: 28000000, tier: 'Gold' },
-                                ]).slice(0, 5).map((c) => (
-                                    <tr key={c.rank}>
-                                        <td className="font-medium text-sm">{c.rank}</td>
-                                        <td>
-                                            <div className="font-medium text-sm">{c.name}</div>
-                                            <div className="text-xs text-base-content/50">{c.email}</div>
-                                        </td>
-                                        <td className="text-right text-sm">{c.orderCount}</td>
-                                        <td className="text-right text-sm font-medium">{formatVND(c.totalSpent)}</td>
-                                        <td className="text-center">
-                                            <span className={`badge badge-sm ${c.tier === 'VIP' ? 'badge-error' : 'badge-warning'}`}>
-                                                {c.tier}
-                                            </span>
-                                        </td>
+                    {topCustomers && topCustomers.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="table table-sm">
+                                <thead>
+                                    <tr className="text-xs">
+                                        <th className="w-8">#</th>
+                                        <th>Khách hàng</th>
+                                        <th className="text-right">Đơn hàng</th>
+                                        <th className="text-right">Tổng chi tiêu</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {topCustomers.slice(0, 5).map((c) => (
+                                        <tr key={c.rank}>
+                                            <td className="font-medium text-sm">{c.rank}</td>
+                                            <td>
+                                                <div className="font-medium text-sm">{c.name}</div>
+                                                <div className="text-xs text-base-content/50">{c.email}</div>
+                                            </td>
+                                            <td className="text-right text-sm">{c.orderCount || 0}</td>
+                                            <td className="text-right text-sm font-medium">{formatVND(c.totalSpent || 0)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="py-8 text-center text-base-content/40 text-sm">
+                            Chưa có dữ liệu khách hàng VIP
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

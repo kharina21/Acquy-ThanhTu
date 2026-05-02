@@ -37,6 +37,250 @@ const getDateRange = (period, dateFrom, dateTo) => {
 };
 
 /**
+ * GET /api/dashboard/chart-data – Data cho biểu đồ (Admin/Manager).
+ * Query: period, locationId.
+ */
+export const getDashboardChartData = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const period = req.query.period || 'month';
+        let locationId = req.query.locationId || '';
+        const allowAll = !locationId || locationId === 'all';
+        const allowedIds = await getManagerAllowedLocationIds(userId);
+        
+        if (allowedIds !== null) {
+            if (!locationId || locationId === 'all') {
+                locationId = '';
+            } else if (!allowedIds.includes(locationId.toString())) {
+                return res.status(403).json({ message: 'Không có quyền xem chi nhánh này.' });
+            }
+        } else if (allowAll) {
+            locationId = '';
+        }
+
+        const now = new Date();
+        let start, daysInRange;
+        
+        if (period === 'week') {
+            const day = now.getDay();
+            const diff = day === 0 ? 6 : day - 1;
+            start = new Date(now);
+            start.setDate(now.getDate() - diff);
+            start.setHours(0, 0, 0, 0);
+            daysInRange = 7;
+        } else {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            start.setHours(0, 0, 0, 0);
+            daysInRange = now.getDate();
+        }
+
+        let locationMatch = {};
+        if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            locationMatch = { location: new mongoose.Types.ObjectId(locationId) };
+        } else if (allowedIds !== null && allowedIds.length > 0 && allowAll) {
+            locationMatch = { location: { $in: allowedIds.map((id) => new mongoose.Types.ObjectId(id)) } };
+        }
+
+        let batteryLocationMatch = {};
+        if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            batteryLocationMatch = { locationId: new mongoose.Types.ObjectId(locationId) };
+        } else if (allowedIds !== null && allowedIds.length > 0 && allowAll) {
+            batteryLocationMatch = { locationId: { $in: allowedIds.map((id) => new mongoose.Types.ObjectId(id)) } };
+        }
+
+        // Data doanh thu theo ngày - dùng $expr để xử lý null đúng cách
+        const dailyRevenueAgg = await Order.aggregate([
+            {
+                $match: {
+                    ...locationMatch,
+                    paymentStatus: 'paid',
+                    $expr: {
+                        $let: {
+                            vars: {
+                                effectiveDate: { $ifNull: ['$paidAt', '$createdAt'] },
+                            },
+                            in: {
+                                $and: [
+                                    { $gte: ['$$effectiveDate', start] },
+                                    { $lte: ['$$effectiveDate', now] },
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$paidAt', '$createdAt'] }, timezone: '+07:00' },
+                    },
+                    revenue: { $sum: '$totalAmount' },
+                    count: { $sum: 1 },
+                },
+            },
+            { $sort: { _id: 1 } },
+        ]);
+
+        // Data thu cũ theo ngày
+        const dailyBatteryAgg = await BatteryTradeIn.aggregate([
+            {
+                $match: {
+                    ...batteryLocationMatch,
+                    status: 'completed',
+                    completedAmount: { $gt: 0 },
+                    completedAt: { $gte: start, $lte: now },
+                },
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$completedAt' } },
+                    amount: { $sum: '$completedAmount' },
+                },
+            },
+            { $sort: { _id: 1 } },
+        ]);
+
+        // Data phân bổ theo loại hóa đơn
+        const [ordersAgg, batteryAgg, onlineAgg, offlineAgg] = await Promise.all([
+            // Bán hàng (POS/Offline)
+            Order.aggregate([
+                {
+                    $match: {
+                        ...locationMatch,
+                        paymentStatus: 'paid',
+                        channel: { $ne: 'online' },
+                        $expr: {
+                            $let: {
+                                vars: {
+                                    effectiveDate: { $ifNull: ['$paidAt', '$createdAt'] },
+                                },
+                                in: {
+                                    $and: [
+                                        { $gte: ['$$effectiveDate', start] },
+                                        { $lte: ['$$effectiveDate', now] },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+                { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+            ]),
+            // Thu cũ
+            BatteryTradeIn.aggregate([
+                {
+                    $match: {
+                        ...batteryLocationMatch,
+                        status: 'completed',
+                        completedAmount: { $gt: 0 },
+                        completedAt: { $gte: start, $lte: now },
+                    },
+                },
+                { $group: { _id: null, total: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+            ]),
+            // Bán Online
+            Order.aggregate([
+                {
+                    $match: {
+                        ...locationMatch,
+                        paymentStatus: 'paid',
+                        channel: 'online',
+                        $expr: {
+                            $let: {
+                                vars: {
+                                    effectiveDate: { $ifNull: ['$paidAt', '$createdAt'] },
+                                },
+                                in: {
+                                    $and: [
+                                        { $gte: ['$$effectiveDate', start] },
+                                        { $lte: ['$$effectiveDate', now] },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+                { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+            ]),
+        ]);
+
+        // Build daily revenue chart data
+        const dailyRevenueMap = new Map(dailyRevenueAgg.map((d) => [d._id, d.revenue]));
+        const dailyBatteryMap = new Map(dailyBatteryAgg.map((d) => [d._id, d.amount]));
+        const dailyRevenue = [];
+        
+        const getLocalDateStr = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+        
+        for (let i = 0; i < daysInRange; i++) {
+            const date = new Date(start);
+            date.setDate(start.getDate() + i);
+            const dateStr = getLocalDateStr(date);
+            const dayLabels = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+            const label = period === 'week'
+                ? dayLabels[date.getDay()]
+                : `${date.getDate()}/${date.getMonth() + 1}`;
+            
+            dailyRevenue.push({
+                date: dateStr,
+                label,
+                revenue: dailyRevenueMap.get(dateStr) || 0,
+                batteryTradeIn: dailyBatteryMap.get(dateStr) || 0,
+            });
+        }
+
+        // Phân bổ theo loại hóa đơn
+        const revenuePOS = ordersAgg[0]?.total || 0;
+        const revenueBattery = batteryAgg[0]?.total || 0;
+        const revenueOnline = onlineAgg[0]?.total || 0;
+        const totalInvoiceRevenue = revenuePOS + revenueBattery + revenueOnline;
+
+        const invoiceDistribution = [
+            { name: 'Bán POS', value: revenuePOS, count: ordersAgg[0]?.count || 0 },
+            { name: 'Thu cũ', value: revenueBattery, count: batteryAgg[0]?.count || 0 },
+            { name: 'Bán Online', value: revenueOnline, count: onlineAgg[0]?.count || 0 },
+        ];
+
+        // Debug log
+        console.log('[Chart Data Debug]', {
+            period,
+            start: start.toISOString(),
+            end: now.toISOString(),
+            daysInRange,
+            dailyRevenueAggCount: dailyRevenueAgg.length,
+            dailyRevenueAgg: dailyRevenueAgg.slice(0, 3),
+            ordersAgg,
+            batteryAgg,
+            onlineAgg,
+            invoiceDistribution,
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                dailyRevenue,
+                invoiceDistribution,
+                summary: {
+                    totalRevenue: totalInvoiceRevenue,
+                    totalOrders: (ordersAgg[0]?.count || 0) + (onlineAgg[0]?.count || 0),
+                    totalTradeIn: batteryAgg[0]?.count || 0,
+                },
+            },
+        });
+    } catch (error) {
+        console.error('getDashboardChartData error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi lấy dữ liệu biểu đồ',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * GET /api/dashboard/stats – Thống kê tổng quan (Admin/Manager).
  * Query: period, dateFrom, dateTo, locationId. Manager: chỉ location được phân công.
  */

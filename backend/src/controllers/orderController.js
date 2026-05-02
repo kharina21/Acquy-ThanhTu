@@ -1964,13 +1964,23 @@ export const getOrderReport = async (req, res) => {
 
         const batteryColl = BatteryTradeIn.collection.name;
 
-        const [orderCount, batteryCount, revenueAgg, batteryAgg, idRows] = await Promise.all([
+        const [orderCount, batteryCount, revenueAgg, batteryAgg, saleAgg, idRows] = await Promise.all([
             Order.countDocuments(filter),
             BatteryTradeIn.countDocuments(batteryFilter),
             Order.aggregate([{ $match: filter }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
             BatteryTradeIn.aggregate([
                 { $match: batteryFilter },
                 { $group: { _id: null, totalExpense: { $sum: '$completedAmount' }, count: { $sum: 1 } } },
+            ]),
+            // Tiền thu từ bán acquy thu cũ cho nhà máy tái chế
+            BatteryTradeIn.aggregate([
+                {
+                    $match: {
+                        ...batteryFilter,
+                        'saleInfo.sold': true,
+                    },
+                },
+                { $group: { _id: null, totalSaleIncome: { $sum: '$saleInfo.saleTotalAmount' }, count: { $sum: 1 } } },
             ]),
             Order.aggregate([
                 { $match: filter },
@@ -1999,9 +2009,11 @@ export const getOrderReport = async (req, res) => {
 
         const orderSummary = revenueAgg[0] || { totalRevenue: 0, count: 0 };
         const batterySummary = batteryAgg[0] || { totalExpense: 0, count: 0 };
+        const saleSummary = saleAgg[0] || { totalSaleIncome: 0, count: 0 };
         const tradeInExpense = batterySummary.totalExpense ?? 0;
+        const tradeInSaleIncome = saleSummary.totalSaleIncome ?? 0;
         const grossSales = orderSummary.totalRevenue ?? 0;
-        const netSales = grossSales - tradeInExpense;
+        const netSales = grossSales - tradeInExpense + tradeInSaleIncome;
 
         const orderIds = idRows.filter((r) => r.type === 'order').map((r) => r._id);
         const batteryIds = idRows.filter((r) => r.type === 'battery_trade_in').map((r) => r._id);
@@ -2045,10 +2057,12 @@ export const getOrderReport = async (req, res) => {
                     totalRevenue: netSales,
                     grossSales,
                     tradeInExpense,
+                    tradeInSaleIncome,
                     netSales,
                     totalOrders: orderSummary.count,
                     revenueOrders: grossSales,
                     revenueBatteryTradeIn: tradeInExpense,
+                    revenueBatterySale: tradeInSaleIncome,
                     batteryTradeInCount: batterySummary.count ?? 0,
                 },
                 pagination: {

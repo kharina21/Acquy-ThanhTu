@@ -20,10 +20,12 @@ const OrderReportPage = () => {
     const [summary, setSummary] = useState({
         grossSales: 0,
         tradeInExpense: 0,
+        tradeInSaleIncome: 0,
         netSales: 0,
         totalOrders: 0,
         revenueOrders: 0,
         revenueBatteryTradeIn: 0,
+        revenueBatterySale: 0,
         batteryTradeInCount: 0,
     });
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
@@ -47,10 +49,12 @@ const OrderReportPage = () => {
                 data?.summary || {
                     grossSales: 0,
                     tradeInExpense: 0,
+                    tradeInSaleIncome: 0,
                     netSales: 0,
                     totalOrders: 0,
                     revenueOrders: 0,
                     revenueBatteryTradeIn: 0,
+                    revenueBatterySale: 0,
                     batteryTradeInCount: 0,
                 }
             );
@@ -74,7 +78,13 @@ const OrderReportPage = () => {
     };
 
     const getRowCode = (row) => {
-        if (row.type === 'battery_trade_in') return row.requestCode || String(row._id).slice(-8);
+        if (row.type === 'battery_trade_in') {
+            // Nếu đã bán cho nhà máy → hiển thị mã bán
+            if (row.saleInfo?.sold && row.saleInfo?.saleCode) {
+                return row.saleInfo.saleCode;
+            }
+            return row.requestCode || String(row._id).slice(-8);
+        }
         return row.code;
     };
 
@@ -89,13 +99,20 @@ const OrderReportPage = () => {
     };
 
     const getRowAmount = (row) => {
-        if (row.type === 'battery_trade_in') return -(row.completedAmount ?? 0);
+        if (row.type === 'battery_trade_in') {
+            // Nếu đã bán cho nhà máy → hiển thị tiền thu vào
+            if (row.saleInfo?.sold && row.saleInfo?.saleTotalAmount > 0) {
+                return row.saleInfo.saleTotalAmount;
+            }
+            return -(row.completedAmount ?? 0);
+        }
         return row.totalAmount;
     };
 
     const grossSales = summary.grossSales ?? summary.revenueOrders ?? 0;
     const tradeInExpense = summary.tradeInExpense ?? summary.revenueBatteryTradeIn ?? 0;
-    const netSales = summary.netSales ?? summary.totalRevenue ?? (grossSales - tradeInExpense);
+    const tradeInSaleIncome = summary.tradeInSaleIncome ?? summary.revenueBatterySale ?? 0;
+    const netSales = summary.netSales ?? summary.totalRevenue ?? (grossSales - tradeInExpense + tradeInSaleIncome);
 
     const getRowLocation = (row) => {
         if (row.type === 'battery_trade_in') return row.locationId?.name || row.locationId?.code || '—';
@@ -126,7 +143,7 @@ const OrderReportPage = () => {
                 </p>
 
                 {/* Tổng quan */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                     <div className="stats shadow bg-base-100 w-full">
                         <div className="stat">
                             <div className="stat-figure text-primary">
@@ -134,7 +151,7 @@ const OrderReportPage = () => {
                             </div>
                             <div className="stat-title">Doanh thu thuần</div>
                             <div className="stat-value text-primary">{formatVND(netSales)}</div>
-                            <div className="stat-desc">Bán hàng - chi thu cũ</div>
+                            <div className="stat-desc">Bán hàng - chi thu cũ + thu bán</div>
                         </div>
                     </div>
                     <div className="stats shadow bg-base-100 w-full">
@@ -165,6 +182,16 @@ const OrderReportPage = () => {
                             <div className="stat-title">Thu cũ hoàn thành</div>
                             <div className="stat-value text-accent">{summary.batteryTradeInCount ?? 0}</div>
                             <div className="stat-desc">-{formatVND(tradeInExpense)}</div>
+                        </div>
+                    </div>
+                    <div className="stats shadow bg-base-100 w-full">
+                        <div className="stat">
+                            <div className="stat-figure text-success">
+                                <BarChart3 className="w-10 h-10" />
+                            </div>
+                            <div className="stat-title">Bán acquy thu cũ</div>
+                            <div className="stat-value text-success">{summary.batteryTradeInCount ?? 0}</div>
+                            <div className="stat-desc">+{formatVND(tradeInSaleIncome)}</div>
                         </div>
                     </div>
                 </div>
@@ -245,9 +272,15 @@ const OrderReportPage = () => {
                                             <tr key={`${row.type}-${row._id}`}>
                                                 <td>
                                                     {row.type === 'battery_trade_in' ? (
-                                                        <span className="badge badge-accent badge-sm whitespace-nowrap">
-                                                            Thu cũ
-                                                        </span>
+                                                        row.saleInfo?.sold ? (
+                                                            <span className="badge badge-success badge-sm whitespace-nowrap">
+                                                                Bán acquy cũ
+                                                            </span>
+                                                        ) : (
+                                                            <span className="badge badge-accent badge-sm whitespace-nowrap">
+                                                                Thu cũ
+                                                            </span>
+                                                        )
                                                     ) : (
                                                         <span className="badge badge-ghost badge-sm whitespace-nowrap">
                                                             Đơn hàng
@@ -267,10 +300,14 @@ const OrderReportPage = () => {
                                                 <td>{getRowLocation(row)}</td>
                                                 <td
                                                     className={`text-right font-medium ${
-                                                        row.type === 'battery_trade_in' ? 'text-error' : 'text-primary'
+                                                        row.type === 'battery_trade_in' && !row.saleInfo?.sold
+                                                            ? 'text-error'
+                                                            : row.saleInfo?.sold
+                                                            ? 'text-success'
+                                                            : 'text-primary'
                                                     }`}
                                                 >
-                                                    {row.type === 'battery_trade_in'
+                                                    {row.type === 'battery_trade_in' && !row.saleInfo?.sold
                                                         ? `-${formatVND(Math.abs(getRowAmount(row)))}`
                                                         : formatVND(getRowAmount(row))}
                                                 </td>

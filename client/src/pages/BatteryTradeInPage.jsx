@@ -15,6 +15,7 @@ import {
     getBatteryTradeInPrefill,
     updateBatteryTradeInByLookup,
 } from '@/services/batteryTradeInService';
+import { getActiveLocations } from '@/services/locationService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { FileText, ImagePlus, X, CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -180,6 +181,7 @@ const emptyForm = () => ({
     pricingType: 'ampe',
     remainingAmps: '',
     weightKg: '',
+    preferredLocationId: '',
 });
 
 export default function BatteryTradeInPage() {
@@ -192,6 +194,7 @@ export default function BatteryTradeInPage() {
     const [editLookup, setEditLookup] = useState({ code: '', email: '' });
     const [agreedToPolicy, setAgreedToPolicy] = useState(false);
     const [hasFilledFromUser, setHasFilledFromUser] = useState(false);
+    const [locations, setLocations] = useState([]);
 
     const [form, setForm] = useState(emptyForm);
     const [uploadingImages, setUploadingImages] = useState(false);
@@ -223,6 +226,16 @@ export default function BatteryTradeInPage() {
 
     useEffect(() => {
         getProvinces().then(setProvinces).catch(() => setProvinces([]));
+    }, []);
+
+    useEffect(() => {
+        getActiveLocations()
+            .then((res) => {
+                if (res.success && Array.isArray(res.data?.locations)) {
+                    setLocations(res.data.locations);
+                }
+            })
+            .catch(() => setLocations([]));
     }, []);
 
     useEffect(() => {
@@ -305,6 +318,7 @@ export default function BatteryTradeInPage() {
                     pricingType: d.pricingType === 'weight' ? 'weight' : 'ampe',
                     remainingAmps: d.remainingAmps != null ? String(d.remainingAmps) : '',
                     weightKg: d.weightKg != null ? String(d.weightKg) : '',
+                    preferredLocationId: d.preferredLocationId?._id || d.preferredLocationId || '',
                 });
                 setEditLookup({ code, email });
                 setAgreedToPolicy(true);
@@ -364,12 +378,18 @@ export default function BatteryTradeInPage() {
         const bn = (form.batteryName || '').trim();
         const errBatteryName = !bn ? 'Vui lòng nhập tên ắc quy' : null;
 
+        const errPreferredLocation = !form.preferredLocationId ? 'Vui lòng chọn cơ sở muốn thu cũ' : null;
+
         const imgs = form.images || [];
         const errImages = imgs.length < 2 ? 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ' : null;
 
         const qty = parseInt(form.quantity, 10);
         const errQuantity =
-            !Number.isInteger(qty) || qty < 1 ? 'Số lượng phải là số nguyên dương (tối thiểu 1)' : null;
+            !Number.isInteger(qty) || qty < 1
+                ? 'Số lượng phải là số nguyên dương (tối thiểu 1)'
+                : qty > 100
+                  ? 'Số lượng không được vượt quá 100'
+                  : null;
 
         const errMfg = !form.manufacturingDate ? 'Vui lòng chọn ngày sản xuất' : null;
         const errExp = !form.expiryDate ? 'Vui lòng chọn hạn sử dụng' : null;
@@ -401,6 +421,7 @@ export default function BatteryTradeInPage() {
             addressLine: errAddressLine,
             note: errNote,
             batteryName: errBatteryName,
+            preferredLocationId: errPreferredLocation,
             images: errImages,
             quantity: errQuantity,
             manufacturingDate: errMfg,
@@ -439,6 +460,7 @@ export default function BatteryTradeInPage() {
             pricingType: form.pricingType || 'ampe',
             remainingAmps: form.pricingType === 'ampe' ? String(parseMetric(form.remainingAmps)) : '',
             weightKg: form.pricingType === 'weight' ? String(parseMetric(form.weightKg)) : '',
+            preferredLocationId: form.preferredLocationId || undefined,
         };
 
         setSubmitting(true);
@@ -735,6 +757,31 @@ export default function BatteryTradeInPage() {
                                     </div>
 
                                     <div>
+                                        <Label htmlFor="preferredLocationId" className="text-gray-700 font-medium">
+                                            Cơ sở muốn thu cũ *
+                                        </Label>
+                                        <select
+                                            id="preferredLocationId"
+                                            name="preferredLocationId"
+                                            value={form.preferredLocationId}
+                                            onChange={(e) => {
+                                                setForm((f) => ({ ...f, preferredLocationId: e.target.value }));
+                                                if (errors.preferredLocationId) setErrors((er) => ({ ...er, preferredLocationId: null }));
+                                            }}
+                                            className={`mt-1 flex h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 transition ${errors.preferredLocationId ? 'border-red-500 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'}`}
+                                        >
+                                            <option value="">— Chọn cơ sở thu cũ —</option>
+                                            {locations.map((loc) => (
+                                                <option key={loc._id} value={loc._id}>
+                                                    {loc.code ? `${loc.code} - ` : ''}{loc.name}
+                                                    {loc.address ? ` (${loc.address})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.preferredLocationId && <p className="text-xs text-red-600 mt-1">{errors.preferredLocationId}</p>}
+                                    </div>
+
+                                    <div>
                                         <Label className="text-gray-700 font-medium">Ảnh thực tế sản phẩm *</Label>
                                         <p className="text-xs text-gray-500 mt-0.5">
                                             Ít nhất 2 ảnh, tối đa 5 ảnh (JPEG, PNG, WebP, GIF - 3MB/ảnh)
@@ -775,6 +822,7 @@ export default function BatteryTradeInPage() {
                                             name="quantity"
                                             type="number"
                                             min={1}
+                                            max={100}
                                             step={1}
                                             value={form.quantity}
                                             onChange={handleChange}

@@ -3,17 +3,17 @@ import mongoose from 'mongoose';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import Location from '../models/Location.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
-import { sendBatteryTradeInConfirmationEmail } from '../libs/emailHelper.js';
+import { sendBatteryTradeInConfirmationEmail, sendBatteryTradeInStatusUpdateEmail } from '../libs/emailHelper.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 
-/** Admin: luôn được. Các role theo chi nhánh: chỉ khi đã hẹn cơ sở và trùng chi nhánh được phân. */
+/** Admin: luôn được. Các role theo chi nhánh: chỉ khi cơ sở muốn thu cũ thuộc phạm vi được phân. */
 async function assertUserCanAccessTradeInDoc(userId, doc) {
     if (!doc) return false;
     const allowedIds = await getManagerAllowedLocationIds(userId);
-    if (allowedIds === null) return true;
+    if (allowedIds === null) return true; // Admin
     if (!allowedIds.length) return false;
-    const aid = doc.appointmentLocationId ? String(doc.appointmentLocationId) : '';
-    return Boolean(aid && allowedIds.includes(aid));
+    const prefId = doc.preferredLocationId ? String(doc.preferredLocationId) : '';
+    return Boolean(prefId && allowedIds.includes(prefId));
 }
 
 function getFrontendBaseUrl() {
@@ -82,8 +82,8 @@ function parseMetricValue(str) {
  * @param {{ skipImages?: boolean }} [options] — admin chỉ sửa thông tin, không đụng ảnh
  * @returns {{ ok: true, data: object } | { ok: false, message: string }}
  */
-function parseBatteryTradeInBody(body, options = {}) {
-    const { skipImages = false } = options;
+async function parseBatteryTradeInBody(body, options = {}) {
+    const { skipImages = false, skipImageValidation = false } = options;
     const {
         name,
         phone,
@@ -107,6 +107,7 @@ function parseBatteryTradeInBody(body, options = {}) {
         wardCode = '',
         wardName = '',
         addressLine = '',
+        preferredLocationId = null,
     } = body || {};
 
     const errName = validateTradeInName(name);
@@ -151,6 +152,17 @@ function parseBatteryTradeInBody(body, options = {}) {
         return { ok: false, message: 'Vui lòng nhập tên ắc quy' };
     }
 
+    // Validate preferredLocationId
+    if (preferredLocationId != null && preferredLocationId !== '') {
+        if (!mongoose.Types.ObjectId.isValid(preferredLocationId)) {
+            return { ok: false, message: 'Cơ sở muốn thu cũ không hợp lệ' };
+        }
+        const loc = await Location.findById(preferredLocationId).select('_id isActive').lean();
+        if (!loc || !loc.isActive) {
+            return { ok: false, message: 'Cơ sở muốn thu cũ không tồn tại hoặc đã ngừng hoạt động' };
+        }
+    }
+
     let parsedImages = [];
     if (!skipImages) {
         if (Array.isArray(images)) parsedImages = images;
@@ -162,7 +174,7 @@ function parseBatteryTradeInBody(body, options = {}) {
             }
         }
         parsedImages = parsedImages.filter(Boolean);
-        if (parsedImages.length < 2) {
+        if (!skipImageValidation && parsedImages.length < 2) {
             return { ok: false, message: 'Vui lòng tải ít nhất 2 ảnh ắc quy cũ' };
         }
     }
@@ -170,6 +182,9 @@ function parseBatteryTradeInBody(body, options = {}) {
     const qty = parseInt(quantity, 10);
     if (!Number.isInteger(qty) || qty < 1) {
         return { ok: false, message: 'Số lượng phải là số nguyên dương (tối thiểu 1)' };
+    }
+    if (qty > 100) {
+        return { ok: false, message: 'Số lượng không được vượt quá 100' };
     }
 
     if (!manufacturingDate || !expiryDate) {
@@ -230,6 +245,9 @@ function parseBatteryTradeInBody(body, options = {}) {
         pricingType: pricing,
         remainingAmps: remainingAmpsStr,
         weightKg: weightKgStr,
+        preferredLocationId: preferredLocationId && mongoose.Types.ObjectId.isValid(preferredLocationId)
+            ? new mongoose.Types.ObjectId(preferredLocationId)
+            : null,
     };
     if (!skipImages) {
         data.images = parsedImages;
@@ -317,6 +335,7 @@ export const lookupBatteryTradeIn = async (req, res) => {
 
         const doc = await BatteryTradeIn.findOne({ requestCode: code, email })
             .populate('appointmentLocationId', 'code name address phone')
+            .populate('preferredLocationId', 'code name address phone')
             .lean();
         if (!doc) {
             return res.status(404).json({
@@ -367,7 +386,7 @@ export const lookupBatteryTradeIn = async (req, res) => {
  */
 export const submitBatteryTradeIn = async (req, res) => {
     try {
-        const parsed = parseBatteryTradeInBody(req.body);
+        const parsed = await parseBatteryTradeInBody(req.body);
         if (!parsed.ok) {
             return res.status(400).json({
                 success: false,
@@ -383,6 +402,7 @@ export const submitBatteryTradeIn = async (req, res) => {
             requestCode,
             userId,
             productId: null,
+            source: 'online',
         });
 
         const populated = await BatteryTradeIn.findById(doc._id)
@@ -417,6 +437,138 @@ export const submitBatteryTradeIn = async (req, res) => {
 };
 
 /**
+ * POST /api/battery-trade-in/create-offline - Tạo đơn thu cũ tại cửa hàng (admin/manager/seller)
+ * Không yêu cầu ảnh, thông tin địa chỉ đơn giản hơn
+ * Cho phép đơn offline chuyển thẳng sang completed
+ */
+export const createBatteryTradeInOffline = async (req, res) => {
+    try {
+        // Validate cơ bản cho đơn offline (không bắt buộc địa chỉ)
+        const { name, phone, email, batteryName, quantity, manufacturingDate, expiryDate,
+                condition, usageDuration, isWorkingWell, pricingType, remainingAmps, weightKg,
+                preferredLocationId, note } = req.body || {};
+
+        // Validate required fields
+        if (!name?.trim() || name.trim().length < 2) {
+            return res.status(400).json({ success: false, message: 'Họ tên phải có ít nhất 2 ký tự' });
+        }
+
+        const phoneStr = String(phone || '').trim().replace(/\s/g, '');
+        if (!phoneStr || !/^0[2-9][0-9]{8,9}$/.test(phoneStr)) {
+            return res.status(400).json({ success: false, message: 'Số điện thoại không hợp lệ' });
+        }
+
+        const emailStr = String(email || '').trim().toLowerCase();
+        if (!emailStr || !/^[a-z0-9]([a-z0-9._+-]*[a-z0-9])?@gmail\.com$/.test(emailStr)) {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập đúng định dạng Gmail' });
+        }
+
+        if (!batteryName?.trim()) {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập tên ắc quy' });
+        }
+
+        if (!preferredLocationId) {
+            return res.status(400).json({ success: false, message: 'Vui lòng chọn cơ sở tiếp nhận' });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(preferredLocationId)) {
+            return res.status(400).json({ success: false, message: 'Cơ sở tiếp nhận không hợp lệ' });
+        }
+
+        const loc = await Location.findById(preferredLocationId).select('_id isActive').lean();
+        if (!loc || !loc.isActive) {
+            return res.status(400).json({ success: false, message: 'Cơ sở tiếp nhận không tồn tại hoặc đã ngừng hoạt động' });
+        }
+
+        const qty = parseInt(quantity, 10);
+        if (!Number.isInteger(qty) || qty < 1 || qty > 100) {
+            return res.status(400).json({ success: false, message: 'Số lượng phải là số nguyên dương (1-100)' });
+        }
+
+        if (!manufacturingDate || !expiryDate) {
+            return res.status(400).json({ success: false, message: 'Vui lòng chọn ngày sản xuất và hạn sử dụng' });
+        }
+
+        const mfg = new Date(`${manufacturingDate}T00:00:00`);
+        const exp = new Date(`${expiryDate}T00:00:00`);
+        if (Number.isNaN(mfg.getTime()) || Number.isNaN(exp.getTime()) || exp <= mfg) {
+            return res.status(400).json({ success: false, message: 'Ngày không hợp lệ hoặc HSD phải sau NSX' });
+        }
+
+        const pricing = pricingType === 'weight' ? 'weight' : 'ampe';
+        let remainingAmpsStr = '';
+        let weightKgStr = '';
+
+        if (pricing === 'ampe') {
+            const v = parseFloat(String(remainingAmps || '').replace(',', '.').trim());
+            if (!Number.isFinite(v) || v <= 0 || v >= 200) {
+                return res.status(400).json({ success: false, message: 'Số Ampe phải lớn hơn 0 và nhỏ hơn 200' });
+            }
+            remainingAmpsStr = String(v);
+        } else {
+            const v = parseFloat(String(weightKg || '').replace(',', '.').trim());
+            if (!Number.isFinite(v) || v <= 0 || v >= 200) {
+                return res.status(400).json({ success: false, message: 'Cân nặng phải lớn hơn 0 và nhỏ hơn 200 (kg)' });
+            }
+            weightKgStr = String(v);
+        }
+
+        const userId = req.user?._id || null;
+        const requestCode = await generateUniqueRequestCode();
+
+        const doc = await BatteryTradeIn.create({
+            name: String(name).trim(),
+            phone: phoneStr,
+            email: emailStr,
+            note: String(note || '').trim().slice(0, 500),
+            provinceCode: req.body.provinceCode || '',
+            provinceName: req.body.provinceName || '',
+            districtCode: req.body.districtCode || '',
+            districtName: req.body.districtName || '',
+            wardCode: req.body.wardCode || '',
+            wardName: req.body.wardName || '',
+            addressLine: String(req.body.addressLine || '').trim(),
+            batteryName: String(batteryName).trim(),
+            quantity: qty,
+            manufacturingDate: new Date(`${manufacturingDate}T00:00:00`),
+            expiryDate: new Date(`${expiryDate}T00:00:00`),
+            condition: String(condition || '').trim(),
+            usageDuration: String(usageDuration || '').trim(),
+            isWorkingWell: isWorkingWell === true ? true : isWorkingWell === false ? false : undefined,
+            pricingType: pricing,
+            remainingAmps: remainingAmpsStr,
+            weightKg: weightKgStr,
+            preferredLocationId,
+            productId: null,
+            source: 'offline',
+            assignedTo: userId,
+            assignedAt: new Date(),
+            handledBy: userId,
+        });
+
+        const populated = await BatteryTradeIn.findById(doc._id)
+            .populate('productId', 'name sku capacity')
+            .populate('preferredLocationId', 'code name address phone')
+            .populate('assignedTo', 'firstName lastName')
+            .populate('handledBy', 'firstName lastName')
+            .lean();
+
+        return res.status(201).json({
+            success: true,
+            message: 'Đã tạo đơn thu cũ tại cửa hàng thành công.',
+            data: { request: populated },
+        });
+    } catch (error) {
+        console.error('createBatteryTradeInOffline error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi tạo đơn thu cũ tại cửa hàng.',
+            error: error.message,
+        });
+    }
+};
+
+/**
  * GET /api/battery-trade-in/:id - Chi tiết một yêu cầu (admin/manager)
  */
 export const getBatteryTradeInById = async (req, res) => {
@@ -430,6 +582,9 @@ export const getBatteryTradeInById = async (req, res) => {
             .populate('completedProductId', 'name sku capacity')
             .populate('locationId', 'code name address phone')
             .populate('appointmentLocationId', 'code name address phone')
+            .populate('preferredLocationId', 'code name address phone')
+            .populate('assignedTo', 'firstName lastName')
+            .populate('handledBy', 'firstName lastName')
             .lean();
         if (!doc) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
@@ -461,10 +616,20 @@ export const getBatteryTradeInList = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const status = req.query.status?.trim();
         const search = req.query.search?.trim();
+        const sold = req.query.sold?.trim();
         const skip = (page - 1) * limit;
 
         const query = {};
         if (status) query.status = status;
+        if (sold === 'true') {
+            query['saleInfo.sold'] = true;
+        } else if (sold === 'false') {
+            query.$or = [
+                { 'saleInfo.sold': { $exists: false } },
+                { 'saleInfo.sold': false },
+                { 'saleInfo.sold': null },
+            ];
+        }
         if (search) {
             query.$or = [
                 { requestCode: { $regex: search, $options: 'i' } },
@@ -495,7 +660,8 @@ export const getBatteryTradeInList = async (req, res) => {
             const oids = allowedIds
                 .filter((lid) => mongoose.Types.ObjectId.isValid(lid))
                 .map((lid) => new mongoose.Types.ObjectId(lid));
-            query.appointmentLocationId = { $in: oids };
+            // Manager/Seller chỉ xem đơn có cơ sở khách muốn thu cũ thuộc phạm vi được phân công
+            query.preferredLocationId = { $in: oids };
         }
 
         const [requests, total] = await Promise.all([
@@ -504,6 +670,9 @@ export const getBatteryTradeInList = async (req, res) => {
                 .populate('completedProductId', 'name sku capacity')
                 .populate('locationId', 'code name address phone')
                 .populate('appointmentLocationId', 'code name address phone')
+                .populate('preferredLocationId', 'code name address phone')
+                .populate('assignedTo', 'firstName lastName')
+                .populate('handledBy', 'firstName lastName')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -548,6 +717,9 @@ export const getMyBatteryTradeIns = async (req, res) => {
                 .populate('appointmentLocationId', 'code name address phone')
                 .populate('completedProductId', 'name sku capacity')
                 .populate('locationId', 'code name address phone')
+                .populate('preferredLocationId', 'code name address phone')
+                .populate('assignedTo', 'firstName lastName')
+                .populate('handledBy', 'firstName lastName')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -608,6 +780,8 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 message: 'Không tìm thấy yêu cầu thu cũ.',
             });
         }
+
+        const oldStatus = existing.status;
 
         const allowedIds = await getManagerAllowedLocationIds(req.user._id);
         if (allowedIds !== null) {
@@ -686,6 +860,8 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                     status: 'contacted',
                     appointmentAt: apt,
                     appointmentLocationId,
+                    assignedTo: req.user._id, // Lưu nhân viên được giao
+                    assignedAt: new Date(),
                 };
             } else {
                 update = {
@@ -715,7 +891,18 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 appointmentLocationId: null,
             };
         } else if (status === 'completed') {
-            if (existing.status !== 'contacted') {
+            // Đơn offline: cho phép pending → completed trực tiếp
+            // Đơn online: phải qua contacted
+            if (existing.status === 'pending' && existing.source === 'online') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Đơn online phải xác nhận đã liên hệ với khách trước khi hoàn thành.',
+                });
+            }
+            if (existing.status === 'pending' && existing.source === 'offline') {
+                // Đơn offline: cho phép hoàn thành trực tiếp
+                // Vẫn cần chọn cơ sở và nhập thông tin
+            } else if (existing.status !== 'contacted') {
                 return res.status(400).json({
                     success: false,
                     message: 'Chỉ có thể hoàn thành sau khi khách đã mang acquy đến (trạng thái đã liên hệ).',
@@ -733,6 +920,13 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     message: 'Số tiền thu mua phải lớn hơn 0.',
+                });
+            }
+            // Giới hạn số tiền thu mua (không quá 500 triệu)
+            if (amt > 500000000) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Số tiền thu mua không được vượt quá 500 triệu VNĐ.',
                 });
             }
             if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
@@ -763,6 +957,7 @@ export const updateBatteryTradeInStatus = async (req, res) => {
                 completedAt: new Date(),
                 completedNote: completedNote ? String(completedNote).trim().slice(0, 500) : '',
                 locationId,
+                handledBy: req.user._id, // Lưu nhân viên hoàn thành
             };
         }
 
@@ -771,7 +966,30 @@ export const updateBatteryTradeInStatus = async (req, res) => {
             .populate('completedProductId', 'name sku capacity')
             .populate('locationId', 'code name address phone')
             .populate('appointmentLocationId', 'code name address phone')
+            .populate('preferredLocationId', 'code name address phone')
+            .populate('assignedTo', 'firstName lastName')
+            .populate('handledBy', 'firstName lastName')
             .lean();
+
+        // Gửi email thông báo cho khách khi trạng thái thay đổi (trừ pending)
+        if (oldStatus !== status && status !== 'pending') {
+            try {
+                await sendBatteryTradeInStatusUpdateEmail({
+                    email: existing.email,
+                    name: existing.name,
+                    requestCode: existing.requestCode,
+                    oldStatus,
+                    newStatus: status,
+                    appointmentAt: update.appointmentAt || existing.appointmentAt,
+                    appointmentLocationName: doc?.appointmentLocationId?.name || doc?.appointmentLocationId?.code || '',
+                    appointmentLocationAddress: doc?.appointmentLocationId?.address || '',
+                    completedAmount: update.completedAmount ?? existing.completedAmount,
+                    cancelledReason: update.cancelledReason || existing.cancelledReason,
+                });
+            } catch (emailErr) {
+                console.error('Gửi email thông báo thu cũ thất bại:', emailErr.message);
+            }
+        }
 
         return res.status(200).json({
             success: true,
@@ -829,7 +1047,7 @@ export const updateBatteryTradeInByLookup = async (req, res) => {
         if (!a.ok) {
             return res.status(400).json({ success: false, message: a.message });
         }
-        const parsed = parseBatteryTradeInBody(req.body);
+        const parsed = await parseBatteryTradeInBody(req.body);
         if (!parsed.ok) {
             return res.status(400).json({ success: false, message: parsed.message });
         }
@@ -953,7 +1171,7 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
 
         const allowedIdsPatch = await getManagerAllowedLocationIds(req.user._id);
 
-        const parsed = parseBatteryTradeInBody(req.body, { skipImages: true });
+        const parsed = await parseBatteryTradeInBody(req.body, { skipImages: true });
         if (!parsed.ok) {
             return res.status(400).json({ success: false, message: parsed.message });
         }
@@ -1038,6 +1256,9 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
             .populate('completedProductId', 'name sku capacity')
             .populate('locationId', 'code name address phone')
             .populate('appointmentLocationId', 'code name address phone')
+            .populate('preferredLocationId', 'code name address phone')
+            .populate('assignedTo', 'firstName lastName')
+            .populate('handledBy', 'firstName lastName')
             .lean();
 
         return res.status(200).json({
@@ -1050,6 +1271,310 @@ export const updateBatteryTradeInDetailsByAdmin = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Lỗi khi cập nhật đơn.',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * POST /api/battery-trade-in/:id/sell
+ * Bán acquy thu cũ cho nhà máy tái chế
+ */
+export const sellBatteryTradeIn = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            buyerName,
+            buyerPhone,
+            buyerAddress,
+            saleQuantity,
+            saleUnitPrice,
+        } = req.body;
+
+        // Validate request
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID yêu cầu không hợp lệ.',
+            });
+        }
+
+        const doc = await BatteryTradeIn.findById(id).lean();
+        if (!doc) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy yêu cầu thu cũ.',
+            });
+        }
+
+        // Kiểm tra đơn đã hoàn thành thu mua chưa
+        if (doc.status !== 'completed') {
+            return res.status(400).json({
+                success: false,
+                message: 'Chỉ có thể bán acquy từ đơn đã hoàn thành thu mua.',
+            });
+        }
+
+        // Kiểm tra đã bán chưa
+        if (doc.saleInfo?.sold) {
+            return res.status(400).json({
+                success: false,
+                message: 'Đơn này đã được bán cho nhà máy rồi.',
+            });
+        }
+
+        // Validate thông tin người mua
+        if (!buyerName || String(buyerName).trim().length < 2) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng nhập tên nhà máy/tổ chức (ít nhất 2 ký tự).',
+            });
+        }
+
+        const qty = Number(saleQuantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Số lượng bán phải lớn hơn 0.',
+            });
+        }
+
+        // Kiểm tra số lượng bán không vượt quá số lượng đã thu
+        if (qty > (doc.quantity || 1)) {
+            return res.status(400).json({
+                success: false,
+                message: `Số lượng bán (${qty}) không được vượt quá số lượng đã thu (${doc.quantity || 1}).`,
+            });
+        }
+
+        const price = Number(saleUnitPrice);
+        if (!Number.isFinite(price) || price <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Đơn giá bán phải lớn hơn 0.',
+            });
+        }
+
+        // Giới hạn giá bán hợp lý (không quá 1 tỷ)
+        if (price > 1000000000) {
+            return res.status(400).json({
+                success: false,
+                message: 'Đơn giá bán không được vượt quá 1 tỷ VNĐ.',
+            });
+        }
+
+        // Tính tổng tiền
+        const totalAmount = Math.round(qty * price);
+
+        // Tạo mã bán hàng
+        const y = new Date().getFullYear();
+        const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const saleCode = `BH-${y}-${rand}`;
+
+        // Cập nhật saleInfo
+        const update = {
+            saleInfo: {
+                sold: true,
+                soldAt: new Date(),
+                buyerName: String(buyerName).trim().slice(0, 200),
+                buyerPhone: buyerPhone ? String(buyerPhone).trim() : '',
+                buyerAddress: buyerAddress ? String(buyerAddress).trim() : '',
+                saleQuantity: qty,
+                saleUnitPrice: price,
+                saleTotalAmount: totalAmount,
+                saleCode,
+                soldBy: req.user._id,
+            },
+        };
+
+        const updatedDoc = await BatteryTradeIn.findByIdAndUpdate(id, update, { new: true })
+            .populate('productId', 'name sku capacity')
+            .populate('completedProductId', 'name sku capacity')
+            .populate('locationId', 'code name address phone')
+            .populate('preferredLocationId', 'code name address phone')
+            .populate('assignedTo', 'firstName lastName')
+            .populate('handledBy', 'firstName lastName')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Đã ghi nhận bán acquy thu cũ cho nhà máy thành công.',
+            data: {
+                request: updatedDoc,
+                saleInfo: update.saleInfo,
+            },
+        });
+    } catch (error) {
+        console.error('sellBatteryTradeIn error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi ghi nhận bán acquy.',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * GET /api/battery-trade-in/stats - Lấy thống kê đơn thu cũ (admin/manager)
+ */
+export const getBatteryTradeInStats = async (req, res) => {
+    try {
+        const { startDate, endDate, locationId } = req.query;
+
+        // Build match conditions
+        const match = {};
+
+        // Filter by location if manager
+        const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+        if (allowedIds !== null) {
+            if (locationId && allowedIds.includes(locationId)) {
+                match.preferredLocationId = new mongoose.Types.ObjectId(locationId);
+            } else {
+                match.preferredLocationId = { $in: allowedIds.map(id => new mongoose.Types.ObjectId(id)) };
+            }
+        } else if (locationId) {
+            match.preferredLocationId = new mongoose.Types.ObjectId(locationId);
+        }
+
+        // Filter by date range
+        if (startDate || endDate) {
+            match.createdAt = {};
+            if (startDate) match.createdAt.$gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                match.createdAt.$lte = end;
+            }
+        }
+
+        // Stats by status
+        const statusStats = await BatteryTradeIn.aggregate([
+            { $match: match },
+            {
+                $group: {
+                    _id: '$status',
+                    count: { $sum: 1 },
+                    totalCompletedAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'completed'] }, { $ifNull: ['$completedAmount', 0] }, 0] }
+                    },
+                    totalSaleAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'completed'] }, { $ifNull: ['$saleInfo.saleTotalAmount', 0] }, 0] }
+                    },
+                }
+            }
+        ]);
+
+        // Build status counts
+        const statusCounts = {
+            pending: 0,
+            contacted: 0,
+            completed: 0,
+            cancelled: 0,
+            totalChi: 0,
+            totalThu: 0,
+        };
+
+        let totalProfit = 0;
+        let totalSoldQuantity = 0;
+        let totalReceivedQuantity = 0;
+
+        for (const stat of statusStats) {
+            if (stat._id === 'pending') statusCounts.pending = stat.count;
+            if (stat._id === 'contacted') statusCounts.contacted = stat.count;
+            if (stat._id === 'completed') statusCounts.completed = stat.count;
+            if (stat._id === 'cancelled') statusCounts.cancelled = stat.count;
+            statusCounts.totalChi += stat.totalCompletedAmount || 0;
+            statusCounts.totalThu += stat.totalSaleAmount || 0;
+
+            // Get completed items details for profit calculation
+            if (stat._id === 'completed') {
+                totalProfit = (stat.totalSaleAmount || 0) - (stat.totalCompletedAmount || 0);
+            }
+        }
+
+        // Total orders
+        const totalOrders = statusCounts.pending + statusCounts.contacted + statusCounts.completed + statusCounts.cancelled;
+
+        // Get completed with sale info for detailed stats
+        const completedWithSale = await BatteryTradeIn.aggregate([
+            { $match: { ...match, status: 'completed' } },
+            {
+                $group: {
+                    _id: null,
+                    totalProfit: {
+                        $sum: { $subtract: [{ $ifNull: ['$saleInfo.saleTotalAmount', 0] }, { $ifNull: ['$completedAmount', 0] }] }
+                    },
+                    totalSoldQuantity: { $sum: { $ifNull: ['$saleInfo.saleQuantity', 0] } },
+                    totalReceivedQuantity: { $sum: '$quantity' },
+                    count: { $sum: 1 },
+                }
+            }
+        ]);
+
+        // Get location stats
+        const locationStats = await BatteryTradeIn.aggregate([
+            { $match: { ...match, status: 'completed' } },
+            {
+                $group: {
+                    _id: '$preferredLocationId',
+                    count: { $sum: 1 },
+                    chi: { $sum: { $ifNull: ['$completedAmount', 0] } },
+                    thu: { $sum: { $ifNull: ['$saleInfo.saleTotalAmount', 0] } },
+                }
+            },
+            { $limit: 10 }
+        ]);
+
+        // Populate location names
+        const locationIds = locationStats.map(s => s._id).filter(Boolean);
+        const locations = await Location.find({ _id: { $in: locationIds } }).select('code name').lean();
+        const locationMap = {};
+        locations.forEach(loc => { locationMap[loc._id.toString()] = loc; });
+
+        const locationBreakdown = locationStats.map(stat => ({
+            locationId: stat._id?._id || stat._id,
+            locationName: locationMap[stat._id?.toString()]?.name || locationMap[stat._id]?.name || 'Không xác định',
+            locationCode: locationMap[stat._id?.toString()]?.code || locationMap[stat._id]?.code || '',
+            count: stat.count,
+            chi: stat.chi,
+            thu: stat.thu,
+            loi: stat.thu - stat.chi,
+        }));
+
+        // Recent orders
+        const recentOrders = await BatteryTradeIn.find(match)
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('requestCode status batteryName completedAmount saleInfo.saleTotalAmount createdAt')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                totalOrders,
+                pending: statusCounts.pending,
+                contacted: statusCounts.contacted,
+                completed: statusCounts.completed,
+                cancelled: statusCounts.cancelled,
+                needProcess: statusCounts.pending + statusCounts.contacted,
+                totalChi: statusCounts.totalChi,
+                totalThu: statusCounts.totalThu,
+                loi: statusCounts.totalThu - statusCounts.totalChi,
+                locationBreakdown,
+                recentOrders: recentOrders.map(o => ({
+                    _id: o._id,
+                    requestCode: o.requestCode,
+                    status: o.status,
+                    batteryName: o.batteryName,
+                    createdAt: o.createdAt,
+                })),
+            },
+        });
+    } catch (error) {
+        console.error('getBatteryTradeInStats error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy thống kê.',
             error: error.message,
         });
     }

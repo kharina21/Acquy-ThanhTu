@@ -33,6 +33,7 @@ import CreateInvoicePage from '../pages/CreateInvoicePage/CreateInvoicePage';
 import AdminOrderManagementPage from '../pages/AdminOrderManagementPage/AdminOrderManagementPage';
 import AdminOrderDetailPage from '../pages/AdminOrderManagementPage/AdminOrderDetailPage';
 import AdminBatteryTradeInPage from '../pages/AdminBatteryTradeInPage';
+import AdminBatteryTradeInCreatePage from '../pages/AdminBatteryTradeInCreatePage';
 import CustomerReturnsPage from '../pages/AdminOrderManagementPage/CustomerReturnsPage';
 import OrderManagementPage from '../pages/OrderManagementPage/OrderManagementPage';
 import OrderReportPage from '../pages/OrderManagementPage/OrderReportPage';
@@ -270,6 +271,10 @@ export const AppRoutes = () => {
                         <Route
                             path='/admin/battery-trade-in'
                             element={<AdminBatteryTradeInPage />}
+                        />
+                        <Route
+                            path='/admin/battery-trade-in/create'
+                            element={<AdminBatteryTradeInCreatePage />}
                         />
                         <Route
                             path='/admin/warranties'

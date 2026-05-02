@@ -5,6 +5,8 @@ import {
     getBatteryTradeInById,
     updateBatteryTradeInStatus,
     updateBatteryTradeInDetails,
+    sellBatteryTradeIn,
+    getBatteryTradeInStats,
 } from '@/services/batteryTradeInService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
 import { getActiveLocations } from '@/services/locationService';
@@ -24,13 +26,26 @@ import {
     Pencil,
     Recycle,
     Eye,
+    Plus,
+    TrendingUp,
+    TrendingDown,
+    DollarSign,
+    FileText,
+    AlertCircle,
+    CheckCircle,
 } from 'lucide-react';
 
 const STATUS_META = {
-    pending: { short: 'Tiếp nhận', badge: 'badge-warning', desc: 'Đang xử lý' },
-    contacted: { short: 'Đã hẹn', badge: 'badge-info', desc: 'Chờ khách mang acquy' },
-    completed: { short: 'Hoàn tất', badge: 'badge-success', desc: 'Đã thu mua' },
-    cancelled: { short: 'Đã hủy', badge: 'badge-neutral', desc: 'Từ chối' },
+    pending: { short: 'Tiếp nhận', badge: 'badge-warning', desc: 'Đang xử lý', color: '#f59e0b' },
+    contacted: { short: 'Đã hẹn', badge: 'badge-info', desc: 'Chờ khách mang acquy', color: '#3b82f6' },
+    completed: { short: 'Hoàn tất', badge: 'badge-success', desc: 'Đã thu mua', color: '#22c55e' },
+    cancelled: { short: 'Đã hủy', badge: 'badge-neutral', desc: 'Từ chối', color: '#6b7280' },
+};
+
+// Trạng thái bán (sub-status)
+const SALE_STATUS_META = {
+    not_sold: { short: 'Chưa bán', badge: 'badge-ghost', desc: 'Chưa bán cho nhà máy', color: '#9ca3af' },
+    sold: { short: 'Đã bán', badge: 'badge-primary', desc: 'Đã bán cho nhà máy', color: '#8b5cf6' },
 };
 
 const formatDate = (d) => {
@@ -162,6 +177,24 @@ function BatteryTradeInReadonlySections({ req }) {
                                 {req.address}
                             </p>
                         )}
+                        {req.preferredLocationId && (
+                            <p className="flex items-center gap-2">
+                                <span className="text-base-content/60">Cơ sở muốn thu cũ:</span>{' '}
+                                <strong className="text-primary">
+                                    {req.preferredLocationId?.name || req.preferredLocationId?.code || '—'}
+                                </strong>
+                            </p>
+                        )}
+                        <div className="flex items-center gap-3 pt-1 border-t border-base-200">
+                            <span className={`badge badge-sm ${req.source === 'offline' ? 'badge-secondary' : 'badge-primary'} badge-outline`}>
+                                {req.source === 'offline' ? 'Tại cửa hàng' : 'Online'}
+                            </span>
+                            {req.assignedTo && (
+                                <span className="text-xs text-base-content/60">
+                                    Giao cho: <strong>{req.assignedTo.firstName} {req.assignedTo.lastName}</strong>
+                                </span>
+                            )}
+                        </div>
                         {req.note && (
                             <p className="text-base-content/70 pt-1 border-t border-base-200">Ghi chú: {req.note}</p>
                         )}
@@ -239,9 +272,84 @@ function BatteryTradeInReadonlySections({ req }) {
                         <p>
                             <span className="text-base-content/60">Ngày:</span> {formatDate(req.completedAt)}
                         </p>
+                        {req.handledBy && (
+                            <p className="sm:col-span-2">
+                                <span className="text-base-content/60">Nhân viên xử lý:</span>{' '}
+                                <strong>{req.handledBy.firstName} {req.handledBy.lastName}</strong>
+                            </p>
+                        )}
                     </div>
                     {req.completedNote && (
                         <p className="mt-2 pt-2 border-t border-success/20 text-base-content/80">{req.completedNote}</p>
+                    )}
+                </div>
+            )}
+
+            {req.status === 'completed' && req.saleInfo?.sold && (
+                <div className="rounded-xl border border-info/30 bg-info/5 p-4 text-sm">
+                    <p className="font-semibold text-info mb-2 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-info" />
+                        Đã bán cho nhà máy tái chế
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <p>
+                            <span className="text-base-content/60">Mã bán:</span>{' '}
+                            <strong className="text-info">{req.saleInfo.saleCode || '—'}</strong>
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Số lượng bán:</span>{' '}
+                            <strong>{req.saleInfo.saleQuantity ?? 0}</strong>
+                            {(req.saleInfo.saleQuantity ?? 0) !== (req.quantity ?? 1) && (
+                                <span className="text-warning ml-1 text-xs">
+                                    (đã thu {req.quantity ?? 1})
+                                </span>
+                            )}
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Người mua:</span>{' '}
+                            {req.saleInfo.buyerName || '—'}
+                        </p>
+                        <p>
+                            <span className="text-base-content/60">Ngày bán:</span>{' '}
+                            {formatDate(req.saleInfo.soldAt)}
+                        </p>
+                    </div>
+
+                    {/* Thống kê lãi/lỗ */}
+                    <div className="mt-3 pt-3 border-t border-info/20">
+                        <p className="text-xs font-medium text-base-content/60 mb-2">📊 Thống kê giao dịch</p>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-error/10 rounded-lg p-2">
+                                <p className="text-xs text-base-content/60">Chi ra (mua)</p>
+                                <p className="font-semibold text-error">-{formatVND(req.completedAmount ?? 0)}</p>
+                            </div>
+                            <div className="bg-success/10 rounded-lg p-2">
+                                <p className="text-xs text-base-content/60">Thu vào (bán)</p>
+                                <p className="font-semibold text-success">+{formatVND(req.saleInfo.saleTotalAmount ?? 0)}</p>
+                            </div>
+                            <div className="bg-primary/10 rounded-lg p-2">
+                                <p className="text-xs text-base-content/60">Lãi/Lỗ</p>
+                                <p className={`font-semibold ${
+                                    (req.saleInfo.saleTotalAmount ?? 0) >= (req.completedAmount ?? 0)
+                                        ? 'text-success'
+                                        : 'text-error'
+                                }`}>
+                                    {(req.saleInfo.saleTotalAmount ?? 0) >= (req.completedAmount ?? 0) ? '+' : ''}
+                                    {formatVND((req.saleInfo.saleTotalAmount ?? 0) - (req.completedAmount ?? 0))}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {req.saleInfo.buyerPhone && (
+                        <p className="mt-2">
+                            <span className="text-base-content/60">SĐT người mua:</span> {req.saleInfo.buyerPhone}
+                        </p>
+                    )}
+                    {req.saleInfo.buyerAddress && (
+                        <p className="mt-1">
+                            <span className="text-base-content/60">Địa chỉ:</span> {req.saleInfo.buyerAddress}
+                        </p>
                     )}
                 </div>
             )}
@@ -285,10 +393,14 @@ export default function AdminBatteryTradeInPage() {
     const [requests, setRequests] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState({ status: '', search: '' });
+    const [filters, setFilters] = useState({ status: '', sold: '', search: '' });
     const [appliedSearch, setAppliedSearch] = useState('');
     const [expandedId, setExpandedId] = useState(null);
     const [updatingId, setUpdatingId] = useState(null);
+
+    // Thống kê
+    const [stats, setStats] = useState(null);
+    const [statsLoading, setStatsLoading] = useState(true);
 
     const [locations, setLocations] = useState([]);
 
@@ -299,6 +411,16 @@ export default function AdminBatteryTradeInPage() {
         completedProductName: '',
         completedAmount: '',
         completedNote: '',
+    });
+
+    const [sellOpen, setSellOpen] = useState(false);
+    const [sellForId, setSellForId] = useState(null);
+    const [sellForm, setSellForm] = useState({
+        buyerName: '',
+        buyerPhone: '',
+        buyerAddress: '',
+        saleQuantity: '',
+        saleUnitPrice: '',
     });
 
     const [cancelOpen, setCancelOpen] = useState(false);
@@ -368,6 +490,7 @@ export default function AdminBatteryTradeInPage() {
         try {
             const params = { page: pagination.page, limit: pagination.limit };
             if (filters.status) params.status = filters.status;
+            if (filters.sold !== '') params.sold = filters.sold;
             if (appliedSearch?.trim()) params.search = appliedSearch.trim();
             const res = await getBatteryTradeInList(params);
             const data = res?.data;
@@ -386,9 +509,28 @@ export default function AdminBatteryTradeInPage() {
         }
     };
 
+    const fetchStats = async () => {
+        setStatsLoading(true);
+        try {
+            const res = await getBatteryTradeInStats();
+            if (res.success) {
+                setStats(res.data);
+            }
+        } catch (err) {
+            console.error('Lỗi khi tải thống kê:', err);
+        } finally {
+            setStatsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        setPagination((p) => ({ ...p, page: 1 }));
+    }, [filters.status, filters.sold]);
+
     useEffect(() => {
         fetchRequests();
-    }, [pagination.page, filters.status, appliedSearch]);
+        fetchStats();
+    }, [pagination.page, filters.status, filters.sold, appliedSearch]);
 
     const handleSimpleStatus = async (id, payload) => {
         setUpdatingId(id);
@@ -421,6 +563,56 @@ export default function AdminBatteryTradeInPage() {
             appointmentLocationId: locations[0]?._id || '',
         });
         setContactOpen(true);
+    };
+
+    const openSell = (req) => {
+        setSellForId(req._id);
+        setSellForm({
+            buyerName: '',
+            buyerPhone: '',
+            buyerAddress: '',
+            saleQuantity: req.quantity || '1',
+            saleUnitPrice: '',
+        });
+        setSellOpen(true);
+    };
+
+    const submitSell = async () => {
+        if (!sellForId) return;
+        const { buyerName, buyerPhone, buyerAddress, saleQuantity, saleUnitPrice } = sellForm;
+
+        if (!buyerName?.trim() || buyerName.trim().length < 2) {
+            toast.error('Vui lòng nhập tên nhà máy/tổ chức (ít nhất 2 ký tự)');
+            return;
+        }
+
+        const qty = Number(saleQuantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            toast.error('Số lượng bán phải lớn hơn 0');
+            return;
+        }
+
+        const price = Number(String(saleUnitPrice).replace(/\D/g, ''));
+        if (!Number.isFinite(price) || price <= 0) {
+            toast.error('Đơn giá bán phải lớn hơn 0');
+            return;
+        }
+
+        try {
+            await sellBatteryTradeIn(sellForId, {
+                buyerName: buyerName.trim(),
+                buyerPhone: buyerPhone?.trim() || '',
+                buyerAddress: buyerAddress?.trim() || '',
+                saleQuantity: qty,
+                saleUnitPrice: price,
+            });
+            toast.success('Đã ghi nhận bán acquy thu cũ cho nhà máy');
+            setSellOpen(false);
+            setSellForId(null);
+            fetchRequests();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Lỗi khi ghi nhận bán acquy');
+        }
     };
 
     const submitContact = async () => {
@@ -715,19 +907,158 @@ export default function AdminBatteryTradeInPage() {
                             <p className="text-sm text-base-content/60 mt-0.5">Tiếp nhận và xử lý yêu cầu thu acquy</p>
                         </div>
                     </div>
-                    <Link
-                        to="/admin"
-                        className="btn btn-ghost btn-sm gap-2 self-start sm:self-center border border-base-300"
-                    >
-                        <LayoutDashboard className="w-4 h-4" />
-                        Tổng quan
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <Link
+                            to="/admin/battery-trade-in/create"
+                            className="btn btn-primary btn-sm gap-2"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Tạo đơn thu cũ
+                        </Link>
+                        <Link
+                            to="/admin"
+                            className="btn btn-ghost btn-sm gap-2 self-start sm:self-center border border-base-300"
+                        >
+                            <LayoutDashboard className="w-4 h-4" />
+                            Tổng quan
+                        </Link>
+                    </div>
                 </div>
+
+                {/* Dashboard thống kê */}
+                {stats && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {/* Tổng đơn */}
+                        <div className="card bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 shadow-sm">
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Tổng đơn</p>
+                                        <p className="text-2xl font-bold text-primary mt-1">{stats.totalOrders ?? 0}</p>
+                                    </div>
+                                    <div className="p-2 rounded-lg bg-primary/20">
+                                        <FileText className="w-5 h-5 text-primary" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Chờ xử lý */}
+                        <div className="card bg-gradient-to-br from-warning/10 to-warning/5 border border-warning/20 shadow-sm">
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Cần xử lý</p>
+                                        <p className="text-2xl font-bold text-warning mt-1">{stats.needProcess ?? 0}</p>
+                                    </div>
+                                    <div className="p-2 rounded-lg bg-warning/20">
+                                        <AlertCircle className="w-5 h-5 text-warning" />
+                                    </div>
+                                </div>
+                                <div className="flex gap-2 mt-2 text-xs text-base-content/60">
+                                    <span className="text-warning">{stats.pending ?? 0} mới</span>
+                                    <span>·</span>
+                                    <span className="text-info">{stats.contacted ?? 0} đã hẹn</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Hoàn thành */}
+                        <div className="card bg-gradient-to-br from-success/10 to-success/5 border border-success/20 shadow-sm">
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Hoàn thành</p>
+                                        <p className="text-2xl font-bold text-success mt-1">{stats.completed ?? 0}</p>
+                                    </div>
+                                    <div className="p-2 rounded-lg bg-success/20">
+                                        <CheckCircle className="w-5 h-5 text-success" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Đã chi */}
+                        <div className="card bg-gradient-to-br from-error/10 to-error/5 border border-error/20 shadow-sm">
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Đã chi (mua)</p>
+                                        <p className="text-lg font-bold text-error mt-1 truncate" title={formatVND(stats.totalChi)}>
+                                            {formatVND(stats.totalChi)}
+                                        </p>
+                                    </div>
+                                    <div className="p-2 rounded-lg bg-error/20">
+                                        <TrendingDown className="w-5 h-5 text-error" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Đã thu (bán) */}
+                        <div className="card bg-gradient-to-br from-success/10 to-success/5 border border-success/20 shadow-sm">
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Đã thu (bán)</p>
+                                        <p className="text-lg font-bold text-success mt-1 truncate" title={formatVND(stats.totalThu)}>
+                                            {formatVND(stats.totalThu)}
+                                        </p>
+                                    </div>
+                                    <div className="p-2 rounded-lg bg-success/20">
+                                        <TrendingUp className="w-5 h-5 text-success" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Lãi/Lỗ */}
+                        <div className={`card border shadow-sm ${
+                            (stats.loi ?? 0) >= 0
+                                ? 'bg-gradient-to-br from-info/10 to-info/5 border-info/20'
+                                : 'bg-gradient-to-br from-error/10 to-error/5 border-error/20'
+                        }`}>
+                            <div className="card-body p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-base-content/60 font-medium">Lãi/Lỗ</p>
+                                        <p className={`text-lg font-bold mt-1 truncate ${
+                                            (stats.loi ?? 0) >= 0 ? 'text-success' : 'text-error'
+                                        }`} title={formatVND(stats.loi)}>
+                                            {(stats.loi ?? 0) >= 0 ? '+' : ''}{formatVND(stats.loi)}
+                                        </p>
+                                    </div>
+                                    <div className={`p-2 rounded-lg ${
+                                        (stats.loi ?? 0) >= 0 ? 'bg-info/20' : 'bg-error/20'
+                                    }`}>
+                                        <DollarSign className={`w-5 h-5 ${(stats.loi ?? 0) >= 0 ? 'text-info' : 'text-error'}`} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Skeleton loading */}
+                {statsLoading && !stats && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {[...Array(6)].map((_, i) => (
+                            <div key={i} className="card bg-base-100 border border-base-200 shadow-sm">
+                                <div className="card-body p-4">
+                                    <div className="animate-pulse space-y-2">
+                                        <div className="h-3 bg-base-300 rounded w-16"></div>
+                                        <div className="h-7 bg-base-300 rounded w-12"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Bộ lọc */}
                 <div className="card bg-base-100 border border-base-200 shadow-sm">
                     <div className="card-body p-4 flex flex-col sm:flex-row flex-wrap gap-3">
-                        <div className="form-control flex-1 min-w-[200px]">
+                        <div className="form-control flex-1 min-w-[160px]">
                             <label className="label py-1">
                                 <span className="label-text text-xs font-medium text-base-content/70">Trạng thái</span>
                             </label>
@@ -740,6 +1071,20 @@ export default function AdminBatteryTradeInPage() {
                                 {Object.entries(STATUS_META).map(([v, m]) => (
                                     <option key={v} value={v}>{m.desc}</option>
                                 ))}
+                            </select>
+                        </div>
+                        <div className="form-control flex-1 min-w-[160px]">
+                            <label className="label py-1">
+                                <span className="label-text text-xs font-medium text-base-content/70">Tình trạng bán</span>
+                            </label>
+                            <select
+                                className="select select-bordered select-sm w-full"
+                                value={filters.sold}
+                                onChange={(e) => setFilters((f) => ({ ...f, sold: e.target.value }))}
+                            >
+                                <option value="">Tất cả</option>
+                                <option value="false">Chưa bán</option>
+                                <option value="true">Đã bán</option>
                             </select>
                         </div>
                         <div className="form-control flex-1 min-w-[200px]">
@@ -821,6 +1166,9 @@ export default function AdminBatteryTradeInPage() {
                                                     <div className="flex flex-wrap gap-1.5 mt-2">
                                                         <span className="badge badge-sm badge-ghost font-normal">{batteryDisplay}</span>
                                                         <span className="badge badge-sm badge-ghost font-normal">×{req.quantity ?? 1}</span>
+                                                        <span className={`badge badge-sm ${req.source === 'offline' ? 'badge-secondary' : 'badge-primary'} badge-outline font-normal`}>
+                                                            {req.source === 'offline' ? 'Offline' : 'Online'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -829,7 +1177,12 @@ export default function AdminBatteryTradeInPage() {
                                                 <div className="hidden sm:block w-full">
                                                     <StatusProgress status={req.status} />
                                                 </div>
-                                                <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                                                <div className="flex flex-wrap items-center gap-2 w-full sm:justify-end">
+                                                    {req.status === 'completed' && (
+                                                        <span className={`badge badge-sm ${req.saleInfo?.sold ? 'badge-success' : 'badge-ghost'} border-0`}>
+                                                            {req.saleInfo?.sold ? 'Đã bán' : 'Chưa bán'}
+                                                        </span>
+                                                    )}
                                                     <span className={`badge ${meta.badge} border-0 font-medium sm:hidden`}>
                                                         {meta.short}
                                                     </span>
@@ -866,6 +1219,24 @@ export default function AdminBatteryTradeInPage() {
                                                                     {req.address}
                                                                 </p>
                                                             )}
+                                                            {req.preferredLocationId && (
+                                                                <p className="flex items-center gap-2">
+                                                                    <span className="text-base-content/60">Cơ sở muốn thu cũ:</span>{' '}
+                                                                    <strong className="text-primary">
+                                                                        {req.preferredLocationId?.name || req.preferredLocationId?.code || '—'}
+                                                                    </strong>
+                                                                </p>
+                                                            )}
+                                                            <div className="flex items-center gap-3 pt-1 border-t border-base-200">
+                                                                <span className={`badge badge-sm ${req.source === 'offline' ? 'badge-secondary' : 'badge-primary'} badge-outline`}>
+                                                                    {req.source === 'offline' ? 'Tại cửa hàng' : 'Online'}
+                                                                </span>
+                                                                {req.assignedTo && (
+                                                                    <span className="text-xs text-base-content/60">
+                                                                        Giao cho: <strong>{req.assignedTo.firstName} {req.assignedTo.lastName}</strong>
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             {req.note && (
                                                                 <p className="text-base-content/70 pt-1 border-t border-base-200">
                                                                     Ghi chú: {req.note}
@@ -960,6 +1331,62 @@ export default function AdminBatteryTradeInPage() {
                                                             <p className="mt-2 pt-2 border-t border-success/20 text-base-content/80">
                                                                 {req.completedNote}
                                                             </p>
+                                                        )}
+
+                                                        {/* Thông tin bán cho nhà máy */}
+                                                        {req.status === 'completed' && req.saleInfo?.sold && (
+                                                            <div className="mt-3 pt-3 border-t border-info/20">
+                                                                <div className="rounded-xl border border-info/30 bg-info/5 p-4 text-sm">
+                                                                    <p className="font-semibold text-info mb-2 flex items-center gap-2">
+                                                                        <Recycle className="w-4 h-4" />
+                                                                        Đã bán cho nhà máy tái chế
+                                                                    </p>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                        <p>
+                                                                            <span className="text-base-content/60">Mã bán:</span>{' '}
+                                                                            <strong className="text-info">{req.saleInfo.saleCode || '—'}</strong>
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="text-base-content/60">Số lượng bán:</span>{' '}
+                                                                            <strong>{req.saleInfo.saleQuantity ?? 0}</strong>
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="text-base-content/60">Người mua:</span>{' '}
+                                                                            {req.saleInfo.buyerName || '—'}
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="text-base-content/60">Ngày bán:</span>{' '}
+                                                                            {formatDate(req.saleInfo.soldAt)}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {/* Thống kê lãi/lỗ */}
+                                                                    <div className="mt-3 pt-3 border-t border-info/20">
+                                                                        <p className="text-xs font-medium text-base-content/60 mb-2">📊 Thống kê giao dịch</p>
+                                                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                                                            <div className="bg-error/10 rounded-lg p-2">
+                                                                                <p className="text-xs text-base-content/60">Chi ra (mua)</p>
+                                                                                <p className="font-semibold text-error">-{formatVND(req.completedAmount ?? 0)}</p>
+                                                                            </div>
+                                                                            <div className="bg-success/10 rounded-lg p-2">
+                                                                                <p className="text-xs text-base-content/60">Thu vào (bán)</p>
+                                                                                <p className="font-semibold text-success">+{formatVND(req.saleInfo.saleTotalAmount ?? 0)}</p>
+                                                                            </div>
+                                                                            <div className="bg-primary/10 rounded-lg p-2">
+                                                                                <p className="text-xs text-base-content/60">Lãi/Lỗ</p>
+                                                                                <p className={`font-semibold ${
+                                                                                    (req.saleInfo.saleTotalAmount ?? 0) >= (req.completedAmount ?? 0)
+                                                                                        ? 'text-success'
+                                                                                        : 'text-error'
+                                                                                }`}>
+                                                                                    {(req.saleInfo.saleTotalAmount ?? 0) >= (req.completedAmount ?? 0) ? '+' : ''}
+                                                                                    {formatVND((req.saleInfo.saleTotalAmount ?? 0) - (req.completedAmount ?? 0))}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}
@@ -1072,6 +1499,61 @@ export default function AdminBatteryTradeInPage() {
                                                                 Từ chối
                                                             </button>
                                                         </>
+                                                    )}
+                                                    {req.status === 'contacted' && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-ghost"
+                                                                disabled={updatingId === req._id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSimpleStatus(req._id, { status: 'pending' });
+                                                                }}
+                                                            >
+                                                                Quay lại tiếp nhận
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-success gap-1"
+                                                                disabled={updatingId === req._id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openComplete(req);
+                                                                }}
+                                                            >
+                                                                Hoàn thành thu mua
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-outline btn-error"
+                                                                disabled={updatingId === req._id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openCancel(req._id);
+                                                                }}
+                                                            >
+                                                                Từ chối
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {req.status === 'completed' && !req.saleInfo?.sold && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-info gap-1"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openSell(req);
+                                                            }}
+                                                        >
+                                                            Bán cho nhà máy
+                                                        </button>
+                                                    )}
+                                                    {req.status === 'completed' && req.saleInfo?.sold && (
+                                                        <span className="badge badge-info gap-1">
+                                                            <Recycle className="w-3 h-3" />
+                                                            Đã bán
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -1287,6 +1769,126 @@ export default function AdminBatteryTradeInPage() {
                                 <button type="button" className="btn btn-primary" disabled={!!updatingId} onClick={submitComplete}>
                                     {updatingId ? <span className="loading loading-spinner loading-sm" /> : null}
                                     Xác nhận hoàn thành
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {sellOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+                        aria-label="Đóng"
+                        onClick={() => setSellOpen(false)}
+                    />
+                    <div className="relative bg-base-100 rounded-2xl shadow-2xl border border-base-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-base-200 bg-gradient-to-r from-info/10 to-base-100 rounded-t-2xl">
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-info/15 text-info">
+                                    <Recycle className="w-4 h-4" />
+                                </span>
+                                <h3 className="font-bold text-lg">Bán acquy thu cũ cho nhà máy</h3>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost btn-circle"
+                                onClick={() => setSellOpen(false)}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Tên nhà máy/tổ chức *</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-sm w-full"
+                                    placeholder="VD: Công ty TNHH Tái chế ABC"
+                                    value={sellForm.buyerName}
+                                    onChange={(e) => setSellForm((f) => ({ ...f, buyerName: e.target.value }))}
+                                    maxLength={200}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">SĐT người mua</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="input input-bordered input-sm w-full"
+                                        placeholder="VD: 0901234567"
+                                        value={sellForm.buyerPhone}
+                                        onChange={(e) => setSellForm((f) => ({ ...f, buyerPhone: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label py-1">
+                                        <span className="label-text font-medium">Số lượng bán *</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        className="input input-bordered input-sm w-full"
+                                        value={sellForm.saleQuantity}
+                                        onChange={(e) => setSellForm((f) => ({ ...f, saleQuantity: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Địa chỉ người mua</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-sm w-full"
+                                    placeholder="Địa chỉ nhà máy/tổ chức"
+                                    value={sellForm.buyerAddress}
+                                    onChange={(e) => setSellForm((f) => ({ ...f, buyerAddress: e.target.value }))}
+                                />
+                            </div>
+
+                            <div className="form-control">
+                                <label className="label py-1">
+                                    <span className="label-text font-medium">Đơn giá bán (VNĐ) *</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-sm w-full"
+                                    placeholder="VD: 50000"
+                                    value={sellForm.saleUnitPrice}
+                                    onChange={(e) => setSellForm((f) => ({ ...f, saleUnitPrice: e.target.value }))}
+                                />
+                            </div>
+
+                            {sellForm.saleQuantity && sellForm.saleUnitPrice && (
+                                <div className="rounded-lg bg-info/10 border border-info/20 p-3 text-sm">
+                                    <p className="text-info font-medium">
+                                        Tổng tiền thu vào:{' '}
+                                        <strong className="text-lg">
+                                            {formatVND(Number(sellForm.saleQuantity) * Number(String(sellForm.saleUnitPrice).replace(/\D/g, '')))}
+                                        </strong>
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost"
+                                    onClick={() => setSellOpen(false)}
+                                >
+                                    Đóng
+                                </button>
+                                <button type="button" className="btn btn-info" onClick={submitSell}>
+                                    Xác nhận bán
                                 </button>
                             </div>
                         </div>

@@ -72,3 +72,21 @@ export const updateBatteryTradeInStatus = async (id, payload) => {
     const { data } = await api.patch(`/battery-trade-in/${id}`, payload);
     return data;
 };
+
+/** Tạo đơn thu cũ tại cửa hàng (admin/manager/seller) - không yêu cầu ảnh */
+export const createBatteryTradeInOffline = async (payload) => {
+    const { data } = await api.post('/battery-trade-in/create-offline', payload);
+    return data;
+};
+
+/** Bán acquy thu cũ cho nhà máy tái chế */
+export const sellBatteryTradeIn = async (id, payload) => {
+    const { data } = await api.post(`/battery-trade-in/${id}/sell`, payload);
+    return data;
+};
+
+/** Lấy thống kê đơn thu cũ */
+export const getBatteryTradeInStats = async (params = {}) => {
+    const { data } = await api.get('/battery-trade-in/stats', { params });
+    return data;
+};
