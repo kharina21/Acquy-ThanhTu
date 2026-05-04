@@ -167,6 +167,14 @@ const warrantySchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+
+        // ── Cơ sở bảo hành ────────────────────────────────────────────
+        /** ObjectId của chi nhánh thực hiện bảo hành */
+        locationId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Location',
+            default: null,
+        },
     },
     { timestamps: true }
 );
@@ -189,6 +197,8 @@ warrantySchema.index({ isDeleted: 1 });
 warrantySchema.index({ 'claims.status': 1 });
 /** Tìm kiếm claim theo mã */
 warrantySchema.index({ 'claims.claimCode': 1 });
+/** Filter theo chi nhánh bảo hành */
+warrantySchema.index({ locationId: 1 });
 
 // ── Mã bảo hành tự động ─────────────────────────────────────────────
 /**

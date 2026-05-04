@@ -6,8 +6,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { createWarrantyClaim, lookupWarrantyByOrderCode } from '@/services/warrantyService';
+import { createWarrantyClaim, lookupWarrantyByOrderCode, getMyLocation, getActiveLocations } from '@/services/warrantyService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
     Shield,
     Search,
@@ -21,6 +22,9 @@ import {
     FileText,
     X,
     ChevronDown,
+    Lock,
+    Building2,
+    RefreshCw,
 } from 'lucide-react';
 
 const REASON_LABELS = {
@@ -38,6 +42,7 @@ const formatDate = (d) => {
 
 export default function AdminWarrantyCreatePage() {
     const navigate = useNavigate();
+    const { isAdmin } = useUserRole();
 
     const [step, setStep] = useState(1);
     const [orderCode, setOrderCode] = useState('');
@@ -48,6 +53,12 @@ export default function AdminWarrantyCreatePage() {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [result, setResult] = useState(null);
+
+    // Cơ sở bảo hành
+    const [locations, setLocations] = useState([]);
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const [myLocation, setMyLocation] = useState(null);
+    const [loadingLocation, setLoadingLocation] = useState(true);
 
     // Địa chỉ
     const [provinces, setProvinces] = useState([]);
@@ -75,6 +86,34 @@ export default function AdminWarrantyCreatePage() {
     useEffect(() => {
         getProvinces().then((data) => setProvinces(data || [])).catch(() => {});
     }, []);
+
+    // Load cơ sở bảo hành
+    useEffect(() => {
+        const loadLocations = async () => {
+            setLoadingLocation(true);
+            try {
+                if (isAdmin) {
+                    // Admin: lấy tất cả chi nhánh active để chọn
+                    const res = await getActiveLocations();
+                    if (res?.success) {
+                        setLocations(res.data?.locations || []);
+                    }
+                } else {
+                    // Manager/Seller: lấy cơ sở mặc định của mình
+                    const res = await getMyLocation();
+                    if (res?.success && res.data?.location) {
+                        setMyLocation(res.data.location);
+                        setSelectedLocationId(res.data.location._id);
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading locations:', err);
+            } finally {
+                setLoadingLocation(false);
+            }
+        };
+        loadLocations();
+    }, [isAdmin]);
 
     // Auto-fill khi chọn sản phẩm
     const handleSelectProduct = (w) => {
@@ -248,6 +287,17 @@ export default function AdminWarrantyCreatePage() {
 
         if (!selectedProduct) { toast.error('Vui lòng chọn sản phẩm cần bảo hành.'); return; }
         if (!form.reason) { toast.error('Vui lòng chọn lý do bảo hành.'); return; }
+
+        // Kiểm tra cơ sở bảo hành
+        if (isAdmin && !selectedLocationId) {
+            toast.error('Vui lòng chọn cơ sở bảo hành.');
+            return;
+        }
+        if (!isAdmin && !selectedLocationId) {
+            toast.error('Không xác định được cơ sở bảo hành. Vui lòng liên hệ quản lý.');
+            return;
+        }
+
         if (!form.customerName.trim()) { toast.error('Vui lòng nhập họ tên.'); return; }
         if (!form.customerPhone.trim() || !/^[\d\s\-\+]{8,15}$/.test(form.customerPhone.trim())) {
             toast.error('Vui lòng nhập số điện thoại hợp lệ.');
@@ -269,6 +319,7 @@ export default function AdminWarrantyCreatePage() {
                 customerEmail: form.customerEmail.trim(),
                 customerAddress,
                 notes: form.notes.trim(),
+                locationId: selectedLocationId,
             };
 
             const res = await createWarrantyClaim(payload);
@@ -502,6 +553,72 @@ export default function AdminWarrantyCreatePage() {
                                         </p>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Cơ sở bảo hành */}
+                            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                    <Building2 className="w-4 h-4 text-gray-500" />
+                                    Cơ sở bảo hành
+                                    {!isAdmin && <span className="text-xs font-normal text-gray-400 ml-1">(được phân công)</span>}
+                                </h3>
+
+                                {loadingLocation ? (
+                                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                                        <RefreshCw className="w-4 h-4 animate-spin" /> Đang tải cơ sở...
+                                    </div>
+                                ) : !locations.length && isAdmin ? (
+                                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                                        <p className="font-medium">Chưa có chi nhánh nào được thiết lập.</p>
+                                        <p className="text-xs mt-1">Vui lòng thêm chi nhánh trong phần Quản lý Cửa hàng trước.</p>
+                                    </div>
+                                ) : isAdmin ? (
+                                    /* Admin: dropdown chọn cơ sở */
+                                    <div className="relative">
+                                        <select
+                                            value={selectedLocationId}
+                                            onChange={(e) => setSelectedLocationId(e.target.value)}
+                                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white font-medium"
+                                        >
+                                            <option value="">-- Chọn cơ sở bảo hành --</option>
+                                            {locations.map((loc) => (
+                                                <option key={loc._id} value={loc._id}>
+                                                    {loc.code} - {loc.name}
+                                                    {loc.address ? ` (${loc.address})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                        {!selectedLocationId && (
+                                            <p className="text-xs text-red-500 mt-1">* Vui lòng chọn cơ sở bảo hành</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Manager/Seller: hiển thị cơ sở được phân (disabled) */
+                                    <div>
+                                        <div className="flex items-center gap-3 px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg">
+                                            <Lock className="w-4 h-4 text-gray-400 shrink-0" />
+                                            <div className="flex-1">
+                                                {myLocation ? (
+                                                    <>
+                                                        <p className="font-medium text-gray-800">
+                                                            {myLocation.code} - {myLocation.name}
+                                                        </p>
+                                                        {myLocation.address && (
+                                                            <p className="text-sm text-gray-500">{myLocation.address}</p>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <p className="text-gray-500 italic">Không xác định được cơ sở</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                                            <Lock className="w-3 h-3" />
+                                            Bạn chỉ có thể tạo phiếu bảo hành tại cơ sở được phân công
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Lý do bảo hành */}

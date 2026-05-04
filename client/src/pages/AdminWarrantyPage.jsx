@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router';
-import { getAllClaims, updateWarrantyClaim } from '@/services/warrantyService';
+import { getAllClaims, updateWarrantyClaim, getActiveLocations } from '@/services/warrantyService';
+import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import {
     Shield,
@@ -22,6 +23,7 @@ import {
     RefreshCw,
     User,
     Check,
+    Building2,
 } from 'lucide-react';
 
 const CLAIM_STATUS_META = {
@@ -117,13 +119,15 @@ function StatusProgress({ status }) {
 }
 
 export default function AdminWarrantyPage() {
+    const { isAdmin } = useUserRole();
     const [claims, setClaims] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState({ claimStatus: '', reason: '', search: '' });
-    const [appliedFilters, setAppliedFilters] = useState({ claimStatus: '', reason: '', search: '' });
+    const [filters, setFilters] = useState({ claimStatus: '', reason: '', search: '', locationId: '' });
+    const [appliedFilters, setAppliedFilters] = useState({ claimStatus: '', reason: '', search: '', locationId: '' });
     const [expandedId, setExpandedId] = useState(null);
     const [updatingId, setUpdatingId] = useState(null);
+    const [locations, setLocations] = useState([]);
 
     // Chi tiết claim
     const [detailClaim, setDetailClaim] = useState(null);
@@ -142,6 +146,7 @@ export default function AdminWarrantyPage() {
             if (appliedFilters.claimStatus) params.claimStatus = appliedFilters.claimStatus;
             if (appliedFilters.reason) params.reason = appliedFilters.reason;
             if (appliedFilters.search?.trim()) params.search = appliedFilters.search.trim();
+            if (appliedFilters.locationId) params.locationId = appliedFilters.locationId;
 
             const res = await getAllClaims(params);
             const data = res?.data;
@@ -164,14 +169,23 @@ export default function AdminWarrantyPage() {
         fetchClaims();
     }, [pagination.page, appliedFilters]);
 
+    // Load locations cho filter (Admin)
+    useEffect(() => {
+        if (isAdmin) {
+            getActiveLocations().then((res) => {
+                if (res?.success) setLocations(res.data?.locations || []);
+            }).catch(() => {});
+        }
+    }, [isAdmin]);
+
     const applyFilters = () => {
         setAppliedFilters({ ...filters });
         setPagination((p) => ({ ...p, page: 1 }));
     };
 
     const clearFilters = () => {
-        setFilters({ claimStatus: '', reason: '', search: '' });
-        setAppliedFilters({ claimStatus: '', reason: '', search: '' });
+        setFilters({ claimStatus: '', reason: '', search: '', locationId: '' });
+        setAppliedFilters({ claimStatus: '', reason: '', search: '', locationId: '' });
         setPagination((p) => ({ ...p, page: 1 }));
     };
 
@@ -291,6 +305,23 @@ export default function AdminWarrantyPage() {
                                     ))}
                                 </select>
                             </div>
+                            {isAdmin && (
+                                <div className="w-48">
+                                    <label className="text-xs text-gray-500 mb-1 block">Cơ sở BH</label>
+                                    <select
+                                        value={filters.locationId}
+                                        onChange={(e) => setFilters((f) => ({ ...f, locationId: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">Tất cả cơ sở</option>
+                                        {locations.map((loc) => (
+                                            <option key={loc._id} value={loc._id}>
+                                                {loc.code} - {loc.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <button
                                 onClick={applyFilters}
                                 className="px-4 py-2 bg-blue-700 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-colors"
@@ -325,6 +356,7 @@ export default function AdminWarrantyPage() {
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Yêu cầu BH</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sản phẩm</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Khách hàng</th>
+                                        {isAdmin && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cơ sở</th>}
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Ngày gửi</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Trạng thái</th>
                                         <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Thao tác</th>
@@ -384,6 +416,23 @@ export default function AdminWarrantyPage() {
                                                         )}
                                                     </div>
                                                 </td>
+                                                {isAdmin && (
+                                                    <td className="px-4 py-3">
+                                                        {claim.location ? (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                                                <div>
+                                                                    <p className="text-sm font-medium text-gray-800">{claim.location.name || '—'}</p>
+                                                                    {claim.location.code && (
+                                                                        <p className="text-xs text-gray-400">{claim.location.code}</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-sm text-gray-400">—</span>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-3">
                                                     <p className="text-sm text-gray-700">{formatDate(claim.claim.createdAt)}</p>
                                                     <p className="text-xs text-gray-400">{formatDateTime(claim.claim.createdAt).split(',')[1]?.trim() || ''}</p>
@@ -488,6 +537,31 @@ export default function AdminWarrantyPage() {
                                 <ClaimStatusBadge status={detailClaim.claim.status} />
                                 <StatusProgress status={detailClaim.claim.status} />
                             </div>
+
+                            {/* Cơ sở bảo hành */}
+                            {detailClaim.location && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                                    <p className="text-xs font-bold uppercase text-blue-600 mb-2 flex items-center gap-1">
+                                        <Building2 className="w-3.5 h-3.5" /> Cơ sở bảo hành
+                                    </p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                            <Building2 className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900">{detailClaim.location.name || '—'}</p>
+                                            {detailClaim.location.code && (
+                                                <p className="text-sm text-gray-500">{detailClaim.location.code}</p>
+                                            )}
+                                            {detailClaim.location.address && (
+                                                <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                                    <MapPin className="w-3 h-3" /> {detailClaim.location.address}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Mã & thời gian */}
                             <div className="grid grid-cols-2 gap-4 text-sm">

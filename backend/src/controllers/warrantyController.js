@@ -2,8 +2,13 @@ import mongoose from 'mongoose';
 import Warranty from '../models/Warranty.js';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import User from '../models/User.js';
+import Employee from '../models/Employee.js';
+import Location from '../models/Location.js';
 import { addMonths } from '../utils/parseWarrantyText.js';
 import { sendWarrantyClaimConfirmationEmail, sendWarrantyClaimStatusUpdateEmail } from '../libs/emailHelper.js';
+import { validateLocationForUser, getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
 
 /**
  * Sinh mã bảo hành.
@@ -147,6 +152,7 @@ export const getWarrantyById = async (req, res) => {
             .populate('productId', 'sku name image')
             .populate('orderId', 'code createdAt')
             .populate('customerId', 'name phone type')
+            .populate('locationId', 'code name address phone')
             .lean();
 
         if (!warranty) {
@@ -164,6 +170,7 @@ export const getWarrantyById = async (req, res) => {
                 isExpired,
                 canClaim: !isExpired && !hasPendingClaim,
                 hasPendingClaim,
+                location: warranty.locationId,
             },
         });
     } catch (error) {
@@ -178,7 +185,7 @@ export const getWarrantyById = async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 // 4. Danh sách bảo hành (Admin/Manager)
 // GET /api/warranties
-// Query: page, limit, status, orderCode, productId, customerId, dateFrom, dateTo
+// Query: page, limit, status, orderCode, productId, customerId, dateFrom, dateTo, locationId
 // ────────────────────────────────────────────────────────────────────────
 export const getWarranties = async (req, res) => {
     try {
@@ -191,9 +198,31 @@ export const getWarranties = async (req, res) => {
             customerId,
             dateFrom,
             dateTo,
+            locationId,
         } = req.query;
 
         const filter = { isDeleted: false };
+
+        // Phân quyền theo chi nhánh
+        const user = await User.findById(req.user._id).populate('roles', 'name').lean();
+        const roleNames = user?.roles?.map((r) => r.name) || [];
+        const isAdmin = roleNames.includes('admin');
+
+        if (!isAdmin) {
+            // Non-admin: chỉ xem được bảo hành tại chi nhánh được phân
+            const { allowedIds } = await validateLocationForUser(req.user._id, null);
+            if (allowedIds === null) {
+                // User có role nhưng không có Employee record
+                filter.locationId = { $in: [] };
+            } else if (allowedIds.length > 0) {
+                filter.locationId = { $in: allowedIds };
+            } else {
+                filter.locationId = { $in: [] };
+            }
+        } else if (locationId) {
+            // Admin: có thể filter theo location cụ thể
+            filter.locationId = new mongoose.Types.ObjectId(locationId);
+        }
 
         if (status) {
             if (status === 'active') {
@@ -246,6 +275,7 @@ export const getWarranties = async (req, res) => {
                 .populate('productId', 'sku name image')
                 .populate('orderId', 'code createdAt')
                 .populate('customerId', 'name phone')
+                .populate('locationId', 'code name address')
                 .lean(),
             Warranty.countDocuments(filter),
         ]);
@@ -288,6 +318,12 @@ export const getWarranties = async (req, res) => {
                     code: w.orderId?.code || w.orderCode,
                     createdAt: w.orderId?.createdAt,
                 },
+                location: {
+                    _id: w.locationId?._id,
+                    code: w.locationId?.code || '',
+                    name: w.locationId?.name || '',
+                    address: w.locationId?.address || '',
+                },
                 createdAt: w.createdAt,
             };
         });
@@ -316,7 +352,7 @@ export const getWarranties = async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 // 5. Danh sách TẤT CẢ yêu cầu bảo hành (cho Admin – flatten claims)
 // GET /api/warranties/claims
-// Query: page, limit, claimStatus, reason, orderCode, dateFrom, dateTo, search
+// Query: page, limit, claimStatus, reason, orderCode, dateFrom, dateTo, search, locationId
 // ────────────────────────────────────────────────────────────────────────
 export const getAllClaims = async (req, res) => {
     try {
@@ -329,6 +365,7 @@ export const getAllClaims = async (req, res) => {
             dateFrom,
             dateTo,
             search,
+            locationId,
         } = req.query;
 
         const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -336,6 +373,25 @@ export const getAllClaims = async (req, res) => {
 
         // Build match filter
         const matchFilter = { isDeleted: false };
+
+        // Phân quyền theo chi nhánh
+        const user = await User.findById(req.user._id).populate('roles', 'name').lean();
+        const roleNames = user?.roles?.map((r) => r.name) || [];
+        const isAdmin = roleNames.includes('admin');
+
+        if (!isAdmin) {
+            const { allowedIds } = await validateLocationForUser(req.user._id, null);
+            if (allowedIds === null) {
+                matchFilter.locationId = { $in: [] };
+            } else if (allowedIds.length > 0) {
+                matchFilter.locationId = { $in: allowedIds };
+            } else {
+                matchFilter.locationId = { $in: [] };
+            }
+        } else if (locationId) {
+            matchFilter.locationId = new mongoose.Types.ObjectId(locationId);
+        }
+
         if (orderCode) {
             matchFilter.orderCode = { $regex: orderCode, $options: 'i' };
         }
@@ -410,6 +466,16 @@ export const getAllClaims = async (req, res) => {
                     },
                 },
                 { $unwind: { path: '$productInfo', preserveNullAndEmptyArrays: true } },
+                // Lookup location
+                {
+                    $lookup: {
+                        from: 'locations',
+                        localField: 'locationId',
+                        foreignField: '_id',
+                        as: 'locationInfo',
+                    },
+                },
+                { $unwind: { path: '$locationInfo', preserveNullAndEmptyArrays: true } },
                 // Project fields
                 {
                     $project: {
@@ -429,6 +495,9 @@ export const getAllClaims = async (req, res) => {
                         'productInfo.name': 1,
                         'productInfo.sku': 1,
                         'productInfo.image': 1,
+                        'locationInfo.code': 1,
+                        'locationInfo.name': 1,
+                        'locationInfo.address': 1,
                     },
                 },
             ]),
@@ -479,6 +548,12 @@ export const getAllClaims = async (req, res) => {
                 isExpired,
                 customerName: w.claims.customerName || w.customerName || '',
                 customerPhone: w.claims.customerPhone || w.customerPhone || '',
+                location: {
+                    _id: w.locationId,
+                    code: w.locationInfo?.code || '',
+                    name: w.locationInfo?.name || '',
+                    address: w.locationInfo?.address || '',
+                },
                 claim: {
                     claimCode: w.claims.claimCode,
                     reason: w.claims.reason,
@@ -525,19 +600,10 @@ export const updateWarrantyClaim = async (req, res) => {
     try {
         const userId = req.user?._id;
         const { id, claimCode } = req.params;
-        const { status, resolutionNotes } = req.body || {};
+        const { status, resolutionNotes, reason, description, customerName, customerPhone, customerEmail, customerAddress, notes } = req.body || {};
 
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'ID bảo hành không hợp lệ' });
-        }
-
-        if (!status) {
-            return res.status(400).json({ message: 'Vui lòng chọn trạng thái' });
-        }
-
-        const validStatuses = ['pending', 'approved', 'rejected', 'completed'];
-        if (!validStatuses.includes(status)) {
-            return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
         }
 
         const warranty = await Warranty.findOne({ _id: id, isDeleted: false });
@@ -550,47 +616,62 @@ export const updateWarrantyClaim = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy yêu cầu bảo hành' });
         }
 
-        const oldStatus = claim.status;
+        // Nếu có truyền status → cập nhật trạng thái
+        if (status !== undefined) {
+            const validStatuses = ['pending', 'approved', 'rejected', 'completed'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
+            }
 
-        // Cập nhật claim
-        claim.status = status;
-        if (resolutionNotes !== undefined) {
-            claim.resolutionNotes = String(resolutionNotes).trim().slice(0, 1000);
-        }
+            const oldStatus = claim.status;
+            claim.status = status;
+            if (resolutionNotes !== undefined) {
+                claim.resolutionNotes = String(resolutionNotes).trim().slice(0, 1000);
+            }
 
-        if (['approved', 'rejected', 'completed'].includes(status)) {
-            claim.resolvedAt = new Date();
-            claim.resolvedBy = userId;
-        }
+            if (['approved', 'rejected', 'completed'].includes(status)) {
+                claim.resolvedAt = new Date();
+                claim.resolvedBy = userId;
+            }
 
-        // Nếu tất cả claims đều đã xử lý xong → cập nhật lại status warranty
-        const allResolved = warranty.claims.every((c) => c.status !== 'pending');
-        if (allResolved) {
-            warranty.status = 'active';
-        }
-
-        await warranty.save();
-
-        // Gửi email thông báo cho khách khi trạng thái thay đổi (trừ pending)
-        if (oldStatus !== status && status !== 'pending') {
-            const customerEmail = claim.customerEmail || warranty.customerPhone; // fallback
-            if (customerEmail && typeof customerEmail === 'string' && customerEmail.includes('@')) {
-                try {
-                    await sendWarrantyClaimStatusUpdateEmail({
-                        toEmail: customerEmail,
-                        customerName: claim.customerName || warranty.customerName || 'Quý khách',
-                        warrantyCode: warranty.warrantyCode,
-                        claimCode: claim.claimCode,
-                        productName: warranty.productSnapshot?.name || '',
-                        oldStatus,
-                        newStatus: status,
-                        resolutionNotes: claim.resolutionNotes || '',
-                    });
-                } catch (emailErr) {
-                    console.error('Gửi email cập nhật trạng thái BH thất bại:', emailErr.message);
+            // Gửi email thông báo
+            if (oldStatus !== status && status !== 'pending') {
+                const customerEmailVal = claim.customerEmail || warranty.customerPhone;
+                if (customerEmailVal && typeof customerEmailVal === 'string' && customerEmailVal.includes('@')) {
+                    try {
+                        await sendWarrantyClaimStatusUpdateEmail({
+                            toEmail: customerEmailVal,
+                            customerName: claim.customerName || warranty.customerName || 'Quý khách',
+                            warrantyCode: warranty.warrantyCode,
+                            claimCode: claim.claimCode,
+                            productName: warranty.productSnapshot?.name || '',
+                            oldStatus,
+                            newStatus: status,
+                            resolutionNotes: claim.resolutionNotes || '',
+                        });
+                    } catch (emailErr) {
+                        console.error('Gửi email cập nhật trạng thái BH thất bại:', emailErr.message);
+                    }
                 }
             }
         }
+
+        // Cập nhật các trường khác (sửa phiếu)
+        if (reason !== undefined) {
+            const validReasons = ['product_damage', 'product_defect', 'battery_leak', 'charging_issue', 'other'];
+            if (!validReasons.includes(reason)) {
+                return res.status(400).json({ message: 'Lý do bảo hành không hợp lệ' });
+            }
+            claim.reason = reason;
+        }
+        if (description !== undefined) claim.description = String(description).trim().slice(0, 1000);
+        if (customerName !== undefined) claim.customerName = String(customerName).trim().slice(0, 100);
+        if (customerPhone !== undefined) claim.customerPhone = String(customerPhone).trim().slice(0, 20);
+        if (customerEmail !== undefined) claim.customerEmail = String(customerEmail).trim().slice(0, 100);
+        if (customerAddress !== undefined) claim.customerAddress = String(customerAddress).trim().slice(0, 300);
+        if (notes !== undefined) claim.notes = String(notes).trim().slice(0, 500);
+
+        await warranty.save();
 
         return res.status(200).json({
             success: true,
@@ -700,9 +781,91 @@ export const getWarrantyStats = async (req, res) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────
-// 9. Tạo phiếu bảo hành (Admin tự tạo)
+// 9. Thống kê phiếu yêu cầu bảo hành (Claims)
+// GET /api/warranties/claims/stats
+// ────────────────────────────────────────────────────────────────────────
+export const getClaimStats = async (req, res) => {
+    try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Đếm số lượng claims theo từng trạng thái
+        // Sử dụng aggregation để đếm claims trong tất cả warranties
+        const [
+            totalClaims,
+            pendingClaims,
+            approvedClaims,
+            completedClaims,
+            rejectedClaims,
+            claimsThisMonth,
+        ] = await Promise.all([
+            // Tổng số claims
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $count: 'total' },
+            ]),
+            // Claims đang chờ xử lý
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $match: { 'claims.status': 'pending' } },
+                { $count: 'pending' },
+            ]),
+            // Claims đã duyệt
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $match: { 'claims.status': 'approved' } },
+                { $count: 'approved' },
+            ]),
+            // Claims hoàn thành
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $match: { 'claims.status': 'completed' } },
+                { $count: 'completed' },
+            ]),
+            // Claims bị từ chối
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $match: { 'claims.status': 'rejected' } },
+                { $count: 'rejected' },
+            ]),
+            // Claims trong tháng này
+            Warranty.aggregate([
+                { $match: { isDeleted: false } },
+                { $unwind: '$claims' },
+                { $match: { 'claims.createdAt': { $gte: startOfMonth } } },
+                { $count: 'thisMonth' },
+            ]),
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                totalClaims: totalClaims?.total || 0,
+                pendingClaims: pendingClaims?.pending || 0,
+                approvedClaims: approvedClaims?.approved || 0,
+                completedClaims: completedClaims?.completed || 0,
+                rejectedClaims: rejectedClaims?.rejected || 0,
+                claimsThisMonth: claimsThisMonth?.thisMonth || 0,
+            },
+        });
+    } catch (error) {
+        console.error('getClaimStats error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi lấy thống kê phiếu bảo hành',
+            error: error.message,
+        });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// 10. Tạo phiếu bảo hành (Admin/Manager/Seller)
 // POST /api/warranties/create-claim
-// Body: { orderCode, productId, reason, description, customerName, customerPhone, customerEmail, customerAddress, notes }
+// Body: { orderCode, productId, reason, description, customerName, customerPhone, customerEmail, customerAddress, notes, locationId }
 // ────────────────────────────────────────────────────────────────────────
 export const createWarrantyClaim = async (req, res) => {
     try {
@@ -717,7 +880,55 @@ export const createWarrantyClaim = async (req, res) => {
             customerEmail,
             customerAddress,
             notes,
+            locationId,
         } = req.body || {};
+
+        // Kiểm tra role của user
+        const user = await User.findById(userId).populate('roles', 'name').lean();
+        const roleNames = user?.roles?.map((r) => r.name) || [];
+        const isAdmin = roleNames.includes('admin');
+
+        // Xác định locationId
+        let resolvedLocationId = null;
+
+        if (isAdmin) {
+            // Admin: bắt buộc phải chọn cơ sở bảo hành
+            if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
+                return res.status(400).json({ message: 'Admin phải chọn cơ sở bảo hành' });
+            }
+            // Verify location tồn tại
+            const location = await Location.findById(locationId).lean();
+            if (!location) {
+                return res.status(404).json({ message: 'Không tìm thấy cơ sở bảo hành' });
+            }
+            resolvedLocationId = new mongoose.Types.ObjectId(locationId);
+        } else {
+            // Manager/Seller: lấy cơ sở được phân của nhân viên
+            console.log('[createWarrantyClaim] userId:', userId);
+            
+            const employee = await Employee.findOne({ user: userId, isDeleted: { $ne: true } }).lean();
+            console.log('[createWarrantyClaim] employee:', employee);
+            
+            if (!employee) {
+                return res.status(403).json({
+                    message: 'Không tìm thấy thông tin nhân viên. Vui lòng liên hệ quản lý.',
+                });
+            }
+
+            const { allowedIds } = await validateLocationForUser(userId, null);
+            console.log('[createWarrantyClaim] allowedIds:', allowedIds);
+            
+            if (!allowedIds || allowedIds.length === 0) {
+                return res.status(403).json({
+                    message: 'Bạn không được phân công vào chi nhánh nào. Liên hệ quản lý.',
+                });
+            }
+
+            // Ưu tiên primaryLocation, fallback chi nhánh đầu tiên được phép
+            resolvedLocationId = employee.primaryLocation
+                ? new mongoose.Types.ObjectId(employee.primaryLocation)
+                : new mongoose.Types.ObjectId(allowedIds[0]);
+        }
 
         if (!orderCode || typeof orderCode !== 'string' || orderCode.trim().length < 3) {
             return res.status(400).json({ message: 'Mã hóa đơn không hợp lệ' });
@@ -794,10 +1005,13 @@ export const createWarrantyClaim = async (req, res) => {
                 warrantyEndDate: warrantyEndDate,
                 warrantyMonths: warrantyMonths || 12,
                 status: 'claimed',
+                locationId: resolvedLocationId,
             });
             await warranty.save();
         } else {
             warranty.status = 'claimed';
+            warranty.locationId = resolvedLocationId;
+            await warranty.save();
         }
 
         const claimCode = await generateClaimCode();
@@ -849,12 +1063,102 @@ export const createWarrantyClaim = async (req, res) => {
                 claimCode: savedClaim.claimCode,
                 claim: savedClaim,
                 createdBy: userId,
+                locationId: resolvedLocationId,
             },
         });
     } catch (error) {
         console.error('createWarrantyClaim error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi tạo phiếu bảo hành',
+            error: error.message,
+        });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// 10. Cập nhật thông tin bảo hành (Admin)
+// PUT /api/warranties/:id
+// Body: { warrantyEndDate, status }
+// ────────────────────────────────────────────────────────────────────────
+export const updateWarranty = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { warrantyEndDate, status, notes } = req.body || {};
+
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID bảo hành không hợp lệ' });
+        }
+
+        const warranty = await Warranty.findOne({ _id: id, isDeleted: false });
+        if (!warranty) {
+            return res.status(404).json({ message: 'Không tìm thấy bảo hành' });
+        }
+
+        if (status) {
+            const validStatuses = ['active', 'claimed', 'expired'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
+            }
+            warranty.status = status;
+        }
+
+        if (warrantyEndDate) {
+            const endDate = new Date(warrantyEndDate);
+            if (isNaN(endDate.getTime())) {
+                return res.status(400).json({ message: 'Ngày hết hạn không hợp lệ' });
+            }
+            warranty.warrantyEndDate = endDate;
+        }
+
+        if (notes !== undefined) {
+            warranty.notes = String(notes).trim().slice(0, 500);
+        }
+
+        await warranty.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Cập nhật bảo hành thành công',
+            data: { warranty },
+        });
+    } catch (error) {
+        console.error('updateWarranty error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi cập nhật bảo hành',
+            error: error.message,
+        });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// 11. Xóa mềm bảo hành (Admin)
+// DELETE /api/warranties/:id
+// ────────────────────────────────────────────────────────────────────────
+export const deleteWarranty = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID bảo hành không hợp lệ' });
+        }
+
+        const warranty = await Warranty.findOne({ _id: id, isDeleted: false });
+        if (!warranty) {
+            return res.status(404).json({ message: 'Không tìm thấy bảo hành' });
+        }
+
+        warranty.isDeleted = true;
+        warranty.deletedAt = new Date();
+        await warranty.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Xóa bảo hành thành công',
+        });
+    } catch (error) {
+        console.error('deleteWarranty error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi xóa bảo hành',
             error: error.message,
         });
     }

@@ -132,7 +132,7 @@ const QuickActions = () => (
                 <span className="text-xs font-medium text-center">Thu cũ</span>
             </Link>
             <Link
-                to="/admin/warranties/create"
+                to="/admin/warranties"
                 className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-error/5 hover:border-error/30 transition-all"
             >
                 <div className="p-2 rounded-lg bg-error/10 text-error">

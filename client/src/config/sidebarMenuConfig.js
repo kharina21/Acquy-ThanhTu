@@ -57,12 +57,8 @@ export const SIDEBAR_MENU_ITEMS = [
         icon: ShieldCheck,
         label: 'Bảo hành',
         ariaLabel: 'Quản lý bảo hành',
-        activePaths: ['/admin/warranties', '/admin/warranties/create'],
+        activePaths: ['/admin/warranties'],
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
-        subItems: [
-            { id: 'warranty-list', to: '/admin/warranties', label: 'Danh sách yêu cầu' },
-            { id: 'warranty-create', to: '/admin/warranties/create', label: 'Tạo phiếu bảo hành' },
-        ],
     },
     {
         id: 'battery-trade-in',

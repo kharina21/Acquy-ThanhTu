@@ -46,8 +46,7 @@ import BatteryTradeInMinePage from '../pages/BatteryTradeInMinePage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 import ContactPage from '../pages/ContactPage';
 import WarrantyLookupPage from '../pages/WarrantyLookupPage';
-import AdminWarrantyPage from '../pages/AdminWarrantyPage';
-import AdminWarrantyCreatePage from '../pages/AdminWarrantyCreatePage';
+import WarrantyManagementPage from '../pages/WarrantyManagementPage';
 
 // Dashboards
 import AdminDashboard from '../components/dashboard/AdminDashboard';
@@ -278,11 +277,7 @@ export const AppRoutes = () => {
                         />
                         <Route
                             path='/admin/warranties'
-                            element={<AdminWarrantyPage />}
-                        />
-                        <Route
-                            path='/admin/warranties/create'
-                            element={<AdminWarrantyCreatePage />}
+                            element={<WarrantyManagementPage />}
                         />
                     </Route>
 
