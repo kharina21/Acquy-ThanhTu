@@ -7,8 +7,11 @@ import {
     getWarranties,
     getAllClaims,
     updateWarrantyClaim,
+    updateWarranty,
+    deleteWarranty,
     getWarrantiesByOrderCode,
     getWarrantyStats,
+    getClaimStats,
     createWarrantyClaim,
 } from '../controllers/warrantyController.js';
 
@@ -54,6 +57,16 @@ router.get(
 router.get('/stats', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getWarrantyStats);
 
 /**
+ * GET /api/warranties/claims/stats
+ * Thống kê phiếu yêu cầu bảo hành – Admin/Manager/Seller/Staff
+ */
+router.get(
+    '/claims/stats',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    getClaimStats,
+);
+
+/**
  * GET /api/warranties/order/:orderCode
  * Tất cả bảo hành của một hóa đơn – Admin/Manager/Seller/Staff
  */
@@ -92,6 +105,27 @@ router.put(
     '/:id/claims/:claimCode',
     hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     updateWarrantyClaim,
+);
+
+/**
+ * PUT /api/warranties/:id
+ * Cập nhật thông tin bảo hành – Admin/Manager
+ * Body: { warrantyEndDate, status, notes }
+ */
+router.put(
+    '/:id',
+    hasRole('admin', 'manager', 'Quản lý chi nhánh'),
+    updateWarranty,
+);
+
+/**
+ * DELETE /api/warranties/:id
+ * Xóa mềm bảo hành – Admin
+ */
+router.delete(
+    '/:id',
+    hasRole('admin'),
+    deleteWarranty,
 );
 
 export default router;

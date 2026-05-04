@@ -1,7 +1,8 @@
 import { UserRoundPlus, Eye, EyeOff } from 'lucide-react';
 import { createUser } from '@/services/userService';
 import { getAssignableRoleOptionsForUser } from '@/config/roleConfig';
-import React, { useState } from 'react';
+import { getLocations } from '@/services/locationService';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -56,6 +57,8 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
     const [showPassword, setShowPassword] = useState(false);
     const [roleSelected, setRoleSelected] = useState(''); // Mỗi user chỉ 1 vai trò
     const [serverError, setServerError] = useState('');
+    const [locations, setLocations] = useState([]);
+    const [locationSelected, setLocationSelected] = useState('');
 
     const {
         register,
@@ -93,6 +96,16 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                 ...data,
                 roles: [roleSelected],
             };
+
+            // Thêm locationId cho seller/manager/warehouse_manager roles
+            const rolesRequiringBranch = ['seller', 'manager', 'warehouse_manager'];
+            if (rolesRequiringBranch.includes(roleSelected)) {
+                if (!locationSelected) {
+                    setServerError('Vui lòng chọn cơ sở cho nhân viên');
+                    return;
+                }
+                formData.locationId = locationSelected;
+            }
 
             const res = await createUser(formData);
             if (res.success) {
@@ -152,6 +165,25 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
             }
         }
     };
+
+    // Fetch locations for branch selection
+    const fetchLocations = async () => {
+        try {
+            const res = await getLocations();
+            if (res.success && res.data?.locations) {
+                setLocations(res.data.locations.filter((l) => l.isActive !== false));
+            }
+        } catch (error) {
+            console.error('Error fetching locations:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (showCreateModal) {
+            fetchLocations();
+        }
+    }, [showCreateModal]);
+
     return (
         <div className="flex justify-between items-center mb-6">
             <div>
@@ -164,6 +196,7 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                     onClick={() => {
                         reset();
                         setRoleSelected('');
+                        setLocationSelected('');
                         setServerError('');
                         setShowCreateModal(true);
                     }}
@@ -311,7 +344,10 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                                     <select
                                         className="select select-bordered w-full"
                                         value={roleSelected}
-                                        onChange={(e) => setRoleSelected(e.target.value)}
+                                        onChange={(e) => {
+                                            setRoleSelected(e.target.value);
+                                            setLocationSelected(''); // Reset location when role changes
+                                        }}
                                     >
                                         <option value="">-- Chọn vai trò --</option>
                                         {getAssignableRoleOptionsForUser(roles, null).map((role) => (
@@ -342,6 +378,33 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                                 </div>
                             </div>
 
+                            {/* Branch selection for seller, manager, and warehouse_manager roles */}
+                            {roleSelected && ['seller', 'manager', 'warehouse_manager'].includes(roleSelected) && (
+                                <div>
+                                    <label className="label">
+                                        <span className="label-text font-semibold">Cơ sở <span className='text-error'>*</span></span>
+                                    </label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={locationSelected}
+                                        onChange={(e) => setLocationSelected(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">-- Chọn cơ sở --</option>
+                                        {locations.map((location) => (
+                                            <option key={location._id} value={location._id}>
+                                                {location.name} ({location.code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <label className="label">
+                                        <span className="label-text-alt text-base-content/60">
+                                            Nhân viên sẽ được phân công làm việc tại cơ sở được chọn
+                                        </span>
+                                    </label>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="label cursor-pointer">
@@ -368,6 +431,7 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                                         setShowCreateModal(false);
                                         reset();
                                         setRoleSelected('');
+                                        setLocationSelected('');
                                         setServerError('');
                                     }}
                                 >
@@ -390,6 +454,7 @@ const Header = ({ roles, triggerRefresh, title = 'Quản lý người dùng', su
                         <button onClick={() => {
                             reset();
                             setRoleSelected('');
+                            setLocationSelected('');
                             setServerError('');
                         }}>close</button>
                     </form>

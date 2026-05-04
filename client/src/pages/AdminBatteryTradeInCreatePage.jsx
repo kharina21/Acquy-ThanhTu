@@ -231,8 +231,8 @@ export default function AdminBatteryTradeInCreatePage() {
     const inputError = (key) => errors[key] ? 'border-red-500 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200';
 
     return (
-        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-            <div className="bg-white border-b px-6 py-4 flex items-center gap-4 shrink-0">
+        <div className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="bg-white border-b px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
                 <button
                     onClick={() => navigate('/admin/battery-trade-in')}
                     className="p-2 hover:bg-gray-100 rounded-lg transition"
@@ -245,7 +245,7 @@ export default function AdminBatteryTradeInCreatePage() {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="p-6">
                 <div className="max-w-4xl mx-auto pb-6">
                     <form onSubmit={handleSubmit} className="space-y-6">
                     <Card className="border-0 shadow-lg">

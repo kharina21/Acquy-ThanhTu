@@ -133,7 +133,7 @@ export function ProductSection() {
                     />
                   </div>
                 )}
-                <Link to={`/product/${product._id}`} className={`block flex-1 relative overflow-hidden rounded-lg ${isSoldOut ? 'pointer-events-none' : ''}`}>
+                <Link to={`/product/${product._id}`} className="block flex-1 relative overflow-hidden rounded-lg">
                   <div className="aspect-square bg-gray-50 flex items-center justify-center">
                     {(product.images?.[0] || product.image) ? (
                       <img

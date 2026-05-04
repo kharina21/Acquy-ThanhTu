@@ -35,11 +35,13 @@ export default function AdminLayout({ children }) {
     return (
         <div className="drawer lg:drawer-open h-screen overflow-hidden">
             <input id={DRAWER_ID} type="checkbox" className="drawer-toggle" defaultChecked />
-            <div className="drawer-content flex flex-col min-h-0">
-                <div className="shrink-0 bg-white border-b border-base-content/10">
+            <div className="drawer-content flex flex-col h-full overflow-hidden">
+                {/* Navbar — fixed at top, always visible */}
+                <div className="shrink-0 bg-white border-b border-base-content/10 z-50">
                     <AdminNavbar />
                 </div>
-                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                {/* Scrollable content area */}
+                <div className="flex-1 min-h-0 overflow-y-auto">
                     {showCreateBranchFirst ? <CreateBranchFirstPage /> : children}
                 </div>
             </div>

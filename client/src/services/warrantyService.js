@@ -21,7 +21,7 @@ export const getWarrantyById = async (id) => {
 /**
  * Danh sách bảo hành (Admin)
  * GET /api/warranties
- * Query params: page, limit, status, orderCode, productId, customerId, dateFrom, dateTo
+ * Query params: page, limit, status, orderCode, productId, customerId, dateFrom, dateTo, locationId
  */
 export const getWarranties = async (params = {}) => {
     const res = await api.get('/warranties', { params });
@@ -31,7 +31,7 @@ export const getWarranties = async (params = {}) => {
 /**
  * Danh sách TẤT CẢ yêu cầu bảo hành (Admin)
  * GET /api/warranties/claims
- * Query params: page, limit, claimStatus, reason, orderCode, dateFrom, dateTo, search
+ * Query params: page, limit, claimStatus, reason, orderCode, dateFrom, dateTo, search, locationId
  */
 export const getAllClaims = async (params = {}) => {
     const res = await api.get('/warranties/claims', { params });
@@ -67,9 +67,18 @@ export const getWarrantyStats = async () => {
 };
 
 /**
- * Tạo phiếu bảo hành (Admin)
+ * Thống kê phiếu yêu cầu bảo hành (Claims)
+ * GET /api/warranties/claims/stats
+ */
+export const getClaimStats = async () => {
+    const res = await api.get('/warranties/claims/stats');
+    return res.data;
+};
+
+/**
+ * Tạo phiếu bảo hành (Admin/Manager/Seller)
  * POST /api/warranties/create-claim
- * Body: { orderCode, productId, reason, description, customerName, customerPhone, customerAddress, notes }
+ * Body: { orderCode, productId, reason, description, customerName, customerPhone, customerAddress, notes, locationId }
  */
 export const createWarrantyClaim = async (data) => {
     const res = await api.post('/warranties/create-claim', data);
@@ -82,5 +91,42 @@ export const createWarrantyClaim = async (data) => {
  */
 export const searchOrders = async (params) => {
     const res = await api.get('/orders/search', { params });
+    return res.data;
+};
+
+/**
+ * Cập nhật thông tin bảo hành
+ * PUT /api/warranties/:id
+ * Body: { warrantyEndDate, status, notes }
+ */
+export const updateWarranty = async (id, data) => {
+    const res = await api.put(`/warranties/${id}`, data);
+    return res.data;
+};
+
+/**
+ * Xóa mềm bảo hành
+ * DELETE /api/warranties/:id
+ */
+export const deleteWarranty = async (id) => {
+    const res = await api.delete(`/warranties/${id}`);
+    return res.data;
+};
+
+/**
+ * Lấy cơ sở mặc định của user hiện tại (cho Manager/Seller tạo BH)
+ * GET /api/locations/mine
+ */
+export const getMyLocation = async () => {
+    const res = await api.get('/locations/mine');
+    return res.data;
+};
+
+/**
+ * Lấy danh sách chi nhánh đang hoạt động (cho Admin chọn cơ sở BH)
+ * GET /api/locations/active
+ */
+export const getActiveLocations = async () => {
+    const res = await api.get('/locations/active');
     return res.data;
 };
