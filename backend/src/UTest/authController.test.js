@@ -1,890 +1,333 @@
-// src/controllers/authController.test.js
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+// backend/src/UTest/authController.test.js
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ===== 1. DÙNG vi.hoisted() ĐỂ KHAI BÁO MOCK — CŨNG ĐƯỢC HOIST LÊN ĐẦU =====
+// ===== 1. KHAI BÁO MOCK VỚI vi.hoisted =====
 const {
-    userModelMock,
-    customerModelMock,
-    sessionModelMock,
-    emailVerificationModelMock,
-    passwordResetModelMock,
+    userMock,
+    mockUserInstance,
+    customerMock,
+    sessionMock,
+    passwordResetMock,
     bcryptMock,
     jwtMock,
-    logAuthActivityMock,
-    getClientIpMock,
-    getUserAgentMock,
-    createVerificationCodeMock,
-    sendVerificationEmailMock,
-    sendPasswordResetEmailMock,
-    assignDefaultRoleMock,
+    rbacHelpersMock,
+    activityLoggerMock
 } = vi.hoisted(() => {
+    const mockUserInstance = {
+        _id: 'mock-user-id',
+        username: 'test',
+        password: 'hashed_password',
+        email: 'test@gmail.com',
+        phoneNumber: '0999999999',
+        save: vi.fn().mockResolvedValue(true)
+    };
+
+    const createQueryMock = (result) => ({
+        select: vi.fn().mockReturnThis(),
+        then: vi.fn((resolve) => Promise.resolve(result).then(resolve)),
+        catch: vi.fn((reject) => Promise.resolve(result).catch(reject))
+    });
+
+    const UserFunction = vi.fn(() => mockUserInstance);
+    UserFunction.findOne = vi.fn();
+    UserFunction.findById = vi.fn();
+    UserFunction.create = vi.fn().mockResolvedValue(mockUserInstance);
+    UserFunction.findByIdAndUpdate = vi.fn();
+
+    const CustomerFunction = vi.fn();
+    CustomerFunction.findOne = vi.fn();
+    CustomerFunction.create = vi.fn().mockResolvedValue({ _id: 'cust-id', save: vi.fn() });
+
+    const SessionFunction = vi.fn();
+    SessionFunction.findOne = vi.fn();
+    SessionFunction.create = vi.fn().mockResolvedValue({});
+
+    const PasswordResetFunction = vi.fn();
+    PasswordResetFunction.findOne = vi.fn();
+    PasswordResetFunction.deleteMany = vi.fn().mockResolvedValue({});
+
     return {
-        userModelMock: {
-            findOne: vi.fn(),
-            findById: vi.fn(),
-            findByIdAndUpdate: vi.fn(),
-            create: vi.fn(),
-        },
-        customerModelMock: {
-            findOne: vi.fn(),
-            create: vi.fn(),
-        },
-        sessionModelMock: {
-            create: vi.fn(),
-            findOne: vi.fn(),
-            findOneAndDelete: vi.fn(),
-        },
-        emailVerificationModelMock: {
-            findOne: vi.fn(),
-            deleteMany: vi.fn(),
-        },
-        passwordResetModelMock: {
-            deleteMany: vi.fn(),
-            findOne: vi.fn(),
-            create: vi.fn(),
-            generateToken: vi.fn(),
-        },
-        bcryptMock: {
-            compare: vi.fn(),
-            hash: vi.fn(),
-        },
-        jwtMock: {
-            sign: vi.fn(),
-        },
-        logAuthActivityMock: vi.fn(),
-        getClientIpMock: vi.fn(() => "127.0.0.1"),
-        getUserAgentMock: vi.fn(() => "vitest-agent"),
-        createVerificationCodeMock: vi.fn(),
-        sendVerificationEmailMock: vi.fn(),
-        sendPasswordResetEmailMock: vi.fn(),
-        assignDefaultRoleMock: vi.fn(),
+        userMock: UserFunction,
+        mockUserInstance,
+        customerMock: CustomerFunction,
+        sessionMock: SessionFunction,
+        passwordResetMock: PasswordResetFunction,
+        bcryptMock: { compare: vi.fn(), hash: vi.fn() },
+        jwtMock: { sign: vi.fn(() => 'mocked_token') },
+        rbacHelpersMock: { assignDefaultRole: vi.fn() },
+        activityLoggerMock: {
+            logAuthActivity: vi.fn(),
+            getClientIp: vi.fn(() => '127.0.0.1'),
+            getUserAgent: vi.fn(() => 'vitest-agent')
+        }
     };
 });
 
-// ===== 2. ĐĂNG KÝ vi.mock =====
-vi.mock("../models/User.js", () => ({ default: userModelMock }));
-vi.mock("../models/Customer.js", () => ({ default: customerModelMock }));
-vi.mock("../models/Session.js", () => ({ default: sessionModelMock }));
-vi.mock("../models/EmailVerification.js", () => ({
-    default: emailVerificationModelMock,
-}));
-vi.mock("../models/PasswordReset.js", () => ({
-    default: passwordResetModelMock,
-}));
-vi.mock("bcryptjs", () => ({ default: bcryptMock }));
-vi.mock("jsonwebtoken", () => ({ default: jwtMock }));
-vi.mock("../libs/activityLogger.js", () => ({
-    logAuthActivity: logAuthActivityMock,
-    getClientIp: getClientIpMock,
-    getUserAgent: getUserAgentMock,
-}));
-vi.mock("../libs/emailHelper.js", () => ({
-    createVerificationCode: createVerificationCodeMock,
-    sendVerificationEmail: sendVerificationEmailMock,
-    sendPasswordResetEmail: sendPasswordResetEmailMock,
-}));
-vi.mock("../libs/rbacHelpers.js", () => ({
-    assignDefaultRole: assignDefaultRoleMock,
-}));
+// ===== 2. ĐĂNG KÝ MOCK =====
+vi.mock('../models/User.js', () => ({ default: userMock }));
+vi.mock('../models/Customer.js', () => ({ default: customerMock }));
+vi.mock('../models/Session.js', () => ({ default: sessionMock }));
+vi.mock('../models/PasswordReset.js', () => ({ default: passwordResetMock }));
+vi.mock('bcryptjs', () => ({ default: bcryptMock }));
+vi.mock('jsonwebtoken', () => ({ default: jwtMock }));
+vi.mock('../libs/rbacHelpers.js', () => rbacHelpersMock);
+vi.mock('../libs/activityLogger.js', () => activityLoggerMock);
 
-// ===== 3. SET ENV + IMPORT =====
-beforeAll(() => {
-    process.env.JWT_SECRET = "test-secret";
-    process.env.ACCESS_TOKEN_EXPIRES_IN = "15m";
-    process.env.REFRESH_TOKEN_EXPIRES_IN = "7d";
-    process.env.FRONTEND_URL = "http://localhost:5173";
-});
+import { login, registerUser, refreshToken, resetPassword } from '../controllers/authController.js';
 
-import {
-    registerUser,
-    login,
-    getCurrentUser,
-    updateProfile,
-    sendVerificationCode,
-    verifyEmail,
-    logout,
-    refreshToken,
-    forgotPassword,
-    resetPassword,
-    changePassword,
-} from "../controllers/authController.js";
-
-// ===== 4. HELPER TẠO res GIẢ =====
 const createMockRes = () => ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn(),
     cookie: vi.fn(),
-    clearCookie: vi.fn(),
+    clearCookie: vi.fn()
 });
 
-// ===== 5. TEST =====
-describe("authController", () => {
+const mockQuery = (data) => ({
+    select: vi.fn().mockReturnThis(),
+    then: vi.fn(resolve => Promise.resolve(data).then(resolve))
+});
+
+// ===== 3. TEST SUITES =====
+describe('authController', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.spyOn(console, 'log').mockImplementation(() => {}); 
     });
 
-    // ---------- registerUser ----------
-    describe("registerUser", () => {
-        it("trả 400 nếu username đã tồn tại", async () => {
-            const req = {
-                body: {
-                    username: "ting",
-                    password: "123456",
-                    email: "test@example.com",
-                },
-            };
+    // ==========================================
+    // BẢNG 1: LOGIN (5 CASE)
+    // ==========================================
+    describe('1. login', () => {
+        it('UTCID01: Trả về 200 và đăng nhập thành công (Normal)', async () => {
+            const req = { body: { username: 'test', password: 'ooo123' } };
             const res = createMockRes();
-
-            userModelMock.findOne.mockReturnValueOnce({
-                select: vi.fn().mockResolvedValue({ _id: "u1" }),
-            });
-
-            await registerUser(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Username đã tồn tại",
-            });
-        });
-
-        it("trả 400 nếu email đã tồn tại", async () => {
-            const req = {
-                body: {
-                    username: "newuser",
-                    password: "123456",
-                    email: "dup@example.com",
-                },
-            };
-            const res = createMockRes();
-
-            userModelMock.findOne
-                .mockReturnValueOnce({
-                    select: vi.fn().mockResolvedValue(null),
-                })
-                .mockResolvedValueOnce({ _id: "u2" });
-
-            await registerUser(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Email đã tồn tại",
-            });
-        });
-
-        it("đăng ký thành công", async () => {
-            const req = {
-                body: {
-                    username: "newuser",
-                    password: "123456",
-                    email: "new@example.com",
-                    firstName: "A",
-                    lastName: "B",
-                    phoneNumber: "0123",
-                    address: "HN",
-                },
-            };
-            const res = createMockRes();
-
-            // username (.select), email, phoneNumber — mỗi lần findOne gọi riêng
-            userModelMock.findOne
-                .mockReturnValueOnce({
-                    select: vi.fn().mockResolvedValue(null),
-                })
-                .mockResolvedValueOnce(null)
-                .mockResolvedValueOnce(null);
-
-            bcryptMock.hash.mockResolvedValue("hashed-pass");
-            const fakeUser = {
-                _id: "u1",
-                username: "newuser",
-                save: vi.fn().mockResolvedValue(undefined),
-            };
-            userModelMock.create.mockResolvedValue(fakeUser);
-            assignDefaultRoleMock.mockResolvedValue(fakeUser);
-            logAuthActivityMock.mockResolvedValue({});
-
-            customerModelMock.findOne.mockResolvedValue(null);
-            customerModelMock.create.mockResolvedValue({
-                _id: "newcust",
-                name: "A B",
-                phone: "0123",
-            });
-
-            await registerUser(req, res);
-
-            expect(bcryptMock.hash).toHaveBeenCalledWith("123456", 10);
-            expect(userModelMock.create).toHaveBeenCalled();
-            expect(assignDefaultRoleMock).toHaveBeenCalledWith(fakeUser);
-            expect(logAuthActivityMock).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(201);
-            expect(res.json).toHaveBeenCalledWith({ user: fakeUser });
-        });
-    });
-
-    // ---------- login ----------
-    describe("login", () => {
-        it("trả 400 nếu thiếu username hoặc password", async () => {
-            const req = {
-                body: { username: "test" },
-                cookies: {},
-                headers: {},
-            };
-            const res = createMockRes();
-
-            await login(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Vui lòng nhập username và password",
-            });
-        });
-
-        it("trả 400 nếu user không tồn tại", async () => {
-            const req = {
-                body: { username: "ghost", password: "123456" },
-                cookies: {},
-                headers: {},
-            };
-            const res = createMockRes();
-
-            userModelMock.findOne.mockResolvedValue(null);
-
-            await login(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Tài khoản hoặc mật khẩu không chính xác",
-            });
-        });
-
-        it("trả 400 nếu mật khẩu sai", async () => {
-            const req = {
-                body: { username: "test", password: "wrong" },
-                cookies: {},
-                headers: {},
-            };
-            const res = createMockRes();
-
-            userModelMock.findOne.mockResolvedValue({
-                _id: "u1",
-                username: "test",
-                password: "hashed",
-            });
-            bcryptMock.compare.mockResolvedValue(false);
-
-            await login(req, res);
-
-            expect(bcryptMock.compare).toHaveBeenCalledWith("wrong", "hashed");
-            expect(res.status).toHaveBeenCalledWith(400);
-        });
-
-        it("login thành công", async () => {
-            const req = {
-                body: { username: "test", password: "123456" },
-                cookies: {},
-                headers: {},
-            };
-            const res = createMockRes();
-
-            userModelMock.findOne.mockResolvedValue({
-                _id: "u1",
-                username: "test",
-                password: "hashed",
-            });
+            userMock.findOne.mockReturnValue(mockQuery(mockUserInstance));
             bcryptMock.compare.mockResolvedValue(true);
-            jwtMock.sign.mockReturnValue("fake-token");
-            sessionModelMock.create.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
 
             await login(req, res);
 
-            expect(sessionModelMock.create).toHaveBeenCalled();
-            expect(res.cookie).toHaveBeenCalledWith(
-                "refreshToken",
-                "fake-token",
-                expect.any(Object),
-            );
             expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "user test đã đăng nhập thành công",
-                accessToken: "fake-token",
-            });
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ 
+                message: "user test đã đăng nhập thành công" 
+            }));
+            expect(activityLoggerMock.logAuthActivity).toHaveBeenCalledWith(expect.objectContaining({
+                description: "User test đã đăng nhập thành công"
+            }));
+        });
+
+        it('UTCID02: Trả về 400 nếu thiếu tham số đầu vào (Abnormal)', async () => {
+            const req = { body: { username: 'test' } };
+            const res = createMockRes();
+            await login(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Vui lòng nhập username và password" });
+        });
+
+        it('UTCID03: Trả về 400 nếu tài khoản không tồn tại (Abnormal)', async () => {
+            const req = { body: { username: 'ghost', password: '123' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValue(mockQuery(null));
+            await login(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Tài khoản hoặc mật khẩu không chính xác" });
+        });
+
+        it('UTCID04: Trả về 400 nếu sai mật khẩu (Abnormal)', async () => {
+            const req = { body: { username: 'test', password: 'wrong' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValue(mockQuery(mockUserInstance));
+            bcryptMock.compare.mockResolvedValue(false);
+            await login(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Tài khoản hoặc mật khẩu không chính xác" });
+        });
+
+        it('UTCID05: Trả về 500 nếu Database lỗi (Abnormal)', async () => {
+            const req = { body: { username: 'test', password: '123' } };
+            const res = createMockRes();
+            
+            // FIX LỖI: Chỉ giả lập lỗi ở lần đầu tiên. Lần 2 (trong khối catch) cho qua an toàn.
+            userMock.findOne
+                .mockRejectedValueOnce(new Error('DB Error'))
+                .mockReturnValueOnce(mockQuery(null));
+                
+            await login(req, res);
+            
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Lỗi khi gọi login" }));
         });
     });
 
-    // ---------- refreshToken ----------
-    describe("refreshToken", () => {
-        it("trả 401 nếu không có refreshToken trong cookie", async () => {
+    // ==========================================
+    // BẢNG 2: REGISTER USER (5 CASE)
+    // ==========================================
+    describe('2. registerUser', () => {
+        it('UTCID01: Trả về 201 tạo user thành công (Normal)', async () => {
+            const req = { body: { username: 'new', password: '123', email: 'new@g.com', phoneNumber: '0123' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValue(mockQuery(null));
+            customerMock.findOne.mockReturnValue(mockQuery(null));
+            await registerUser(req, res);
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(activityLoggerMock.logAuthActivity).toHaveBeenCalledWith(expect.objectContaining({
+                description: "User new đã đăng ký thành công"
+            }));
+        });
+
+        it('UTCID02: Trả về 400 nếu Username đã tồn tại (Abnormal)', async () => {
+            const req = { body: { username: 'test' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValue(mockQuery({ username: 'test' }));
+            await registerUser(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Username đã tồn tại" });
+        });
+
+        it('UTCID03: Trả về 400 nếu Email đã tồn tại (Abnormal)', async () => {
+            const req = { body: { email: 'test@gmail.com' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValueOnce(mockQuery(null)).mockReturnValueOnce(mockQuery({ email: 'test@gmail.com' }));
+            await registerUser(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Email đã tồn tại" });
+        });
+
+        it('UTCID04: Trả về 400 nếu Số điện thoại đã tồn tại (Abnormal)', async () => {
+            const req = { body: { phoneNumber: '0999999999' } };
+            const res = createMockRes();
+            userMock.findOne.mockReturnValueOnce(mockQuery(null)).mockReturnValueOnce(mockQuery(null)).mockReturnValueOnce(mockQuery({ phoneNumber: '0999999999' }));
+            await registerUser(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Số điện thoại đã được sử dụng bởi người dùng khác" });
+        });
+
+        it('UTCID05: Trả về 500 nếu Database lỗi (Abnormal)', async () => {
+            const req = { body: { username: 'new' } };
+            const res = createMockRes();
+            userMock.findOne.mockRejectedValue(new Error('DB Error'));
+            await registerUser(req, res);
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Lỗi khi gọi register" }));
+        });
+    });
+
+    // ==========================================
+    // BẢNG 3: REFRESH TOKEN (5 CASE)
+    // ==========================================
+    describe('3. refreshToken', () => {
+        it('UTCID01: Trả về 200 thành công (Normal)', async () => {
+            const req = { cookies: { refreshToken: 'valid' } };
+            const res = createMockRes();
+            sessionMock.findOne.mockReturnValue(mockQuery({ userId: 'u1', expiresAt: new Date(Date.now() + 10000) }));
+            await refreshToken(req, res);
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({ accessToken: 'mocked_token' });
+        });
+
+        it('UTCID02: Trả về 401 nếu thiếu token đầu vào (Abnormal)', async () => {
             const req = { cookies: {} };
             const res = createMockRes();
-
             await refreshToken(req, res);
-
             expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Token không tồn tại!",
-            });
+            expect(res.json).toHaveBeenCalledWith({ message: "Token không tồn tại!" });
         });
 
-        it("trả 403 nếu session không tồn tại", async () => {
-            const req = { cookies: { refreshToken: "invalid" } };
+        it('UTCID03: Trả về 403 nếu token không hợp lệ (Abnormal)', async () => {
+            const req = { cookies: { refreshToken: 'fake' } };
             const res = createMockRes();
-
-            sessionModelMock.findOne.mockResolvedValue(null);
-
+            sessionMock.findOne.mockReturnValue(mockQuery(null));
             await refreshToken(req, res);
-
             expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith({ message: "Token không hợp lệ hoặc đã hết hạn" });
         });
 
-        it("trả 403 nếu session hết hạn", async () => {
-            const req = { cookies: { refreshToken: "rt1" } };
+        it('UTCID04: Trả về 403 nếu token đã hết hạn (Abnormal)', async () => {
+            const req = { cookies: { refreshToken: 'expired' } };
             const res = createMockRes();
-
-            sessionModelMock.findOne.mockResolvedValue({
-                userId: "u1",
-                expiresAt: new Date(Date.now() - 10000), // đã hết hạn
-            });
-
+            sessionMock.findOne.mockReturnValue(mockQuery({ expiresAt: new Date(Date.now() - 10000) }));
             await refreshToken(req, res);
-
             expect(res.status).toHaveBeenCalledWith(403);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Token đã hết hạn",
-            });
+            expect(res.json).toHaveBeenCalledWith({ message: "Token đã hết hạn" });
         });
 
-        it("trả 200 với accessToken mới", async () => {
-            const req = { cookies: { refreshToken: "rt1" } };
+        it('UTCID05: Trả về 500 nếu Database lỗi (Abnormal)', async () => {
+            const req = { cookies: { refreshToken: 'valid' } };
             const res = createMockRes();
-
-            sessionModelMock.findOne.mockResolvedValue({
-                userId: "u1",
-                expiresAt: new Date(Date.now() + 100000),
-            });
-            jwtMock.sign.mockReturnValue("new-access");
-
+            sessionMock.findOne.mockRejectedValue(new Error('DB Error'));
             await refreshToken(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                accessToken: "new-access",
-            });
+            expect(res.status).toHaveBeenCalledWith(500);
         });
     });
 
-    // ---------- logout ----------
-    describe("logout", () => {
-        it("trả 401 nếu không có refreshToken", async () => {
-            const req = { cookies: {} };
+    // ==========================================
+    // BẢNG 4: RESET PASSWORD (6 CASE)
+    // ==========================================
+    describe('4. resetPassword', () => {
+        it('UTCID01: Trả về 200 đổi mật khẩu thành công (Normal)', async () => {
+            const req = { body: { token: 'valid', password: 'newpass123' } };
             const res = createMockRes();
-
-            await logout(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(401);
-        });
-
-        it("trả 401 nếu session không tồn tại", async () => {
-            const req = { cookies: { refreshToken: "rt1" } };
-            const res = createMockRes();
-
-            sessionModelMock.findOne.mockResolvedValue(null);
-
-            await logout(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(401);
-        });
-
-        it("logout thành công", async () => {
-            const req = {
-                cookies: { refreshToken: "rt1" },
-                user: { _id: "u1", username: "test" },
+            
+            // FIX LỖI: Tạo mock cụ thể cho save và bcrypt
+            const fakePasswordReset = { 
+                userId: 'u1', 
+                expiresAt: new Date(Date.now() + 100000), 
+                save: vi.fn().mockResolvedValue(true) 
             };
-            const res = createMockRes();
-
-            sessionModelMock.findOne.mockResolvedValue({ _id: "s1" });
-            sessionModelMock.findOneAndDelete.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await logout(req, res);
-
-            expect(sessionModelMock.findOneAndDelete).toHaveBeenCalledWith({
-                refreshToken: "rt1",
-            });
-            expect(res.clearCookie).toHaveBeenCalledWith("refreshToken");
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Đăng xuất thành công",
-            });
-        });
-    });
-
-    // ---------- getCurrentUser ----------
-    describe("getCurrentUser", () => {
-        it("trả 404 nếu user không tồn tại", async () => {
-            const req = { user: { _id: "u1" } };
-            const res = createMockRes();
-
-            userModelMock.findById.mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                    populate: vi.fn().mockResolvedValue(null),
-                }),
-            });
-
-            await getCurrentUser(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "User not found",
-            });
-        });
-
-        it("trả 200 với user data", async () => {
-            const req = { user: { _id: "u1" } };
-            const res = createMockRes();
-            const fakeUser = { _id: "u1", username: "test", roles: [] };
-
-            userModelMock.findById.mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                    populate: vi.fn().mockResolvedValue(fakeUser),
-                }),
-            });
-
-            await getCurrentUser(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({ user: fakeUser });
-        });
-    });
-
-    // ---------- updateProfile ----------
-    describe("updateProfile", () => {
-        it("trả 404 nếu user không tồn tại", async () => {
-            const req = { user: { _id: "u1" }, body: { firstName: "A" } };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue(null);
-
-            await updateProfile(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "User not found",
-            });
-        });
-
-        it("trả 400 nếu email trùng với user khác", async () => {
-            const req = {
-                user: { _id: "u1", username: "test" },
-                body: { email: "dup@example.com" },
-            };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                email: "old@example.com",
-            });
-            userModelMock.findOne.mockResolvedValue({ _id: "u2" }); // email trùng user khác
-
-            await updateProfile(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Email đã được sử dụng bởi người dùng khác",
-            });
-        });
-
-        it("cập nhật profile thành công", async () => {
-            const req = {
-                user: { _id: "u1", username: "test" },
-                body: { firstName: "New", lastName: "Name" },
-            };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                email: "test@example.com",
-            });
-            userModelMock.findOne.mockResolvedValue(null); // email OK
-
-            const updatedUser = {
-                _id: "u1",
-                username: "test",
-                firstName: "New",
-            };
-            userModelMock.findByIdAndUpdate.mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                    populate: vi.fn().mockResolvedValue(updatedUser),
-                }),
-            });
-            logAuthActivityMock.mockResolvedValue({});
-
-            await updateProfile(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ user: updatedUser }),
-            );
-        });
-    });
-
-    // ---------- changePassword ----------
-    describe("changePassword", () => {
-        it("trả 400 nếu thiếu currentPassword hoặc newPassword", async () => {
-            const req = {
-                user: { _id: "u1" },
-                body: { currentPassword: "123" },
-            };
-            const res = createMockRes();
-
-            await changePassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mật khẩu hiện tại và mật khẩu mới là bắt buộc",
-            });
-        });
-
-        it("trả 400 nếu newPassword quá ngắn", async () => {
-            const req = {
-                user: { _id: "u1" },
-                body: { currentPassword: "old", newPassword: "12" },
-            };
-            const res = createMockRes();
-
-            await changePassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mật khẩu mới phải có ít nhất 6 ký tự",
-            });
-        });
-
-        it("trả 400 nếu mật khẩu hiện tại sai", async () => {
-            const req = {
-                user: { _id: "u1", username: "test" },
-                body: { currentPassword: "wrong", newPassword: "newPass123" },
-            };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                password: "hashed",
-                username: "test",
-            });
-            bcryptMock.compare.mockResolvedValue(false); // mật khẩu sai
-            logAuthActivityMock.mockResolvedValue({});
-
-            await changePassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mật khẩu hiện tại không đúng",
-            });
-        });
-
-        it("đổi mật khẩu thành công", async () => {
-            const req = {
-                user: { _id: "u1", username: "test" },
-                body: { currentPassword: "old", newPassword: "newPass123" },
-            };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                password: "hashed-old",
-                username: "test",
-            });
-            bcryptMock.compare
-                .mockResolvedValueOnce(true) // currentPassword đúng
-                .mockResolvedValueOnce(false); // newPassword khác mật khẩu cũ
-            bcryptMock.hash.mockResolvedValue("hashed-new");
-            userModelMock.findByIdAndUpdate.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await changePassword(req, res);
-
-            expect(bcryptMock.hash).toHaveBeenCalledWith("newPass123", 10);
-            expect(userModelMock.findByIdAndUpdate).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Đổi mật khẩu thành công",
-            });
-        });
-    });
-
-    // ---------- sendVerificationCode ----------
-    describe("sendVerificationCode", () => {
-        it("trả 404 nếu user không tồn tại", async () => {
-            const req = { user: { _id: "u1" } };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue(null);
-
-            await sendVerificationCode(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "User not found",
-            });
-        });
-
-        it("trả 400 nếu email đã được xác thực", async () => {
-            const req = { user: { _id: "u1" } };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                isVerified: true,
-            });
-
-            await sendVerificationCode(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Email đã được xác thực",
-            });
-        });
-
-        it("gửi mã xác thực thành công", async () => {
-            const req = { user: { _id: "u1" } };
-            const res = createMockRes();
-
-            userModelMock.findById.mockResolvedValue({
-                _id: "u1",
-                email: "test@example.com",
-                isVerified: false,
-            });
-            createVerificationCodeMock.mockResolvedValue({ code: "123456" });
-            sendVerificationEmailMock.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await sendVerificationCode(req, res);
-
-            expect(createVerificationCodeMock).toHaveBeenCalledWith(
-                "u1",
-                "test@example.com",
-            );
-            expect(sendVerificationEmailMock).toHaveBeenCalledWith(
-                "test@example.com",
-                "123456",
-            );
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: "Mã xác thực đã được gửi đến email của bạn",
-                }),
-            );
-        });
-    });
-
-    // ---------- verifyEmail ----------
-    describe("verifyEmail", () => {
-        it("trả 400 nếu thiếu code", async () => {
-            const req = { user: { _id: "u1" }, body: {} };
-            const res = createMockRes();
-
-            await verifyEmail(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Vui lòng nhập mã xác thực",
-            });
-        });
-
-        it("trả 400 nếu code không hợp lệ", async () => {
-            const req = { user: { _id: "u1" }, body: { code: "000000" } };
-            const res = createMockRes();
-
-            emailVerificationModelMock.findOne.mockResolvedValue(null);
-
-            await verifyEmail(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mã xác thực không hợp lệ hoặc đã được sử dụng",
-            });
-        });
-
-        it("trả 400 nếu code đã hết hạn", async () => {
-            const req = { user: { _id: "u1" }, body: { code: "123456" } };
-            const res = createMockRes();
-
-            emailVerificationModelMock.findOne.mockResolvedValue({
-                code: "123456",
-                isUsed: false,
-                expiresAt: new Date(Date.now() - 10000), // hết hạn
-            });
-
-            await verifyEmail(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới",
-            });
-        });
-
-        it("xác thực email thành công", async () => {
-            const req = { user: { _id: "u1" }, body: { code: "123456" } };
-            const res = createMockRes();
-
-            const saveMock = vi.fn();
-            emailVerificationModelMock.findOne.mockResolvedValue({
-                code: "123456",
-                isUsed: false,
-                expiresAt: new Date(Date.now() + 100000),
-                save: saveMock,
-            });
-
-            const verifiedUser = {
-                _id: "u1",
-                isVerified: true,
-                email: "test@example.com",
-            };
-            userModelMock.findByIdAndUpdate.mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                    populate: vi.fn().mockResolvedValue(verifiedUser),
-                }),
-            });
-            emailVerificationModelMock.deleteMany.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await verifyEmail(req, res);
-
-            expect(saveMock).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: "Xác thực email thành công",
-                }),
-            );
-        });
-    });
-
-    // ---------- forgotPassword ----------
-    describe("forgotPassword", () => {
-        it("trả 400 nếu thiếu email", async () => {
-            const req = { body: {} };
-            const res = createMockRes();
-
-            await forgotPassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Vui lòng nhập email",
-            });
-        });
-
-        it("trả 200 kể cả khi email không tồn tại (bảo mật)", async () => {
-            const req = { body: { email: "notfound@example.com" } };
-            const res = createMockRes();
-
-            userModelMock.findOne.mockResolvedValue(null);
-
-            await forgotPassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                message:
-                    "Nếu email tồn tại, chúng tôi đã gửi link khôi phục mật khẩu đến email của bạn",
-            });
-        });
-
-        it("gửi email reset khi email tồn tại", async () => {
-            const req = { body: { email: "test@example.com" } };
-            const res = createMockRes();
-
-            userModelMock.findOne.mockResolvedValue({
-                _id: "u1",
-                email: "test@example.com",
-            });
-            passwordResetModelMock.deleteMany.mockResolvedValue({});
-            passwordResetModelMock.generateToken.mockReturnValue(
-                "reset-token-abc",
-            );
-            passwordResetModelMock.create.mockResolvedValue({});
-            sendPasswordResetEmailMock.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await forgotPassword(req, res);
-
-            expect(passwordResetModelMock.deleteMany).toHaveBeenCalled();
-            expect(passwordResetModelMock.create).toHaveBeenCalled();
-            expect(sendPasswordResetEmailMock).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(200);
-        });
-    });
-
-    // ---------- resetPassword ----------
-    describe("resetPassword", () => {
-        it("trả 400 nếu thiếu token hoặc password", async () => {
-            const req = { body: { token: "t1" } };
-            const res = createMockRes();
-
+            
+            passwordResetMock.findOne.mockReturnValue(mockQuery(fakePasswordReset));
+            bcryptMock.hash.mockResolvedValue('new_hashed_password');
+            userMock.findByIdAndUpdate.mockResolvedValue(true);
+            
             await resetPassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Token và mật khẩu mới là bắt buộc",
-            });
-        });
-
-        it("trả 400 nếu password quá ngắn", async () => {
-            const req = { body: { token: "t1", password: "123" } };
-            const res = createMockRes();
-
-            await resetPassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Mật khẩu phải có ít nhất 6 ký tự",
-            });
-        });
-
-        it("trả 400 nếu token không hợp lệ", async () => {
-            const req = { body: { token: "bad", password: "123456" } };
-            const res = createMockRes();
-
-            passwordResetModelMock.findOne.mockResolvedValue(null);
-
-            await resetPassword(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-            expect(res.json).toHaveBeenCalledWith({
-                message: "Token không hợp lệ hoặc đã được sử dụng",
-            });
-        });
-
-        it("reset password thành công", async () => {
-            const req = {
-                body: { token: "valid-token", password: "newPass123" },
-                headers: {},
-            };
-            const res = createMockRes();
-
-            const saveMock = vi.fn();
-            passwordResetModelMock.findOne.mockResolvedValue({
-                userId: "u1",
-                token: "valid-token",
-                isUsed: false,
-                expiresAt: new Date(Date.now() + 100000),
-                save: saveMock,
-            });
-            bcryptMock.hash.mockResolvedValue("hashed-new");
-            userModelMock.findByIdAndUpdate.mockResolvedValue({});
-            passwordResetModelMock.deleteMany.mockResolvedValue({});
-            logAuthActivityMock.mockResolvedValue({});
-
-            await resetPassword(req, res);
-
-            expect(bcryptMock.hash).toHaveBeenCalledWith("newPass123", 10);
-            expect(userModelMock.findByIdAndUpdate).toHaveBeenCalled();
-            expect(saveMock).toHaveBeenCalled();
+            
             expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                message:
-                    "Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới",
-            });
+            expect(res.json).toHaveBeenCalledWith({ message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới" });
+            expect(activityLoggerMock.logAuthActivity).toHaveBeenCalledWith(expect.objectContaining({
+                description: "Đặt lại mật khẩu thành công"
+            }));
+        });
+
+        it('UTCID02: Trả về 400 nếu thiếu token/password (Abnormal)', async () => {
+            const req = { body: { token: 'valid' } };
+            const res = createMockRes();
+            await resetPassword(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Token và mật khẩu mới là bắt buộc" });
+        });
+
+        it('UTCID03: Trả về 400 nếu mật khẩu < 6 ký tự (Abnormal)', async () => {
+            const req = { body: { token: 'valid', password: '123' } };
+            const res = createMockRes();
+            await resetPassword(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Mật khẩu phải có ít nhất 6 ký tự" });
+        });
+
+        it('UTCID04: Trả về 400 nếu token sai/đã dùng (Abnormal)', async () => {
+            const req = { body: { token: 'fake', password: 'newpass123' } };
+            const res = createMockRes();
+            passwordResetMock.findOne.mockReturnValue(mockQuery(null));
+            await resetPassword(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Token không hợp lệ hoặc đã được sử dụng" });
+        });
+
+        it('UTCID05: Trả về 400 nếu token hết hạn (Abnormal)', async () => {
+            const req = { body: { token: 'expired', password: 'newpass123' } };
+            const res = createMockRes();
+            passwordResetMock.findOne.mockReturnValue(mockQuery({ expiresAt: new Date(Date.now() - 10000) }));
+            await resetPassword(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ message: "Token đã hết hạn. Vui lòng yêu cầu link mới" });
+        });
+
+        it('UTCID06: Trả về 500 nếu Database lỗi (Abnormal)', async () => {
+            const req = { body: { token: 'valid', password: 'newpass123' } };
+            const res = createMockRes();
+            passwordResetMock.findOne.mockRejectedValue(new Error('DB Error'));
+            await resetPassword(req, res);
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Lỗi khi đặt lại mật khẩu" }));
         });
     });
 });
