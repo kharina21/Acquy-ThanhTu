@@ -307,7 +307,7 @@ const ProductDetailPage = () => {
                                     {(() => {
                                         const isSoldOut = (product.totalStock ?? 0) <= 0;
                                         return (
-                                            <div className={`mb-8 ${isSoldOut ? 'opacity-75 pointer-events-none' : ''}`}>
+                                            <div className='mb-8'>
                                                 <div className='flex items-center gap-4 mb-6'>
                                                     <span className='text-gray-700 font-medium'>Số lượng:</span>
                                                     <div className='flex items-stretch rounded-lg border border-base-300 overflow-hidden bg-base-100'>
@@ -344,25 +344,37 @@ const ProductDetailPage = () => {
                                                 </div>
 
                                                 <div className='flex flex-col sm:flex-row gap-4'>
-                                                    <Button
-                                                        size='lg'
-                                                        className='flex-1'
-                                                        onClick={() => handleAddToCart(true)}
-                                                        disabled={isSoldOut}
-                                                    >
-                                                        MUA NGAY
-                                                    </Button>
+                                                    {isSoldOut ? (
+                                                        <Button
+                                                            size='lg'
+                                                            className='flex-1'
+                                                            onClick={() => navigate('/contact')}
+                                                        >
+                                                            LIÊN HỆ ĐẶT HÀNG
+                                                        </Button>
+                                                    ) : (
+                                                        <>
+                                                            <Button
+                                                                size='lg'
+                                                                className='flex-1'
+                                                                onClick={() => handleAddToCart(true)}
+                                                                disabled={isSoldOut}
+                                                            >
+                                                                MUA NGAY
+                                                            </Button>
 
-                                                    <Button
-                                                        variant='outline'
-                                                        size='lg'
-                                                        className='flex-1'
-                                                        onClick={() => handleAddToCart(false)}
-                                                        disabled={isSoldOut}
-                                                    >
-                                                        <ShoppingCart className='w-5 h-5 mr-2' />
-                                                        THÊM VÀO GIỎ
-                                                    </Button>
+                                                            <Button
+                                                                variant='outline'
+                                                                size='lg'
+                                                                className='flex-1'
+                                                                onClick={() => handleAddToCart(false)}
+                                                                disabled={isSoldOut}
+                                                            >
+                                                                <ShoppingCart className='w-5 h-5 mr-2' />
+                                                                THÊM VÀO GIỎ
+                                                            </Button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         );

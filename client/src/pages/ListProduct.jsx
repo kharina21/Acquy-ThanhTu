@@ -261,7 +261,7 @@ const ListProduct = () => {
                                                 {isSoldOut && <SoldOutOverlay className="rounded-xl" />}
                                                 <Link
                                                     to={`/product/${p._id}`}
-                                                    className={`flex-1 flex flex-col ${isSoldOut ? 'pointer-events-none' : ''}`}
+                                                    className="flex-1 flex flex-col"
                                                 >
                                                     <div className="aspect-square bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-4">
                                                         {(p.images?.[0] || p.image) ? (
@@ -281,25 +281,37 @@ const ListProduct = () => {
                                                         {p.price?.toLocaleString()}đ
                                                     </p>
                                                 </Link>
-                                                <div className={`mt-4 flex gap-2 ${isSoldOut ? 'pointer-events-none' : ''}`}>
-                                                    <Button
-                                                        size="sm"
-                                                        className="flex-1"
-                                                        onClick={() => handleAddToCart(p, true)}
-                                                        disabled={isSoldOut}
-                                                    >
-                                                        Mua ngay
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="flex-1"
-                                                        onClick={() => handleAddToCart(p)}
-                                                        disabled={isSoldOut}
-                                                    >
-                                                        <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
-                                                        Thêm
-                                                    </Button>
+                                                <div className='mt-4 flex gap-2'>
+                                                    {isSoldOut ? (
+                                                        <Button
+                                                            size="sm"
+                                                            className="flex-1"
+                                                            onClick={() => navigate('/contact')}
+                                                        >
+                                                            Liên hệ
+                                                        </Button>
+                                                    ) : (
+                                                        <>
+                                                            <Button
+                                                                size="sm"
+                                                                className="flex-1"
+                                                                onClick={() => handleAddToCart(p, true)}
+                                                                disabled={isSoldOut}
+                                                            >
+                                                                Mua ngay
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="flex-1"
+                                                                onClick={() => handleAddToCart(p)}
+                                                                disabled={isSoldOut}
+                                                            >
+                                                                <ShoppingCart className="w-4 h-4 mr-1 shrink-0" />
+                                                                Thêm
+                                                            </Button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         );

@@ -3,12 +3,14 @@ import {
     getAllClaims,
     updateWarrantyClaim,
     deleteWarranty,
-    getWarrantyStats,
     getClaimStats,
     createWarrantyClaim,
     lookupWarrantyByOrderCode,
+    getActiveLocations,
 } from '@/services/warrantyService';
 import { getProvinces, getDistricts, getWards } from '@/services/addressService';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
 import {
     Shield,
@@ -32,12 +34,19 @@ import {
     Edit,
     Trash2,
     CheckCircle,
+    Building2,
+    Filter,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (d) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return new Date(d).toLocaleDateString('vi-VN');
+};
+
+const formatDateTime = (d) => {
+    if (!d) return '—';
+    return new Date(d).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
 const formatVND = (n) => {
@@ -48,9 +57,16 @@ const formatVND = (n) => {
 // 4 trạng thái
 const CLAIM_STATUS = {
     pending:   { label: 'Chờ xử lý', badge: 'badge-warning', icon: Clock },
-    approved:  { label: 'Duyệt đơn',  badge: 'badge-info',    icon: CheckCircle },
+    approved:  { label: 'Đã duyệt',  badge: 'badge-info',    icon: CheckCircle },
     rejected:  { label: 'Từ chối',   badge: 'badge-error',   icon: X },
     completed: { label: 'Hoàn thành', badge: 'badge-success', icon: CheckCircle },
+};
+
+const CLAIM_STATUS_META = {
+    pending: { short: 'Chờ xử lý', badge: 'badge-warning' },
+    approved: { short: 'Đã duyệt', badge: 'badge-info' },
+    rejected: { short: 'Từ chối', badge: 'badge-error' },
+    completed: { short: 'Hoàn thành', badge: 'badge-success' },
 };
 
 const REASON_LABELS = {
@@ -60,6 +76,66 @@ const REASON_LABELS = {
     charging_issue: 'Không sạc được / sạc yếu',
     other: 'Lý do khác',
 };
+
+// ── Status Progress ─────────────────────────────────────────────────────
+function StatusProgress({ status }) {
+    if (status === 'rejected') {
+        return (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-error">
+                <X className="w-3.5 h-3.5" /> Từ chối
+            </span>
+        );
+    }
+    const steps = [
+        { key: 'pending', label: 'Tiếp nhận' },
+        { key: 'approved', label: 'Đã duyệt' },
+        { key: 'completed', label: 'Hoàn thành' },
+    ];
+    const order = ['pending', 'approved', 'completed'];
+    const activeIndex = order.indexOf(status);
+
+    return (
+        <div className="flex items-center w-full max-w-[220px]">
+            {steps.map((step, i) => {
+                const done = i < activeIndex;
+                const current = i === activeIndex;
+                return (
+                    <div key={step.key} className="flex items-center flex-1 min-w-0">
+                        <div className="flex flex-col items-center w-full">
+                            <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-colors
+                                    ${current ? 'border-primary bg-primary text-primary-content' : ''}
+                                    ${done ? 'border-primary bg-primary/15 text-primary' : ''}
+                                    ${!done && !current ? 'border-base-300 bg-base-200 text-base-content/40' : ''}`}
+                            >
+                                {done ? '✓' : i + 1}
+                            </div>
+                            <span className={`text-[9px] mt-1 text-center leading-tight ${current ? 'font-semibold text-primary' : 'text-base-content/50'}`}>
+                                {step.label}
+                            </span>
+                        </div>
+                        {i < steps.length - 1 && (
+                            <div className={`h-0.5 flex-1 min-w-[8px] mx-0.5 -mt-4 rounded ${i < activeIndex ? 'bg-primary' : 'bg-base-300'}`} />
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function ClaimStatusBadge({ status }) {
+    const meta = CLAIM_STATUS_META[status] || CLAIM_STATUS_META.pending;
+    return (
+        <span className={`badge ${meta.badge} gap-1 border-0`}>
+            {status === 'pending' && <Clock className="w-3 h-3" />}
+            {status === 'approved' && <CheckCircle className="w-3 h-3" />}
+            {status === 'rejected' && <X className="w-3 h-3" />}
+            {status === 'completed' && <CheckCircle className="w-3 h-3" />}
+            {meta.short}
+        </span>
+    );
+}
 
 // ── Stat Card ─────────────────────────────────────────────────────────
 function StatCard({ label, value, icon: Icon, colorClass }) {
@@ -79,12 +155,11 @@ function StatCard({ label, value, icon: Icon, colorClass }) {
 }
 
 // ── Chi tiết / Xử lý phiếu Modal ───────────────────────────────────
-function ClaimDetailModal({ claim, warrantyId, onClose, onUpdate, product, customer, orderCode, warrantyEndDate, purchaseDate }) {
+function ClaimDetailModal({ claim, warrantyId, onClose, onUpdate, product, customer, orderCode, warrantyEndDate, purchaseDate, location }) {
     const [selectedClaim, setSelectedClaim] = useState(claim);
     const [claimNotes, setClaimNotes] = useState('');
     const [updating, setUpdating] = useState(false);
 
-    // Sync khi claim prop thay đổi
     useEffect(() => {
         setSelectedClaim(claim);
     }, [claim]);
@@ -116,144 +191,195 @@ function ClaimDetailModal({ claim, warrantyId, onClose, onUpdate, product, custo
     return (
         <div className="modal modal-open">
             <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-blue-700" />
-                    Chi tiết phiếu bảo hành
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-primary" />
+                        Chi tiết yêu cầu bảo hành
+                    </h3>
+                    <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
                 <p className="text-sm text-base-content/60 mb-4">
                     Mã phiếu: <span className="font-mono font-semibold text-base-content">{selectedClaim?.claimCode}</span>
                     <span className="mx-2">|</span>
-                    Mã BH: <span className="font-mono font-semibold text-base-content">{selectedClaim?.warrantyCode}</span>
+                    Mã BH: <span className="font-mono font-semibold text-base-content">{selectedClaim?.warrantyCode || warrantyId}</span>
                 </p>
 
                 <div className="space-y-4">
                     {/* Trạng thái */}
                     <div className="flex items-center gap-3">
-                        <span className={`badge ${s.badge} gap-1 border-0 text-sm px-3 py-2`}>
-                            <IconCmp className="w-4 h-4" /> {s.label}
-                        </span>
-                        {selectedClaim?.createdAt && (
-                            <span className="text-xs text-base-content/50">Ngày tạo: {formatDate(selectedClaim.createdAt)}</span>
-                        )}
+                        <ClaimStatusBadge status={selectedClaim?.status} />
+                        <StatusProgress status={selectedClaim?.status} />
+                    </div>
+
+                    {/* Cơ sở bảo hành */}
+                    {location && (
+                        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                            <p className="text-xs font-bold uppercase text-primary mb-2 flex items-center gap-1">
+                                <Building2 className="w-3.5 h-3.5" /> Cơ sở bảo hành
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Building2 className="w-5 h-5 text-primary" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-base-content">{location.name || '—'}</p>
+                                    {location.code && (
+                                        <p className="text-sm text-base-content/60">{location.code}</p>
+                                    )}
+                                    {location.address && (
+                                        <p className="text-xs text-base-content/50 flex items-center gap-1 mt-0.5">
+                                            <MapPin className="w-3 h-3" /> {location.address}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mã & thời gian */}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="bg-base-200 rounded-xl p-3">
+                            <p className="text-xs text-base-content/50 mb-1">Mã yêu cầu</p>
+                            <p className="font-mono font-semibold text-primary">{selectedClaim?.claimCode}</p>
+                        </div>
+                        <div className="bg-base-200 rounded-xl p-3">
+                            <p className="text-xs text-base-content/50 mb-1">Mã hóa đơn</p>
+                            <p className="font-mono font-semibold text-base-content">{orderCode || selectedClaim?.orderCode || '—'}</p>
+                        </div>
+                        <div className="bg-base-200 rounded-xl p-3">
+                            <p className="text-xs text-base-content/50 mb-1">Ngày gửi yêu cầu</p>
+                            <p className="font-medium text-base-content">{formatDateTime(selectedClaim?.createdAt)}</p>
+                        </div>
+                        <div className="bg-base-200 rounded-xl p-3">
+                            <p className="text-xs text-base-content/50 mb-1">Ngày mua</p>
+                            <p className="font-medium text-base-content">{formatDate(purchaseDate || selectedClaim?.purchaseDate)}</p>
+                        </div>
                     </div>
 
                     {/* Sản phẩm */}
-                    <div className="rounded-xl bg-base-100 border border-base-200 p-4 space-y-2 text-sm">
-                        <h4 className="font-semibold text-base-content/70 text-xs uppercase tracking-wide">Sản phẩm</h4>
+                    <div className="bg-base-200 rounded-xl p-4">
+                        <p className="text-xs font-bold uppercase text-base-content/50 mb-2">Sản phẩm</p>
                         <div className="flex items-center gap-3">
-                            <div className="w-14 h-14 rounded-lg border border-base-200 overflow-hidden shrink-0 bg-base-200 flex items-center justify-center">
-                                {product?.image ? (
-                                    <img src={product.image} alt="" className="w-full h-full object-contain p-0.5" />
-                                ) : (
-                                    <Package className="w-6 h-6 text-base-content/30" />
-                                )}
-                            </div>
-                            <div>
-                                <p className="font-semibold">{product?.name || selectedClaim?.product?.name || '—'}</p>
-                                <p className="text-base-content/60 text-xs font-mono">SKU: {product?.sku || selectedClaim?.product?.sku || '—'}</p>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/60">
-                            <span>Thời gian BH: <strong>{formatDate(warrantyEndDate || selectedClaim?.warrantyEndDate)}</strong></span>
-                            <span>Ngày mua: <strong>{formatDate(purchaseDate || selectedClaim?.purchaseDate)}</strong></span>
-                            {orderCode && <span>Mã đơn: <strong className="font-mono">{orderCode}</strong></span>}
-                        </div>
-                    </div>
-
-                    {/* Khách hàng */}
-                    <div className="rounded-xl bg-base-100 border border-base-200 p-4 text-sm">
-                        <h4 className="font-semibold text-base-content/70 text-xs uppercase tracking-wide mb-2">Khách hàng</h4>
-                        <div className="space-y-1">
-                            <p className="font-medium">
-                                {customer?.name || selectedClaim?.customerName || '—'}
-                            </p>
-                            <p className="text-base-content/60 text-xs">
-                                Điện thoại: {customer?.phone || selectedClaim?.customerPhone || '—'}
-                            </p>
-                            <p className="text-base-content/60 text-xs">
-                                Hóa đơn: <span className="font-mono">{orderCode || selectedClaim?.orderCode || '—'}</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Thông tin phiếu */}
-                    <div className="rounded-xl bg-base-100 border border-base-200 p-4 text-sm space-y-2">
-                        <h4 className="font-semibold text-base-content/70 text-xs uppercase tracking-wide">Thông tin phiếu</h4>
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                                <span className="text-base-content/50">Lý do: </span>
-                                <span className="font-medium">{REASON_LABELS[selectedClaim?.reason] || selectedClaim?.reason || '—'}</span>
-                            </div>
-                            <div>
-                                <span className="text-base-content/50">Ngày gửi: </span>
-                                <span className="font-medium">{formatDate(selectedClaim?.createdAt)}</span>
-                            </div>
-                        </div>
-                        {selectedClaim?.description && (
-                            <div className="text-xs">
-                                <span className="text-base-content/50">Mô tả: </span>
-                                <span>{selectedClaim.description}</span>
-                            </div>
-                        )}
-                        {selectedClaim?.customerAddress && (
-                            <div className="text-xs">
-                                <span className="text-base-content/50">Địa chỉ: </span>
-                                <span>{selectedClaim.customerAddress}</span>
-                            </div>
-                        )}
-                        {selectedClaim?.resolutionNotes && (
-                            <div className="text-xs bg-blue-50 border border-blue-100 rounded p-2 text-blue-800">
-                                <span className="font-medium">Ghi chú xử lý: </span>{selectedClaim.resolutionNotes}
-                            </div>
-                        )}
-                        {selectedClaim?.resolvedAt && (
-                            <div className="text-xs text-base-content/50">
-                                Đã xử lý: {formatDate(selectedClaim.resolvedAt)}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Xử lý phiếu */}
-                {(selectedClaim?.status === 'pending' || selectedClaim?.status === 'approved') && (
-                    <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-                        <h4 className="font-semibold text-sm flex items-center gap-2">
-                            <FileText className="w-4 h-4" />
-                            Xử lý phiếu
-                        </h4>
-                        <div>
-                            <label className="text-xs text-base-content/60 mb-1 block">Ghi chú xử lý</label>
-                            <textarea
-                                className="textarea textarea-bordered w-full text-sm"
-                                rows={2}
-                                value={claimNotes}
-                                onChange={(e) => setClaimNotes(e.target.value)}
-                                placeholder="Nhập ghi chú..."
-                            />
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {selectedClaim?.status === 'pending' && (
-                                <>
-                                    <button className="btn btn-sm btn-success gap-1" disabled={updating} onClick={() => handleUpdateClaim('approved')}>
-                                        <CheckCircle className="w-3 h-3" /> Duyệt đơn
-                                    </button>
-                                    <button className="btn btn-sm btn-error btn-outline gap-1" disabled={updating} onClick={() => handleUpdateClaim('rejected')}>
-                                        <X className="w-3 h-3" /> Từ chối
-                                    </button>
-                                </>
+                            {product?.image && (
+                                <img
+                                    src={product.image}
+                                    alt={product.name}
+                                    className="w-14 h-14 rounded-xl object-contain border border-base-300 bg-base-100"
+                                />
                             )}
-                            <button className="btn btn-sm btn-primary gap-1" disabled={updating} onClick={() => handleUpdateClaim('completed')}>
-                                <CheckCircle className="w-3 h-3" /> Hoàn thành
-                            </button>
+                            <div>
+                                <p className="font-semibold text-base-content">{product?.name || selectedClaim?.product?.name || '—'}</p>
+                                {product?.sku && <p className="text-xs text-base-content/60 font-mono">SKU: {product.sku}</p>}
+                                <p className="text-xs text-base-content/60">BH đến: {formatDate(warrantyEndDate || selectedClaim?.warrantyEndDate)}</p>
+                            </div>
                         </div>
                     </div>
-                )}
+
+                    {/* Thông tin khách hàng */}
+                    <div className="bg-base-200 rounded-xl p-4">
+                        <p className="text-xs font-bold uppercase text-base-content/50 mb-2">Người yêu cầu BH</p>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                                <p className="text-xs text-base-content/50">Họ tên</p>
+                                <p className="font-medium">{customer?.name || selectedClaim?.customerName || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-base-content/50">Điện thoại</p>
+                                <p className="font-medium">{customer?.phone || selectedClaim?.customerPhone || '—'}</p>
+                            </div>
+                            {selectedClaim?.customerAddress && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-base-content/50">Địa chỉ</p>
+                                    <p className="font-medium">{selectedClaim.customerAddress}</p>
+                                </div>
+                            )}
+                            {selectedClaim?.notes && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-base-content/50">Ghi chú</p>
+                                    <p className="font-medium">{selectedClaim.notes}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Lý do & mô tả */}
+                    <div className="bg-base-200 rounded-xl p-4">
+                        <p className="text-xs font-bold uppercase text-base-content/50 mb-2">Lý do & Mô tả</p>
+                        <div className="space-y-2 text-sm">
+                            <div>
+                                <p className="text-xs text-base-content/50">Lý do</p>
+                                <p className="font-semibold text-error">
+                                    {REASON_LABELS[selectedClaim?.reason] || selectedClaim?.reason}
+                                </p>
+                            </div>
+                            {selectedClaim?.description && (
+                                <div>
+                                    <p className="text-xs text-base-content/50">Mô tả chi tiết</p>
+                                    <p className="text-base-content">{selectedClaim.description}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Ghi chú xử lý */}
+                    {selectedClaim?.resolutionNotes && (
+                        <div className="bg-success/5 border border-success/20 rounded-xl p-4">
+                            <p className="text-xs font-bold uppercase text-success mb-1">Ghi chú xử lý</p>
+                            <p className="text-sm text-success">{selectedClaim.resolutionNotes}</p>
+                            {selectedClaim?.resolvedAt && (
+                                <p className="text-xs text-success/70 mt-1">
+                                    Xử lý lúc: {formatDateTime(selectedClaim.resolvedAt)}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Xử lý phiếu */}
+                    {(selectedClaim?.status === 'pending' || selectedClaim?.status === 'approved') && (
+                        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                            <h4 className="font-semibold text-sm flex items-center gap-2">
+                                <FileText className="w-4 h-4" />
+                                Xử lý phiếu
+                            </h4>
+                            <div>
+                                <label className="text-xs text-base-content/60 mb-1 block">Ghi chú xử lý</label>
+                                <textarea
+                                    className="textarea textarea-bordered w-full text-sm"
+                                    rows={2}
+                                    value={claimNotes}
+                                    onChange={(e) => setClaimNotes(e.target.value)}
+                                    placeholder="Nhập ghi chú..."
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {selectedClaim?.status === 'pending' && (
+                                    <>
+                                        <button className="btn btn-sm btn-info gap-1" disabled={updating} onClick={() => handleUpdateClaim('approved')}>
+                                            <CheckCircle className="w-3 h-3" /> Duyệt đơn
+                                        </button>
+                                        <button className="btn btn-sm btn-error btn-outline gap-1" disabled={updating} onClick={() => handleUpdateClaim('rejected')}>
+                                            <X className="w-3 h-3" /> Từ chối
+                                        </button>
+                                    </>
+                                )}
+                                <button className="btn btn-sm btn-success gap-1" disabled={updating} onClick={() => handleUpdateClaim('completed')}>
+                                    <CheckCircle className="w-3 h-3" /> Hoàn thành
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <div className="modal-action">
-                    <button className="btn" onClick={onClose}>Đóng</button>
+                    <button className="btn btn-ghost btn-sm" onClick={onClose}>Đóng</button>
                 </div>
             </div>
-            <div className="modal-backdrop" onClick={onClose} />
+            <form method="dialog" className="modal-backdrop">
+                <button onClick={onClose}>close</button>
+            </form>
         </div>
     );
 }
@@ -273,7 +399,6 @@ function EditClaimModal({ claim, warrantyId, onClose, onSuccess, product, custom
 
     const [customerAddress, setCustomerAddress] = useState(claim?.customerAddress || '');
 
-    // Sync khi props thay đổi
     useEffect(() => {
         setForm({
             customerName: customer?.name || claim?.customerName || '',
@@ -322,10 +447,16 @@ function EditClaimModal({ claim, warrantyId, onClose, onSuccess, product, custom
     return (
         <div className="modal modal-open">
             <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                    <Edit className="w-5 h-5 text-blue-700" />
-                    Sửa phiếu bảo hành
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <Edit className="w-5 h-5 text-primary" />
+                        Sửa phiếu bảo hành
+                    </h3>
+                    <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
                 <p className="text-xs text-base-content/60 mb-4 font-mono">
                     {claim?.warrantyCode} — {claim?.claimCode}
                     {orderCode && <span className="ml-2">| Mã đơn: {orderCode}</span>}
@@ -351,7 +482,7 @@ function EditClaimModal({ claim, warrantyId, onClose, onSuccess, product, custom
                         <div className="grid grid-cols-2 gap-2">
                             {Object.entries(REASON_LABELS).map(([val, label]) => (
                                 <button key={val} type="button" onClick={() => setForm((f) => ({ ...f, reason: val }))}
-                                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 text-left transition-all ${form.reason === val ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-base-300 text-base-content/70 hover:border-blue-300'}`}>
+                                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 text-left transition-all ${form.reason === val ? 'border-primary bg-primary/10 text-primary' : 'border-base-300 text-base-content/70 hover:border-primary/30'}`}>
                                     {label}
                                 </button>
                             ))}
@@ -395,7 +526,9 @@ function EditClaimModal({ claim, warrantyId, onClose, onSuccess, product, custom
                     </div>
                 </form>
             </div>
-            <div className="modal-backdrop" onClick={onClose} />
+            <form method="dialog" className="modal-backdrop">
+                <button onClick={onClose}>close</button>
+            </form>
         </div>
     );
 }
@@ -444,7 +577,9 @@ function DeleteConfirmModal({ claim, warrantyId, onClose, onConfirm }) {
                     </div>
                 </div>
             </div>
-            <div className="modal-backdrop" onClick={onClose} />
+            <form method="dialog" className="modal-backdrop">
+                <button onClick={onClose}>close</button>
+            </form>
         </div>
     );
 }
@@ -456,7 +591,7 @@ function LookupOrderModal({ onClose, onSelectProduct, orderData, setOrderData, l
             <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
-                        <Search className="w-5 h-5 text-blue-700" />
+                        <Search className="w-5 h-5 text-primary" />
                         Tra cứu hóa đơn
                     </h3>
                     <button className="btn btn-sm btn-ghost btn-circle" onClick={onClose}><X className="w-4 h-4" /></button>
@@ -506,7 +641,7 @@ function LookupOrderModal({ onClose, onSelectProduct, orderData, setOrderData, l
                                     <button
                                         key={w._id || w.product?._id}
                                         onClick={() => onSelectProduct(w)}
-                                        className="w-full flex items-center gap-3 p-4 hover:bg-blue-50 transition-colors text-left"
+                                        className="w-full flex items-center gap-3 p-4 hover:bg-primary/5 transition-colors text-left"
                                     >
                                         <div className="w-12 h-12 rounded-lg border border-base-200 bg-white flex items-center justify-center shrink-0">
                                             {w.product?.image ? (
@@ -518,7 +653,7 @@ function LookupOrderModal({ onClose, onSelectProduct, orderData, setOrderData, l
                                         <div className="flex-1 min-w-0">
                                             <p className="font-semibold text-sm text-base-content truncate">{w.product?.name || '—'}</p>
                                             {w.product?.sku && <p className="text-xs text-base-content/40 font-mono">SKU: {w.product.sku}</p>}
-                                            {w.warrantyText && <p className="text-xs text-blue-600 mt-0.5">BH: {w.warrantyText}</p>}
+                                            {w.warrantyText && <p className="text-xs text-primary mt-0.5">BH: {w.warrantyText}</p>}
                                         </div>
                                         <span className="badge badge-primary badge-sm">Chọn</span>
                                     </button>
@@ -533,16 +668,18 @@ function LookupOrderModal({ onClose, onSelectProduct, orderData, setOrderData, l
                 )}
 
                 <div className="modal-action">
-                    <button className="btn" onClick={onClose}>Đóng</button>
+                    <button className="btn btn-ghost btn-sm" onClick={onClose}>Đóng</button>
                 </div>
             </div>
-            <div className="modal-backdrop" onClick={onClose} />
+            <form method="dialog" className="modal-backdrop">
+                <button onClick={onClose}>close</button>
+            </form>
         </div>
     );
 }
 
 // ── Modal: Tạo phiếu BH ──────────────────────────────────────────────
-function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderData, loadStats }) {
+function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderData, loadStats, isAdmin, allLocations, currentLocationId }) {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [result, setResult] = useState(null);
@@ -551,6 +688,11 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
     const [districts, setDistricts] = useState([]);
     const [wards, setWards] = useState([]);
     const [loadingAddress, setLoadingAddress] = useState(false);
+
+    // Chọn cơ sở bảo hành
+    const [selectedLocationId, setSelectedLocationId] = useState(
+        !isAdmin && currentLocationId ? currentLocationId : ''
+    );
 
     const [form, setForm] = useState(() => {
         const order = orderData?.order || {};
@@ -634,11 +776,16 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
         if (!form.customerPhone.trim() || !/^[\d\s\-\+]{8,15}$/.test(form.customerPhone.trim())) {
             toast.error('Vui lòng nhập số điện thoại hợp lệ.'); return;
         }
+        // Validate cơ sở bảo hành
+        if (isAdmin && !selectedLocationId) {
+            toast.error('Vui lòng chọn cơ sở bảo hành.');
+            return;
+        }
 
         setSubmitting(true);
         try {
             const productId = selectedProduct.product?._id || selectedProduct.productId;
-            const res = await createWarrantyClaim({
+            const payload = {
                 orderCode: orderData.order.code,
                 productId,
                 reason: form.reason,
@@ -648,7 +795,13 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
                 customerEmail: form.customerEmail.trim(),
                 customerAddress: buildAddress(),
                 notes: form.notes.trim(),
-            });
+            };
+            // Thêm locationId nếu là admin
+            if (isAdmin && selectedLocationId) {
+                payload.locationId = selectedLocationId;
+            }
+
+            const res = await createWarrantyClaim(payload);
             if (res?.success) {
                 setResult(res.data);
                 setSubmitted(true);
@@ -687,7 +840,9 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
                         <button className="btn btn-primary w-full" onClick={handleClose}>Đóng</button>
                     </div>
                 </div>
-                <div className="modal-backdrop" onClick={handleClose} />
+                <form method="dialog" className="modal-backdrop">
+                    <button onClick={handleClose}>close</button>
+                </form>
             </div>
         );
     }
@@ -696,7 +851,7 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
         <div className="modal modal-open">
             <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg flex items-center gap-2"><Plus className="w-5 h-5 text-blue-700" />Tạo phiếu bảo hành</h3>
+                    <h3 className="font-bold text-lg flex items-center gap-2"><Plus className="w-5 h-5 text-primary" />Tạo phiếu bảo hành</h3>
                     <button className="btn btn-sm btn-ghost btn-circle" onClick={onClose}><X className="w-4 h-4" /></button>
                 </div>
 
@@ -710,18 +865,43 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
                     </div>
                     <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm">{selectedProduct?.product?.name}</p>
-                        <p className="text-xs text-blue-600">{selectedProduct?.warrantyText || `BH ${selectedProduct?.warrantyMonths} tháng`}</p>
+                        <p className="text-xs text-primary">{selectedProduct?.warrantyText || `BH ${selectedProduct?.warrantyMonths} tháng`}</p>
                     </div>
-                    <span className="badge badge-ghost text-xs">{orderData?.order?.code}</span>
+                    <span className="badge badge-ghost text-xs font-mono">{orderData?.order?.code}</span>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* Chọn cơ sở bảo hành */}
+                    {(isAdmin || allLocations.length > 1) && (
+                        <div>
+                            <label className="label py-1">
+                                <span className="label-text text-xs font-semibold flex items-center gap-1">
+                                    <Building2 className="w-3 h-3" />
+                                    Cơ sở bảo hành <span className="text-red-500">*</span>
+                                </span>
+                            </label>
+                            <select
+                                value={selectedLocationId}
+                                onChange={(e) => setSelectedLocationId(e.target.value)}
+                                className="select select-bordered w-full h-10 text-sm"
+                                required
+                            >
+                                <option value="">-- Chọn cơ sở bảo hành --</option>
+                                {allLocations.map((loc) => (
+                                    <option key={loc._id} value={loc._id}>
+                                        {loc.code} - {loc.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <div>
                         <label className="label py-1"><span className="label-text text-xs font-semibold flex items-center gap-1"><FileText className="w-3 h-3" />Lý do BH <span className="text-red-500">*</span></span></label>
                         <div className="grid grid-cols-2 gap-2">
                             {Object.entries(REASON_LABELS).map(([val, label]) => (
                                 <button key={val} type="button" onClick={() => setForm((f) => ({ ...f, reason: val }))}
-                                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 text-left transition-all ${form.reason === val ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-base-300 text-base-content/70 hover:border-blue-300'}`}>
+                                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 text-left transition-all ${form.reason === val ? 'border-primary bg-primary/10 text-primary' : 'border-base-300 text-base-content/70 hover:border-primary/30'}`}>
                                     {label}
                                 </button>
                             ))}
@@ -759,7 +939,7 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
                         </div>
                         <div><label className="label py-1"><span className="label-text text-xs">Địa chỉ chi tiết</span></label>
                             <input type="text" value={form.addressLine} onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))} className="input input-bordered w-full h-10 text-sm" placeholder="Số nhà, đường..." /></div>
-                        {buildAddress() && <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 text-xs text-blue-800"><span className="font-medium">Địa chỉ: </span>{buildAddress()}</div>}
+                        {buildAddress() && <div className="bg-primary/5 border border-primary/20 rounded-lg p-2 text-xs text-primary"><span className="font-medium">Địa chỉ: </span>{buildAddress()}</div>}
                     </div>
 
                     <div><label className="label py-1"><span className="label-text text-xs flex items-center gap-1"><Phone className="w-3 h-3" />Ghi chú thêm</span></label>
@@ -767,28 +947,32 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
 
                     <div className="flex gap-3 pt-2">
                         <button type="button" className="btn btn-outline flex-1" onClick={onClose}>Hủy</button>
-                        <button type="submit" className="btn btn-primary flex-1 gap-2" disabled={submitting || !form.reason || !form.customerName.trim() || !form.customerPhone.trim()}>
+                        <button type="submit" className="btn btn-primary flex-1 gap-2" disabled={submitting || !form.reason || !form.customerName.trim() || !form.customerPhone.trim() || (isAdmin && !selectedLocationId)}>
                             {submitting ? <><span className="loading loading-spinner loading-xs" /> Đang tạo...</> : <><Plus className="w-4 h-4" />Tạo phiếu BH</>}
                         </button>
                     </div>
                 </form>
             </div>
-            <div className="modal-backdrop" onClick={onClose} />
+            <form method="dialog" className="modal-backdrop">
+                <button onClick={onClose}>close</button>
+            </form>
         </div>
     );
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────
 export default function WarrantyManagementPage() {
+    const { isAdmin, isManager, isSeller } = useUserRole();
+    const { currentLocationId, locations, fetchLocations } = useBranchStore();
     const [claims, setClaims] = useState([]);
-    const [pagination, setPagination] = useState(null);
+    const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState(null);
 
     // Filters
-    const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
-    const [page, setPage] = useState(1);
+    const [filters, setFilters] = useState({ search: '', status: '', locationId: '' });
+    const [appliedFilters, setAppliedFilters] = useState({ search: '', status: '', locationId: '' });
+    const [allLocations, setAllLocations] = useState([]);
 
     // Modals
     const [showLookupModal, setShowLookupModal] = useState(false);
@@ -805,24 +989,51 @@ export default function WarrantyManagementPage() {
     const [selectedOrderCode, setSelectedOrderCode] = useState(null);
     const [selectedWarrantyEndDate, setSelectedWarrantyEndDate] = useState(null);
     const [selectedPurchaseDate, setSelectedPurchaseDate] = useState(null);
+    const [selectedLocation, setSelectedLocation] = useState(null);
     const [orderData, setOrderData] = useState(null);
     const [orderCode, setOrderCode] = useState('');
     const [lookupLoading, setLookupLoading] = useState(false);
     const [lookupError, setLookupError] = useState('');
 
-    const loadClaims = async (pageNum = 1) => {
+    // Load locations dựa trên quyền
+    useEffect(() => {
+        if (isAdmin) {
+            getActiveLocations().then((res) => {
+                if (res?.success) setAllLocations(res.data?.locations || []);
+            }).catch(() => {});
+            fetchLocations();
+        } else {
+            fetchLocations({ scope: 'mine' });
+        }
+    }, [isAdmin]);
+
+    useEffect(() => {
+        if (!isAdmin && locations.length > 0) {
+            setAllLocations(locations);
+        }
+    }, [locations, isAdmin]);
+
+    const fetchClaims = async () => {
         setLoading(true);
         try {
-            const params = { page: pageNum, limit: 20 };
-            if (search.trim()) params.search = search.trim();
-            if (statusFilter) params.claimStatus = statusFilter;
+            const params = { page: pagination.page, limit: pagination.limit };
+            if (appliedFilters.search?.trim()) params.search = appliedFilters.search.trim();
+            if (appliedFilters.status) params.claimStatus = appliedFilters.status;
+            if (appliedFilters.locationId) params.locationId = appliedFilters.locationId;
+            if (!isAdmin && currentLocationId && currentLocationId !== 'all') {
+                params.locationId = currentLocationId;
+            }
 
             const res = await getAllClaims(params);
-            if (res?.success) {
-                setClaims(res.data.claims);
-                setPagination(res.data.pagination);
-                setPage(pageNum);
-            }
+            const data = res?.data;
+            setClaims(data?.claims || []);
+            const pag = data?.pagination || {};
+            setPagination((p) => ({
+                ...p,
+                page: pag.page ?? p.page,
+                total: pag.total ?? p.total,
+                totalPages: Math.max(1, pag.totalPages ?? p.totalPages),
+            }));
         } catch {
             toast.error('Lỗi khi tải danh sách phiếu bảo hành.');
         } finally {
@@ -838,18 +1049,22 @@ export default function WarrantyManagementPage() {
     };
 
     useEffect(() => {
-        loadClaims(1);
+        fetchClaims();
         loadStats();
-    }, []);
+    }, [pagination.page, appliedFilters, currentLocationId]);
 
-    const handleSearch = (e) => { e.preventDefault(); loadClaims(1); };
-
-    const goPage = (p) => {
-        if (!pagination || p < 1 || p > pagination.totalPages) return;
-        loadClaims(p);
+    const applyFilters = () => {
+        setAppliedFilters({ ...filters });
+        setPagination((p) => ({ ...p, page: 1 }));
     };
 
-    const handleAfterAction = () => { loadClaims(page); loadStats(); };
+    const clearFilters = () => {
+        setFilters({ search: '', status: '', locationId: '' });
+        setAppliedFilters({ search: '', status: '', locationId: '' });
+        setPagination((p) => ({ ...p, page: 1 }));
+    };
+
+    const handleAfterAction = () => { fetchClaims(); loadStats(); };
 
     const handleNewLookup = () => { setOrderCode(''); setOrderData(null); setSelectedProduct(null); setLookupError(''); };
 
@@ -883,124 +1098,219 @@ export default function WarrantyManagementPage() {
         setShowDetailModal(false); setShowEditModal(false); setShowDeleteModal(false);
         setSelectedProduct(null); setSelectedDetailProduct(null); setSelectedCustomer(null);
         setSelectedOrderCode(null); setSelectedWarrantyEndDate(null); setSelectedPurchaseDate(null);
+        setSelectedLocation(null);
         setOrderData(null); setOrderCode('');
         setSelectedClaim(null); setSelectedWarrantyId(null);
     };
 
     return (
-        <div className="min-h-screen bg-base-200 flex flex-col">
+        <div className="bg-base-200 flex flex-col min-h-full">
             {/* Header */}
-            <div className="bg-base-100 border-b border-base-200 px-6 py-4 shrink-0">
-                <h1 className="text-xl font-bold flex items-center gap-2">
-                    <Shield className="w-6 h-6 text-blue-700" /> Quản lý bảo hành
-                </h1>
-                <p className="text-sm text-base-content/60 mt-0.5">Danh sách phiếu yêu cầu bảo hành</p>
+            <div className="bg-base-100 border-b border-base-200 px-6 py-4 shrink-0 sticky top-0 z-10">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-bold flex items-center gap-2">
+                            <Shield className="w-6 h-6 text-blue-700" /> Quản lý bảo hành
+                        </h1>
+                        <p className="text-sm text-base-content/60 mt-0.5">Danh sách phiếu yêu cầu bảo hành</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={() => { handleNewLookup(); setShowLookupModal(true); }} className="btn btn-primary btn-sm gap-1">
+                            <Plus className="w-4 h-4" /> Tạo phiếu BH
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="p-6 space-y-6">
                 {/* Stats */}
-                {stats && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                        <StatCard label="Tổng phiếu" value={stats.totalClaims} icon={FileText} colorClass="text-primary" />
-                        <StatCard label="Chờ xử lý" value={stats.pendingClaims} icon={Clock} colorClass="text-warning" />
-                        <StatCard label="Đã duyệt" value={stats.approvedClaims} icon={CheckCircle} colorClass="text-info" />
-                        <StatCard label="Hoàn thành" value={stats.completedClaims} icon={CheckCircle} colorClass="text-success" />
-                        <StatCard label="Từ chối" value={stats.rejectedClaims} icon={X} colorClass="text-error" />
-                        <StatCard label="Tháng này" value={stats.claimsThisMonth} icon={Calendar} colorClass="text-secondary" />
-                    </div>
-                )}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <StatCard label="Tổng phiếu" value={stats?.totalClaims ?? 0} icon={FileText} colorClass="text-primary" />
+                    <StatCard label="Chờ xử lý" value={stats?.pendingClaims ?? 0} icon={Clock} colorClass="text-warning" />
+                    <StatCard label="Đã duyệt" value={stats?.approvedClaims ?? 0} icon={CheckCircle} colorClass="text-info" />
+                    <StatCard label="Hoàn thành" value={stats?.completedClaims ?? 0} icon={CheckCircle} colorClass="text-success" />
+                    <StatCard label="Từ chối" value={stats?.rejectedClaims ?? 0} icon={X} colorClass="text-error" />
+                    <StatCard label="Tháng này" value={stats?.claimsThisMonth ?? 0} icon={Calendar} colorClass="text-secondary" />
+                </div>
 
-                {/* Toolbar */}
-                <div className="bg-base-100 rounded-xl border border-base-200 p-4">
-                    <div className="flex flex-wrap items-end gap-3">
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="label py-1"><span className="label-text text-xs font-semibold">Tìm kiếm</span></label>
-                            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Mã phiếu, mã BH, mã đơn, tên, SĐT..."
-                                className="input input-bordered w-full h-10 text-sm" />
+                {/* Bộ lọc */}
+                <div className="bg-base-100 rounded-xl border border-base-200 shadow-sm overflow-hidden">
+                    <div className="bg-base-200 px-4 py-3 border-b border-base-200 flex items-center gap-2">
+                        <Filter className="w-4 h-4 text-base-content/60" />
+                        <span className="text-sm font-semibold text-base-content">Bộ lọc</span>
+                        {(filters.search || filters.status || filters.locationId || filters.reason) && (
+                            <button onClick={clearFilters} className="ml-auto text-xs text-error hover:underline">
+                                Xóa bộ lọc
+                            </button>
+                        )}
+                    </div>
+                    <div className="p-4">
+                        <div className="flex flex-wrap gap-3 items-end">
+                            <div className="flex-1 min-w-[180px]">
+                                <label className="label py-1">
+                                    <span className="label-text text-xs font-medium">Tìm kiếm</span>
+                                </label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" />
+                                    <input
+                                        type="text"
+                                        value={filters.search}
+                                        onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                                        onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+                                        placeholder="Mã BH, mã YC, tên, SĐT..."
+                                        className="input input-bordered w-full pl-9 pr-3 h-10 text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="w-40">
+                                <label className="label py-1">
+                                    <span className="label-text text-xs font-medium">Trạng thái</span>
+                                </label>
+                                <select
+                                    value={filters.status}
+                                    onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                                    className="select select-bordered w-full h-10 text-sm"
+                                >
+                                    <option value="">Tất cả</option>
+                                    <option value="pending">Chờ xử lý</option>
+                                    <option value="approved">Đã duyệt</option>
+                                    <option value="rejected">Từ chối</option>
+                                    <option value="completed">Hoàn thành</option>
+                                </select>
+                            </div>
+                            <div className="w-48">
+                                <label className="label py-1">
+                                    <span className="label-text text-xs font-medium">Cơ sở BH</span>
+                                </label>
+                                <select
+                                    value={filters.locationId}
+                                    onChange={(e) => setFilters((f) => ({ ...f, locationId: e.target.value }))}
+                                    className="select select-bordered w-full h-10 text-sm"
+                                    disabled={!isAdmin && locations.length <= 1}
+                                >
+                                    <option value="">
+                                        {!isAdmin && locations.length === 1 ? `${locations[0]?.name || locations[0]?.code || 'Cơ sở của bạn'}` : 'Tất cả cơ sở'}
+                                    </option>
+                                    {allLocations.map((loc) => (
+                                        <option key={loc._id} value={loc._id}>
+                                            {loc.code} - {loc.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button onClick={applyFilters} className="btn btn-primary btn-sm">
+                                Lọc
+                            </button>
                         </div>
-                        <div className="min-w-[160px]">
-                            <label className="label py-1"><span className="label-text text-xs font-semibold">Trạng thái</span></label>
-                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="select select-bordered w-full h-10 text-sm">
-                                <option value="">Tất cả</option>
-                                <option value="pending">Chờ xử lý</option>
-                                <option value="approved">Duyệt đơn</option>
-                                <option value="rejected">Từ chối</option>
-                                <option value="completed">Hoàn thành</option>
-                            </select>
-                        </div>
-                        <button onClick={handleSearch} className="btn btn-primary btn-sm gap-1 h-10"><Search className="w-4 h-4" /> Tìm</button>
-                        <button onClick={() => { setSearch(''); setStatusFilter(''); loadClaims(1); }} className="btn btn-outline btn-sm gap-1 h-10"><RefreshCw className="w-4 h-4" /> Reset</button>
-                        <button onClick={handleOpenLookup} className="btn btn-success gap-2 h-10 ml-auto"><Plus className="w-4 h-4" /> Tạo phiếu BH</button>
                     </div>
                 </div>
 
                 {/* Table */}
-                <div className="bg-base-100 rounded-xl border border-base-200 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="table table-sm">
-                            <thead>
-                                <tr className="bg-base-200 text-xs uppercase">
-                                    <th>Mã phiếu BH</th>
-                                    <th>Sản phẩm</th>
-                                    <th>Khách hàng</th>
-                                    <th>Lý do</th>
-                                    <th>Ngày tạo</th>
-                                    <th>Trạng thái</th>
-                                    <th className="text-right">Thao tác</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loading ? (
-                                    <tr><td colSpan={7} className="text-center py-12"><span className="loading loading-spinner loading-lg text-primary" /></td></tr>
-                                ) : claims.length === 0 ? (
-                                    <tr><td colSpan={7} className="text-center py-12">
-                                        <div className="flex flex-col items-center gap-2 text-base-content/40">
-                                            <Shield className="w-10 h-10" /><p className="text-sm">Chưa có phiếu bảo hành nào.</p>
-                                        </div>
-                                    </td></tr>
-                                ) : (
-                                    claims.map((c) => {
+                <div className="bg-base-100 rounded-xl border border-base-200 shadow-sm overflow-hidden">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-20 text-base-content/40">
+                            <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Đang tải...
+                        </div>
+                    ) : claims.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-base-content/40">
+                            <Shield className="w-12 h-12 mb-3 opacity-30" />
+                            <p className="font-medium">Không có yêu cầu bảo hành nào</p>
+                            {(filters.search || filters.status || filters.locationId || filters.reason) && (
+                                <button onClick={clearFilters} className="text-primary text-sm mt-2 hover:underline">
+                                    Xóa bộ lọc
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <>
+                            <table className="table w-full">
+                                <thead>
+                                    <tr className="bg-base-200 border-b border-base-200">
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Yêu cầu BH</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Sản phẩm</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Khách hàng</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Cơ sở</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Ngày gửi</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Trạng thái</th>
+                                        <th className="text-right px-4 py-3 text-xs font-semibold text-base-content/70 uppercase tracking-wide">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-base-200">
+                                    {claims.map((c) => {
                                         const s = CLAIM_STATUS[c.claim?.status] || {};
                                         const IconCmp = s.icon || Clock;
                                         return (
-                                            <tr key={c.claim?.claimCode} className="hover">
-                                                <td>
-                                                    <span className="font-mono text-xs font-semibold text-blue-700">{c.claim?.claimCode}</span>
-                                                    <p className="text-[10px] text-base-content/40 font-mono mt-0.5">{c.warrantyCode}</p>
+                                            <tr key={c.claim?.claimCode} className="hover:bg-base-200/50 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="space-y-0.5">
+                                                        <p className="font-mono text-sm font-semibold text-primary">
+                                                            {c.claim?.claimCode}
+                                                        </p>
+                                                        <p className="text-xs text-base-content/50">
+                                                            BH: {c.warrantyCode}
+                                                        </p>
+                                                        <p className="text-xs text-base-content/60 font-mono">
+                                                            {c.orderCode}
+                                                        </p>
+                                                    </div>
                                                 </td>
-                                                <td>
+                                                <td className="px-4 py-3">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded border border-base-200 overflow-hidden shrink-0 bg-base-200 flex items-center justify-center">
-                                                            {c.product?.image ? (
-                                                                <img src={c.product.image} alt="" className="w-full h-full object-contain p-0.5" />
-                                                            ) : (
-                                                                <Package className="w-4 h-4 text-base-content/30" />
-                                                            )}
-                                                        </div>
+                                                        {c.product?.image && (
+                                                            <img
+                                                                src={c.product.image}
+                                                                alt={c.product.name}
+                                                                className="w-8 h-8 rounded-lg object-contain border border-base-200 bg-base-200"
+                                                            />
+                                                        )}
                                                         <div className="min-w-0">
-                                                            <p className="text-sm font-medium leading-tight truncate max-w-[160px]">{c.product?.name || '—'}</p>
-                                                            <p className="text-[10px] text-base-content/40 font-mono">{c.product?.sku || '—'}</p>
+                                                            <p className="text-sm font-medium text-base-content truncate max-w-[180px]">
+                                                                {c.product?.name || '—'}
+                                                            </p>
+                                                            {c.product?.sku && (
+                                                                <p className="text-xs text-base-content/50 font-mono">{c.product.sku}</p>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td>
-                                                    <p className="text-sm">{c.customerName || '—'}</p>
-                                                    <p className="text-[10px] text-base-content/40">{c.customerPhone || '—'}</p>
+                                                <td className="px-4 py-3">
+                                                    <div className="space-y-0.5">
+                                                        <p className="text-sm font-medium text-base-content">{c.customerName || c.claim?.customerName || '—'}</p>
+                                                        <p className="text-xs text-base-content/60 flex items-center gap-1">
+                                                            <Phone className="w-3 h-3" />
+                                                            {c.customerPhone || c.claim?.customerPhone || '—'}
+                                                        </p>
+                                                    </div>
                                                 </td>
-                                                <td className="text-sm text-base-content/70 max-w-[140px] truncate">
-                                                    {REASON_LABELS[c.claim?.reason] || c.claim?.reason || '—'}
+                                                <td className="px-4 py-3">
+                                                    {c.location ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Building2 className="w-3.5 h-3.5 text-base-content/40 shrink-0" />
+                                                            <div>
+                                                                <p className="text-sm font-medium text-base-content">{c.location.name || '—'}</p>
+                                                                {c.location.code && (
+                                                                    <p className="text-xs text-base-content/50">{c.location.code}</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-sm text-base-content/40">—</span>
+                                                    )}
                                                 </td>
-                                                <td className="text-sm text-base-content/70 whitespace-nowrap">{formatDate(c.claim?.createdAt)}</td>
-                                                <td>
-                                                    <span className={`badge ${s.badge} gap-1 border-0 text-xs`}>
-                                                        <IconCmp className="w-3 h-3" /> {s.label}
-                                                    </span>
+                                                <td className="px-4 py-3">
+                                                    <p className="text-sm text-base-content">{formatDate(c.claim?.createdAt)}</p>
+                                                    <p className="text-xs text-base-content/50">{formatDateTime(c.claim?.createdAt).split(',')[1]?.trim() || ''}</p>
                                                 </td>
-                                                <td>
-                                                    <div className="flex items-center justify-end gap-1">
+                                                <td className="px-4 py-3">
+                                                    <ClaimStatusBadge status={c.claim?.status} />
+                                                    <div className="mt-1.5">
+                                                        <StatusProgress status={c.claim?.status} />
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center justify-end gap-1.5">
                                                         <button
-                                                            className="btn btn-xs btn-ghost btn-primary gap-1"
+                                                            className="btn btn-ghost btn-sm"
                                                             title="Chi tiết / Xử lý"
                                                             onClick={() => {
                                                                 setSelectedClaim(c.claim);
@@ -1010,13 +1320,14 @@ export default function WarrantyManagementPage() {
                                                                 setSelectedOrderCode(c.orderCode);
                                                                 setSelectedWarrantyEndDate(c.warrantyEndDate);
                                                                 setSelectedPurchaseDate(c.purchaseDate);
+                                                                setSelectedLocation(c.location);
                                                                 setShowDetailModal(true);
                                                             }}
                                                         >
-                                                            <Eye className="w-3 h-3" />
+                                                            <Eye className="w-4 h-4" />
                                                         </button>
                                                         <button
-                                                            className="btn btn-xs btn-ghost gap-1"
+                                                            className="btn btn-ghost btn-sm"
                                                             title="Sửa"
                                                             onClick={() => {
                                                                 setSelectedClaim(c.claim);
@@ -1027,10 +1338,10 @@ export default function WarrantyManagementPage() {
                                                                 setShowEditModal(true);
                                                             }}
                                                         >
-                                                            <Edit className="w-3 h-3" />
+                                                            <Edit className="w-4 h-4" />
                                                         </button>
                                                         <button
-                                                            className="btn btn-xs btn-ghost text-error gap-1"
+                                                            className="btn btn-ghost btn-sm text-error"
                                                             title="Xóa"
                                                             onClick={() => {
                                                                 setSelectedClaim(c.claim);
@@ -1038,37 +1349,58 @@ export default function WarrantyManagementPage() {
                                                                 setShowDeleteModal(true);
                                                             }}
                                                         >
-                                                            <Trash2 className="w-3 h-3" />
+                                                            <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
                                                 </td>
                                             </tr>
                                         );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                    })}
+                                </tbody>
+                            </table>
 
-                    {/* Pagination */}
-                    {pagination && pagination.totalPages > 0 && (
-                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-base-200 bg-base-100">
-                            <p className="text-sm text-base-content/60">Trang {pagination.page} / {pagination.totalPages} — {pagination.total} phiếu</p>
-                            <div className="flex items-center gap-1">
-                                <button className="btn btn-sm btn-outline gap-1" disabled={page <= 1} onClick={() => goPage(page - 1)}><ChevronLeft className="w-4 h-4" /></button>
-                                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((p) => {
-                                    const total = pagination.totalPages;
-                                    let show = total <= 7 || Math.abs(p - page) <= 1 || p === 1 || p === total;
-                                    if (!show) {
-                                        if (p === 2 && page > 4) return <span key={p} className="btn btn-sm btn-ghost btn-circle">...</span>;
-                                        if (p === total - 1 && page < total - 3) return <span key={p} className="btn btn-sm btn-ghost btn-circle">...</span>;
-                                        return null;
-                                    }
-                                    return <button key={p} className={`btn btn-sm ${page === p ? 'btn-primary' : 'btn-outline'}`} onClick={() => goPage(p)}>{p}</button>;
-                                })}
-                                <button className="btn btn-sm btn-outline gap-1" disabled={page >= pagination.totalPages} onClick={() => goPage(page + 1)}><ChevronRight className="w-4 h-4" /></button>
-                            </div>
-                        </div>
+                            {/* Pagination - 10 items per page */}
+                            {pagination.totalPages > 1 && (
+                                <div className="flex items-center justify-between px-4 py-3 border-t border-base-200 bg-base-200">
+                                    <p className="text-xs text-base-content/60">
+                                        Hiển thị {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} trong {pagination.total} yêu cầu
+                                    </p>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
+                                            disabled={pagination.page <= 1}
+                                            className="btn btn-ghost btn-sm"
+                                        >
+                                            ←
+                                        </button>
+                                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                                            const page = pagination.page <= 3
+                                                ? i + 1
+                                                : pagination.page >= pagination.totalPages - 2
+                                                  ? pagination.totalPages - 4 + i
+                                                  : pagination.page - 2 + i;
+                                            if (page < 1 || page > pagination.totalPages) return null;
+                                            return (
+                                                <button
+                                                    key={page}
+                                                    onClick={() => setPagination((p) => ({ ...p, page }))}
+                                                    className={`btn btn-sm ${page === pagination.page ? 'btn-primary' : 'btn-ghost'}`}
+                                                >
+                                                    {page}
+                                                </button>
+                                            );
+                                        })}
+                                        <button
+                                            onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
+                                            disabled={pagination.page >= pagination.totalPages}
+                                            className="btn btn-ghost btn-sm"
+                                        >
+                                            →
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -1079,6 +1411,7 @@ export default function WarrantyManagementPage() {
                         <li><strong>Chờ xử lý</strong> → kiểm tra → <strong>Duyệt đơn</strong> / <strong>Từ chối</strong> → <strong>Hoàn thành</strong>.</li>
                         <li>Phiếu được tạo khi khách thanh toán đơn hàng hoặc tạo thủ công tại đây.</li>
                         <li>Tìm kiếm: mã phiếu, mã BH, mã đơn, tên, SĐT khách hàng.</li>
+                        <li>Admin có thể chọn cơ sở bảo hành khi tạo phiếu mới.</li>
                     </ul>
                 </div>
             </div>
@@ -1098,6 +1431,7 @@ export default function WarrantyManagementPage() {
                 <CreateWarrantyFormModal
                     onClose={handleCloseAll} onSuccess={handleAfterAction}
                     selectedProduct={selectedProduct} orderData={orderData} loadStats={loadStats}
+                    isAdmin={isAdmin} isManager={isManager} allLocations={allLocations} currentLocationId={currentLocationId}
                 />
             )}
             {showDetailModal && selectedClaim && (

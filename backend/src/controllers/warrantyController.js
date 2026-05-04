@@ -845,12 +845,12 @@ export const getClaimStats = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                totalClaims: totalClaims?.total || 0,
-                pendingClaims: pendingClaims?.pending || 0,
-                approvedClaims: approvedClaims?.approved || 0,
-                completedClaims: completedClaims?.completed || 0,
-                rejectedClaims: rejectedClaims?.rejected || 0,
-                claimsThisMonth: claimsThisMonth?.thisMonth || 0,
+                totalClaims: totalClaims[0]?.total || 0,
+                pendingClaims: pendingClaims[0]?.pending || 0,
+                approvedClaims: approvedClaims[0]?.approved || 0,
+                completedClaims: completedClaims[0]?.completed || 0,
+                rejectedClaims: rejectedClaims[0]?.rejected || 0,
+                claimsThisMonth: claimsThisMonth[0]?.thisMonth || 0,
             },
         });
     } catch (error) {

@@ -15,9 +15,9 @@ export default function AdminSidebar() {
     });
 
     return (
-        <div className="drawer-side is-drawer-close:overflow-visible">
-            <label htmlFor={DRAWER_ID} aria-label="close sidebar" className="drawer-overlay" />
-            <div className="flex min-h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300">
+            <div className="drawer-side is-drawer-close:overflow-visible h-full">
+                <label htmlFor={DRAWER_ID} aria-label="close sidebar" className="drawer-overlay" />
+                <div className="flex h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300">
                 <ul className="w-full grow text-white space-y-1 px-2 py-4">
                     {visibleItems.map((item) =>
                         item.subItems ? (
