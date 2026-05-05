@@ -107,7 +107,7 @@
 | 99 | **Profile** | View Profile | View own profile |
 | 100 | Profile | Update Profile | Update own profile |
 | 101 | **Dashboard** | View Dashboard Stats | View revenue, paid orders, top customers, top products (filter by branch, period) |
-| 102 | Dashboard | Switch Branch | Select branch or "Tất cả chi nhánh" for aggregated view |
+| 102 | Dashboard | Switch Branch | Select active branch for admin dashboard and scoped views |
 | 103 | Orders | List Admin Orders | View orders by type: invoices, pre-orders, returns (filter by status, payment) | |
 | 104 | Orders | Create Invoice | Create in-store order (bán tại quầy) | |
 | 105 | Orders | View Order Report | View order report by date range and branch | |

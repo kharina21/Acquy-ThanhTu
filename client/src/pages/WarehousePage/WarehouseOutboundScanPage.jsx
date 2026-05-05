@@ -97,8 +97,7 @@ const WarehouseOutboundScanPage = () => {
                 limit: 50,
                 page: 1,
                 ...(queueChannelFilter && { channel: queueChannelFilter }),
-                ...(currentLocationId &&
-                    currentLocationId !== 'all' && { locationId: currentLocationId }),
+                ...(currentLocationId && { locationId: currentLocationId }),
             });
             setQueue(res?.data?.orders || []);
         } catch {
@@ -461,13 +460,9 @@ const WarehouseOutboundScanPage = () => {
                         <div className="mt-4 space-y-2 rounded-xl border border-base-300/50 bg-base-100/60 px-3 py-3 text-xs text-base-content/70 sm:px-4">
                             <p>
                                 <span className="font-medium text-base-content/80">Cơ sở đang xử lý:</span>{' '}
-                                {currentLocationId === 'all' || !currentLocationId ? (
-                                    <span className="text-base-content">Tất cả chi nhánh (admin)</span>
-                                ) : (
-                                    <span className="font-medium text-base-content">
-                                        {currentLocation?.name || currentLocation?.code || '—'}
-                                    </span>
-                                )}
+                                <span className="font-medium text-base-content">
+                                    {currentLocation?.name || currentLocation?.code || '—'}
+                                </span>
                             </p>
                             <p>
                                 <span className="font-medium text-base-content/80">Kho bán online (giao từ xa):</span>{' '}
@@ -484,7 +479,7 @@ const WarehouseOutboundScanPage = () => {
                                     <span className="text-base-content/50">Chưa cấu hình</span>
                                 )}
                             </p>
-                            {currentLocationId && currentLocationId !== 'all' && onlineLocation?._id && (
+                            {currentLocationId && onlineLocation?._id && (
                                 <p className="text-base-content/55 leading-relaxed">
                                     {String(currentLocationId) === String(onlineLocation._id)
                                         ? 'Đơn online web sẽ xuất hiện trong danh sách bên dưới (cùng đơn tại quầy của cơ sở này).'

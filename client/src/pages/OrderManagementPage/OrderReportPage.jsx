@@ -39,7 +39,7 @@ const OrderReportPage = () => {
             const params = { page, limit: 20 };
             if (dateFrom) params.dateFrom = dateFrom;
             if (dateTo) params.dateTo = dateTo;
-            if (currentLocationId && currentLocationId !== 'all') {
+            if (currentLocationId) {
                 params.locationId = currentLocationId;
             }
             const res = await getOrderReport(params);

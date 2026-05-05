@@ -38,9 +38,25 @@ export default function OrderDetailPage() {
     const [actionLoading, setActionLoading] = useState(false);
     const [cancelConfirm, setCancelConfirm] = useState(false);
     const [buyAgainLoading, setBuyAgainLoading] = useState(false);
+    /** Đợi zustand rehydrate accessToken từ localStorage (quan trọng sau redirect PayOS). */
+    const [authHydrated, setAuthHydrated] = useState(() => useAuthStore.persist?.hasHydrated?.() ?? true);
     const navigate = useNavigate();
     const addToCartServer = useCartStore((s) => s.addToCartServer);
     const loadCartFromServer = useCartStore((s) => s.loadCartFromServer);
+
+    useEffect(() => {
+        const p = useAuthStore.persist;
+        if (!p?.onFinishHydration) {
+            setAuthHydrated(true);
+            return undefined;
+        }
+        if (p.hasHydrated?.()) {
+            setAuthHydrated(true);
+            return undefined;
+        }
+        const unsub = p.onFinishHydration(() => setAuthHydrated(true));
+        return typeof unsub === 'function' ? unsub : undefined;
+    }, []);
 
     const canEdit = order && order.status !== 'cancelled' && order.paymentStatus === 'pending';
     const canCancel = order && order.status !== 'cancelled' && order.status === 'pending';
@@ -89,7 +105,14 @@ export default function OrderDetailPage() {
      * khiến effect tải đơn chạy lại với getOrderById và ghi đè kết quả sync (race) → vẫn "chờ thanh toán".
      */
     useEffect(() => {
-        if (!id || !accessToken) return;
+        if (!id || !authHydrated) return;
+        if (!accessToken) {
+            setLoading(false);
+            if (paymentReturn === 'success') {
+                toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại để cập nhật trạng thái thanh toán.');
+            }
+            return;
+        }
         const paymentParam = paymentReturn;
         let cancelled = false;
 
@@ -149,7 +172,7 @@ export default function OrderDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [id, accessToken, paymentReturn, setSearchParams, fetchPaymentQrForOrder]);
+    }, [id, accessToken, authHydrated, paymentReturn, setSearchParams, fetchPaymentQrForOrder]);
 
     useEffect(() => {
         if (!accessToken || !order || !canEdit) return;

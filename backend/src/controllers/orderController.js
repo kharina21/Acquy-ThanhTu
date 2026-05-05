@@ -24,6 +24,7 @@ import { getVietQRQuickLink } from '../libs/vietqrHelper.js';
 import 'dotenv/config';
 import { createWarrantiesForOrder } from './warrantyController.js';
 import { notifyOrderCustomerStatusChange } from '../libs/orderNotificationHelper.js';
+import { getPublicAppOrigin } from '../utils/publicAppUrl.js';
 
 const GUEST_USERNAME = '__guest_pos__';
 
@@ -1131,7 +1132,13 @@ export const generateVietQRForOrder = async (req, res) => {
 
         const amount = order.totalAmount || 0;
         const memo = (order.code || '').replace(/[^\w-]/g, '').slice(0, 25) || 'DonHang';
-        const frontendUrl = process.env.NODE_ENV === 'production' ? 'https://acquy-thanhtu.onrender.com' : process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = getPublicAppOrigin();
+        if (!frontendUrl) {
+            return res.status(500).json({
+                message:
+                    'Chưa cấu hình URL công khai (FRONTEND_URL, PUBLIC_APP_URL hoặc RENDER_EXTERNAL_URL trên Render) — cần cho PayOS returnUrl.',
+            });
+        }
         const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;
         console.log('returnUrl', returnUrl);
         const cancelUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=cancelled`;

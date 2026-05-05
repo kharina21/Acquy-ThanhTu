@@ -166,12 +166,13 @@ export const login = async (req, res) => {
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
 
-        //lưu refresh token vào cookie
+        // Lax: cho phép cookie gửi kèm sau redirect từ cổng thanh toán (PayOS) về cùng site — Strict thường chặn refresh.
         res.cookie('refreshToken', refreshToken, {
-            httpOnly: true, //chỉ server có thể đọc cookie
-            sameSite: 'strict', //chỉ chấp nhận cookie từ cùng một domain
-            maxAge: 7 * 24 * 60 * 60 * 1000, //thời gian tồn tại của cookie
-            secure: process.env.NODE_ENV === 'production', //chỉ gửi cookie trên https trong production
+            httpOnly: true,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            secure: process.env.NODE_ENV === 'production',
         });
 
         // Log activity
@@ -490,7 +491,11 @@ export const logout = async (req, res) => {
             console.log('Lỗi khi log activity: ' + logError.message);
         }
         await Session.findOneAndDelete({ refreshToken });
-        res.clearCookie('refreshToken');
+        res.clearCookie('refreshToken', {
+            path: '/',
+            sameSite: 'lax',
+            secure: process.env.NODE_ENV === 'production',
+        });
         res.status(200).json({ message: 'Đăng xuất thành công' });
     } catch (error) {
         console.log('Lỗi khi gọi logout: ' + error.message);

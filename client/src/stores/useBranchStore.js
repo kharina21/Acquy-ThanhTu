@@ -27,13 +27,12 @@ export const useBranchStore = create(
                     const { currentLocationId } = get();
                     const isAll = currentLocationId === 'all';
                     const validId = activeList.some((l) => l._id === currentLocationId);
-                    /** scope mine: không dùng "tất cả" — ép về chi nhánh được phân. */
-                    if (activeList.length > 0 && opts.scope === 'mine' && isAll) {
-                        set({ currentLocationId: activeList[0]._id });
-                    } else if (activeList.length > 0 && !isAll && (!currentLocationId || !validId)) {
-                        set({ currentLocationId: activeList[0]._id });
-                    }
-                    if (activeList.length === 0) {
+                    /** Luôn một chi nhánh cụ thể — không còn «Tất cả» trong UI. */
+                    if (activeList.length > 0) {
+                        if (isAll || !currentLocationId || !validId) {
+                            set({ currentLocationId: activeList[0]._id });
+                        }
+                    } else {
                         set({ currentLocationId: null });
                     }
                 } catch (e) {

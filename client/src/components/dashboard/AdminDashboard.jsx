@@ -311,7 +311,7 @@ const AdminDashboard = () => {
             try {
                 const params = {
                     period,
-                    locationId: currentLocationId && currentLocationId !== 'all' ? currentLocationId : undefined,
+                    locationId: currentLocationId || undefined,
                 };
                 const [statsData, chartRes] = await Promise.all([
                     getDashboardStats(params),
@@ -352,12 +352,12 @@ const AdminDashboard = () => {
                             <BarChart3 className="w-6 h-6 text-primary" />
                             Tổng quan Dashboard
                         </h1>
-                        {currentLocationId && currentLocationId !== 'all' && currentLocation ? (
+                        {currentLocation ? (
                             <p className="text-sm text-base-content/70 mt-0.5">
                                 Chi nhánh: {currentLocation.code} - {currentLocation.name}
                             </p>
                         ) : (
-                            <p className="text-sm text-base-content/70 mt-0.5">Tất cả chi nhánh</p>
+                            <p className="text-sm text-base-content/70 mt-0.5">—</p>
                         )}
                     </div>
                     <div className="flex items-center gap-2">

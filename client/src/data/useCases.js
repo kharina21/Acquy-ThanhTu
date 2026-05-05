@@ -111,7 +111,7 @@ export const USE_CASES = [
     { id: 99, module: 'Profile', useCase: 'View Profile', description: 'View own profile' },
     { id: 100, module: 'Profile', useCase: 'Update Profile', description: 'Update own profile' },
     { id: 101, module: 'Dashboard', useCase: 'View Dashboard Stats', description: 'View revenue, paid orders, top customers, top products (filter by branch, period)' },
-    { id: 102, module: 'Dashboard', useCase: 'Switch Branch', description: 'Select branch or "Tất cả chi nhánh" for aggregated view' },
+    { id: 102, module: 'Dashboard', useCase: 'Switch Branch', description: 'Select active branch for admin dashboard and scoped views' },
     { id: 103, module: 'Orders', useCase: 'List Admin Orders', description: 'View orders by type: invoices, pre-orders, returns (filter by status, payment)' },
     { id: 104, module: 'Orders', useCase: 'Create Invoice', description: 'Create in-store order (bán tại quầy)' },
     { id: 105, module: 'Orders', useCase: 'View Order Report', description: 'View order report by date range and branch' },
