@@ -1,6 +1,21 @@
 import StockOut from '../models/StockOut.js';
 import ProductStock from '../models/ProductStock.js';
 import { generateStockOutCode } from '../utils/stockOutCode.js';
+import { validateLocationForUser } from '../libs/managerLocationHelper.js';
+
+/** Loại xuất cho phiếu nhập tay (không gán sale_order từ API này) */
+const MANUAL_REASON_TYPES = ['adjustment', 'internal_use', 'damage_loss', 'supplier_return', 'other'];
+
+const parseDocumentDate = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const normalizeManualReasonType = (rt) => {
+    if (!rt || rt === 'sale_order') return 'other';
+    return MANUAL_REASON_TYPES.includes(rt) ? rt : 'other';
+};
 
 export const getNextCode = async (req, res) => {
     try {
@@ -82,13 +97,18 @@ export const getStockOutById = async (req, res) => {
 
 export const createStockOut = async (req, res) => {
     try {
-        const { code, location, note, items, reasonType = 'other' } = req.body;
+        const { code, location, note, items, reasonType = 'other', documentDate } = req.body;
 
         if (!location) {
             return res.status(400).json({ message: 'Vui lòng chọn chi nhánh xuất kho' });
         }
         if (!items?.length) {
             return res.status(400).json({ message: 'Vui lòng thêm ít nhất một sản phẩm' });
+        }
+
+        const { valid: locOk } = await validateLocationForUser(req.user._id, location);
+        if (!locOk) {
+            return res.status(403).json({ message: 'Bạn không có quyền tạo phiếu xuất cho chi nhánh này' });
         }
 
         const finalCode = code?.trim() || (await generateStockOutCode());
@@ -115,7 +135,8 @@ export const createStockOut = async (req, res) => {
             createdBy: req.user._id,
             note: note?.trim() || '',
             status: 'draft',
-            reasonType: reasonType === 'sale_order' ? 'other' : reasonType,
+            reasonType: normalizeManualReasonType(reasonType),
+            documentDate: parseDocumentDate(documentDate),
             items: processedItems,
             totalAmount,
         });
@@ -151,7 +172,7 @@ export const createStockOut = async (req, res) => {
 export const updateStockOut = async (req, res) => {
     try {
         const { id } = req.params;
-        const { location, note, items, reasonType } = req.body;
+        const { location, note, items, reasonType, documentDate } = req.body;
 
         const stockOut = await StockOut.findById(id);
         if (!stockOut) {
@@ -171,6 +192,11 @@ export const updateStockOut = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng thêm ít nhất một sản phẩm' });
         }
 
+        const { valid: locOk } = await validateLocationForUser(req.user._id, location);
+        if (!locOk) {
+            return res.status(403).json({ message: 'Bạn không có quyền gán phiếu xuất cho chi nhánh này' });
+        }
+
         const processedItems = items.map((it) => {
             const qty = Math.max(1, parseInt(it.quantity, 10) || 0);
             const price = parseFloat(it.unitPrice) || 0;
@@ -187,7 +213,12 @@ export const updateStockOut = async (req, res) => {
         stockOut.note = note?.trim() || '';
         stockOut.items = processedItems;
         stockOut.totalAmount = totalAmount;
-        if (reasonType && reasonType !== 'sale_order') stockOut.reasonType = reasonType;
+        if (reasonType !== undefined) {
+            stockOut.reasonType = normalizeManualReasonType(reasonType);
+        }
+        if (documentDate !== undefined) {
+            stockOut.documentDate = parseDocumentDate(documentDate);
+        }
         await stockOut.save();
 
         const populated = await StockOut.findById(id)

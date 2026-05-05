@@ -6,6 +6,8 @@ import {
     createStockCheck,
     updateStockCheck,
     confirmStockCheck,
+    reopenStockCheck,
+    deleteStockCheck,
 } from '../controllers/stockCheckController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -19,7 +21,9 @@ router.get('/next-code', getNextCode);
 router.get('/', getAllStockChecks);
 router.post('/', createStockCheck);
 router.put('/:id/confirm', confirmStockCheck);
+router.put('/:id/reopen', reopenStockCheck);
 router.put('/:id', updateStockCheck);
+router.delete('/:id', deleteStockCheck);
 router.get('/:id', getStockCheckById);
 
 export default router;

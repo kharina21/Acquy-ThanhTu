@@ -115,18 +115,10 @@ export const createStockReturn = async (req, res) => {
 
         const existingReturns = await StockReturn.find({ stockIn: stockInId }).lean();
         const returnedByProduct = {};
-        const returnedSerialsByProduct = {};
         for (const r of existingReturns) {
             for (const it of r.items || []) {
                 const pid = String(it.product);
                 returnedByProduct[pid] = (returnedByProduct[pid] || 0) + (it.quantity || 0);
-                if (Array.isArray(it.serials) && it.serials.length) {
-                    if (!returnedSerialsByProduct[pid]) returnedSerialsByProduct[pid] = new Set();
-                    it.serials.forEach((s) => {
-                        const v = String(s || '').trim();
-                        if (v) returnedSerialsByProduct[pid].add(v);
-                    });
-                }
             }
         }
 
@@ -135,9 +127,6 @@ export const createStockReturn = async (req, res) => {
             const pid = it.product?._id || it.product;
             const pidStr = String(pid);
             const qty = Math.max(1, parseInt(it.quantity, 10) || 0);
-            const serials = Array.isArray(it.serials)
-                ? it.serials.map((s) => String(s || '').trim()).filter(Boolean)
-                : [];
             const imported = importedByProduct[pidStr] || 0;
             const alreadyReturned = returnedByProduct[pidStr] || 0;
             const maxReturnable = Math.max(0, imported - alreadyReturned);
@@ -155,43 +144,11 @@ export const createStockReturn = async (req, res) => {
                 });
             }
 
-            // Nếu phiếu nhập có serials, validate trả theo serials (subset, không trùng, không trả lại seri đã trả)
-            const stockInItem = (stockIn.items || []).find((i) => String(i.product?._id || i.product) === pidStr);
-            const stockInSerials = Array.isArray(stockInItem?.serials) ? stockInItem.serials : [];
-            if (stockInSerials.length) {
-                if (serials.length !== qty) {
-                    return res.status(400).json({
-                        message: `Sản phẩm ${stockInItem?.product?.name || pid} có seri/IMEI. Cần nhập đúng ${qty} seri/IMEI để trả.`,
-                    });
-                }
-                const seen = new Set();
-                for (const s of serials) {
-                    if (seen.has(s)) {
-                        return res.status(400).json({ message: `Seri/IMEI bị trùng trong cùng dòng trả: "${s}"` });
-                    }
-                    seen.add(s);
-                }
-                const stockInSet = new Set(stockInSerials.map((s) => String(s || '').trim()).filter(Boolean));
-                const alreadySet = returnedSerialsByProduct[pidStr] || new Set();
-                for (const s of serials) {
-                    if (!stockInSet.has(s)) {
-                        return res.status(400).json({
-                            message: `Seri/IMEI "${s}" không thuộc phiếu nhập ${stockIn.code} (${stockInItem?.product?.name || pid})`,
-                        });
-                    }
-                    if (alreadySet.has(s)) {
-                        return res.status(400).json({
-                            message: `Seri/IMEI "${s}" đã được trả trước đó (phiếu nhập ${stockIn.code})`,
-                        });
-                    }
-                }
-            }
-
             processedItems.push({
                 product: pid,
                 quantity: qty,
                 reason: it.reason?.trim() || '',
-                serials,
+                serials: [],
             });
         }
 

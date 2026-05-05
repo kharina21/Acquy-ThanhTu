@@ -1,7 +1,9 @@
+import mongoose from 'mongoose';
 import Employee from '../models/Employee.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
-import { userHasAnyOfRoles } from '../utils/roleEquivalence.js';
+import Role from '../models/Role.js';
+import { userHasAnyOfRoles, ROLE_EQUIVALENCE_GROUPS } from '../utils/roleEquivalence.js';
 
 /** Chuẩn hóa mã NV: NV + 5 chữ số (NV00001). */
 const EMPCODE_REGEX = /^NV\d{5}$/i;
@@ -28,6 +30,64 @@ const isValidEmpCode = (code) => code && typeof code === 'string' && EMPCODE_REG
 /** Chỉ tài khoản seller / manager / warehouse (và tên tương đương) mới được gắn hồ sơ nhân viên. */
 const EMPLOYEE_ACCOUNT_ROLE_SLUGS = ['seller', 'manager', 'warehouse_manager'];
 
+/** Populate user + roles (tên hiển thị trên UI danh sách nhân viên). */
+const populateEmployeeUser = {
+    path: 'user',
+    select: 'username firstName lastName email phoneNumber status roles',
+    populate: { path: 'roles', select: 'name description' },
+};
+
+const ROLE_OID_HEX = /^[a-fA-F0-9]{24}$/;
+
+function roleRefToIdString(r) {
+    if (r == null) return null;
+    if (typeof r === 'string') return ROLE_OID_HEX.test(r) ? r : null;
+    if (typeof r === 'object' && r._id != null) return String(r._id);
+    return null;
+}
+
+/**
+ * Đảm bảo `user.roles` là mảng plain object { name, description } (JSON cho UI).
+ * Bổ sung khi populate lồng nhau vẫn trả về ObjectId hoặc sau `.lean()` cần hydrate.
+ */
+
+/** Các slug role (canonical) cho bộ lọc danh sách nhân viên. */
+const EMPLOYEE_LIST_ROLE_FILTERS = ['seller', 'manager', 'warehouse_manager'];
+
+function roleNamesMatchingCanonicalFilter(canonicalSlug) {
+    const g = ROLE_EQUIVALENCE_GROUPS.find((names) => names.includes(canonicalSlug));
+    return g && g.length ? [...g] : [canonicalSlug];
+}
+
+async function hydrateUserRolesOnEmployees(employees) {
+    const list = Array.isArray(employees) ? employees : employees != null ? [employees] : [];
+    if (!list.length) return;
+    const idSet = new Set();
+    for (const emp of list) {
+        const roles = emp?.user?.roles;
+        if (!Array.isArray(roles)) continue;
+        for (const r of roles) {
+            const id = roleRefToIdString(r);
+            if (id && mongoose.Types.ObjectId.isValid(id)) idSet.add(id);
+        }
+    }
+    if (idSet.size === 0) return;
+    const oids = [...idSet].map((id) => new mongoose.Types.ObjectId(id));
+    const roleDocs = await Role.find({ _id: { $in: oids } }).select('name description').lean();
+    const byId = new Map(roleDocs.map((doc) => [String(doc._id), doc]));
+    for (const emp of list) {
+        if (!emp?.user?.roles?.length) continue;
+        emp.user.roles = emp.user.roles
+            .map((r) => {
+                const id = roleRefToIdString(r);
+                if (id && byId.has(id)) return byId.get(id);
+                if (r && typeof r === 'object' && (r.name || r.description)) return r;
+                return null;
+            })
+            .filter(Boolean);
+    }
+}
+
 // GET /api/employees
 export const getAllEmployees = async (req, res) => {
     try {
@@ -36,6 +96,7 @@ export const getAllEmployees = async (req, res) => {
             limit = 10,
             locationId,
             status, // 'active' | 'inactive'
+            role: roleQuery,
         } = req.query;
 
         const query = { isDeleted: false };
@@ -53,18 +114,33 @@ export const getAllEmployees = async (req, res) => {
             ];
         }
 
+        const roleFilter = String(roleQuery || '').trim();
+        if (roleFilter && EMPLOYEE_LIST_ROLE_FILTERS.includes(roleFilter)) {
+            const roleNames = roleNamesMatchingCanonicalFilter(roleFilter);
+            const roleIds = await Role.find({ name: { $in: roleNames } }).distinct('_id');
+            if (!roleIds.length) {
+                query.user = { $in: [] };
+            } else {
+                const userIds = await User.find({ roles: { $in: roleIds } }).distinct('_id');
+                query.user = { $in: userIds };
+            }
+        }
+
         const skip = (Number(page) - 1) * Number(limit);
 
         const [items, total] = await Promise.all([
             Employee.find(query)
-                .populate('user', 'username firstName lastName email phoneNumber status roles')
+                .populate(populateEmployeeUser)
                 .populate('primaryLocation', 'name code')
                 .populate('locations', 'name code')
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(Number(limit)),
+                .limit(Number(limit))
+                .lean(),
             Employee.countDocuments(query),
         ]);
+
+        await hydrateUserRolesOnEmployees(items);
 
         const totalPages = Math.ceil(total / Number(limit)) || 1;
 
@@ -90,13 +166,16 @@ export const getAllEmployees = async (req, res) => {
 export const getEmployeeById = async (req, res) => {
     try {
         const emp = await Employee.findOne({ _id: req.params.id, isDeleted: false })
-            .populate('user', 'username firstName lastName email phoneNumber status roles')
+            .populate(populateEmployeeUser)
             .populate('primaryLocation', 'name code')
-            .populate('locations', 'name code');
+            .populate('locations', 'name code')
+            .lean();
 
         if (!emp) {
             return res.status(404).json({ message: 'Không tìm thấy nhân viên' });
         }
+
+        await hydrateUserRolesOnEmployees(emp);
 
         res.status(200).json({ success: true, data: { employee: emp } });
     } catch (error) {
@@ -182,9 +261,11 @@ export const createEmployee = async (req, res) => {
             }
             await existingByUser.save();
             const populated = await Employee.findById(existingByUser._id)
-                .populate('user', 'username firstName lastName email phoneNumber status roles')
+                .populate(populateEmployeeUser)
                 .populate('primaryLocation', 'name code')
-                .populate('locations', 'name code');
+                .populate('locations', 'name code')
+                .lean();
+            await hydrateUserRolesOnEmployees(populated);
             return res.status(200).json({
                 success: true,
                 message: 'Khôi phục và cập nhật hồ sơ nhân viên thành công',
@@ -202,9 +283,11 @@ export const createEmployee = async (req, res) => {
         });
 
         const populated = await Employee.findById(emp._id)
-            .populate('user', 'username firstName lastName email phoneNumber status roles')
+            .populate(populateEmployeeUser)
             .populate('primaryLocation', 'name code')
-            .populate('locations', 'name code');
+            .populate('locations', 'name code')
+            .lean();
+        await hydrateUserRolesOnEmployees(populated);
 
         res.status(201).json({
             success: true,
@@ -259,9 +342,11 @@ export const updateEmployee = async (req, res) => {
         await emp.save();
 
         const populated = await Employee.findById(emp._id)
-            .populate('user', 'username firstName lastName email phoneNumber status roles')
+            .populate(populateEmployeeUser)
             .populate('primaryLocation', 'name code')
-            .populate('locations', 'name code');
+            .populate('locations', 'name code')
+            .lean();
+        await hydrateUserRolesOnEmployees(populated);
 
         res.status(200).json({
             success: true,
@@ -291,6 +376,23 @@ export const deleteEmployee = async (req, res) => {
     } catch (error) {
         console.error('deleteEmployee error:', error);
         res.status(500).json({ message: 'Lỗi khi xóa nhân viên', error: error.message });
+    }
+};
+
+/** GET /api/employees/linked-user-ids — user đã có hồ sơ Employee (toàn hệ thống, không phân trang). */
+export const getEmployeeLinkedUserIds = async (req, res) => {
+    try {
+        const ids = await Employee.find({ isDeleted: false }).distinct('user');
+        res.status(200).json({
+            success: true,
+            data: { userIds: ids.map((id) => String(id)) },
+        });
+    } catch (error) {
+        console.error('getEmployeeLinkedUserIds error:', error);
+        res.status(500).json({
+            message: 'Lỗi khi lấy danh sách tài khoản đã có hồ sơ nhân viên',
+            error: error.message,
+        });
     }
 };
 

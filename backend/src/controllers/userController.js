@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Role from '../models/Role.js';
 import Employee from '../models/Employee.js';
@@ -7,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { assignRoleByName, removeRoleByName } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 import { canonicalRoleName, userHasAnyOfRoles, roleNameMatchesCanonical } from '../utils/roleEquivalence.js';
+import { validateLocationForUser } from '../libs/managerLocationHelper.js';
 
 export const getAllUsers = async (req, res) => {
     try {
@@ -135,6 +137,38 @@ export const getAllUsers = async (req, res) => {
                 orConditions.push({ roles: { $in: matchedRoleIds } });
             }
             query.$or = orConditions;
+        }
+
+        /**
+         * POS / phân quyền chi nhánh: workLocationId = chỉ user có hồ sơ Employee gắn chi nhánh đó
+         * (primaryLocation hoặc locations). Không gộp toàn bộ admin hệ thống (tránh thấy người cơ sở khác).
+         * Luôn cho phép chính user đang gọi API (đã pass validateLocationForUser) để vẫn chọn được mình khi tạo hóa đơn.
+         */
+        const workLocRaw = String(req.query.workLocationId || req.query.posLocationId || '').trim();
+        if (workLocRaw && mongoose.Types.ObjectId.isValid(workLocRaw)) {
+            const { valid } = await validateLocationForUser(req.user?._id, workLocRaw);
+            if (valid) {
+                const locDoc = await Location.findById(workLocRaw).select('_id').lean();
+                if (locDoc?._id) {
+                    const locOid = locDoc._id;
+                    const empUserIds = await Employee.distinct('user', {
+                        isDeleted: { $ne: true },
+                        isActive: { $ne: false },
+                        $or: [{ primaryLocation: locOid }, { locations: locOid }],
+                    });
+                    const allowedIdStrs = new Set(
+                        empUserIds
+                            .map((id) => String(id))
+                            .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                    );
+                    if (req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+                        allowedIdStrs.add(String(req.user._id));
+                    }
+                    const allowedIds = [...allowedIdStrs].map((id) => new mongoose.Types.ObjectId(id));
+                    if (!query.$and) query.$and = [];
+                    query.$and.push({ _id: { $in: allowedIds } });
+                }
+            }
         }
 
         // Get users with pagination

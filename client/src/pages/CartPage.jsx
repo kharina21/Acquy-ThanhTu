@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Trash2, Minus, Plus, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageState } from '@/components/ui/page-state';
+import { SurfaceCard } from '@/components/ui/surface-card';
 
 export default function CartPage() {
     const { user, accessToken, logout } = useAuthStore();
@@ -135,7 +137,7 @@ export default function CartPage() {
     const selectedSubtotal = selectedItems.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
 
     return (
-        <div className='min-h-screen bg-gray-50/50 flex flex-col'>
+        <div className='min-h-screen bg-base-200/40 flex flex-col'>
             <Header
                 user={user}
                 onLogout={handleLogout}
@@ -143,33 +145,30 @@ export default function CartPage() {
 
             <main className='flex-1 container mx-auto px-4 py-8'>
                 <div className='max-w-5xl mx-auto'>
-                    <h1 className='text-2xl font-bold text-gray-800 mb-2'>Giỏ hàng</h1>
-                    <p className='text-gray-500 text-sm mb-8'>
+                    <h1 className='text-2xl font-bold text-base-content mb-2'>Giỏ hàng</h1>
+                    <p className='text-base-content/60 text-sm mb-8'>
                         {items.length} sản phẩm trong giỏ
-                        {selectedItems.length > 0 && <span className='text-gray-400'> · {selectedItems.length} mục chọn để mua</span>}
+                        {selectedItems.length > 0 && (
+                            <span className='text-base-content/45'> · {selectedItems.length} mục chọn để mua</span>
+                        )}
                     </p>
 
                     {loading ? (
-                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 p-16 text-center'>
-                            <span className='loading loading-spinner loading-lg text-primary' />
-                            <p className='text-gray-500 mt-4'>Đang tải giỏ hàng...</p>
-                        </div>
+                        <PageState variant='loading' title='Đang tải giỏ hàng...' className='max-w-2xl' />
                     ) : items.length === 0 ? (
-                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 p-16 text-center'>
-                            <div className='w-20 h-20 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center'>
-                                <ShoppingBag className='w-10 h-10 text-gray-400' />
-                            </div>
-                            <p className='text-gray-600 font-medium mb-2'>Giỏ hàng trống</p>
-                            <p className='text-gray-500 text-sm mb-6'>Thêm sản phẩm để bắt đầu mua sắm</p>
+                        <PageState
+                            variant='empty'
+                            icon={ShoppingBag}
+                            title='Giỏ hàng trống'
+                            description='Thêm sản phẩm để bắt đầu mua sắm.'
+                            className='max-w-2xl'
+                        >
                             <Link to='/home'>
-                                <Button
-                                    size='lg'
-                                    className='rounded-xl'
-                                >
+                                <Button size='lg' className='rounded-xl'>
                                     Tiếp tục mua sắm
                                 </Button>
                             </Link>
-                        </div>
+                        </PageState>
                     ) : (
                         <div className='flex flex-col lg:flex-row gap-8'>
                             {/* Danh sách sản phẩm */}
@@ -183,7 +182,7 @@ export default function CartPage() {
                                     />
                                     <label
                                         htmlFor='cart-select-all'
-                                        className='text-sm text-gray-700 cursor-pointer select-none'
+                                        className='text-sm text-base-content/80 cursor-pointer select-none'
                                     >
                                         Chọn tất cả để thanh toán
                                     </label>
@@ -195,8 +194,10 @@ export default function CartPage() {
                                     return (
                                         <div
                                             key={item.productId}
-                                            className={`bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition-all duration-300 ${
-                                                isSelected ? 'border-gray-100 hover:border-gray-200/80' : 'border-gray-100/80 opacity-90'
+                                            className={`rounded-2xl border p-5 hover:shadow-md transition-all duration-300 bg-base-100 ${
+                                                isSelected
+                                                    ? 'border-base-200 hover:border-primary/25 shadow-sm'
+                                                    : 'border-base-200/70 opacity-90'
                                             }`}
                                         >
                                             <div className='flex items-center gap-3 sm:gap-4'>
@@ -210,7 +211,7 @@ export default function CartPage() {
 
                                                 <Link
                                                     to={`/product/${item.productId}`}
-                                                    className='w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center group'
+                                                    className='w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-base-200/70 border border-base-200/80 flex items-center justify-center group'
                                                 >
                                                     {item.image ? (
                                                         <img
@@ -219,38 +220,42 @@ export default function CartPage() {
                                                             className='w-full h-full object-contain group-hover:scale-105 transition-transform duration-300'
                                                         />
                                                     ) : (
-                                                        <span className='text-gray-400 text-xs'>N/A</span>
+                                                        <span className='text-base-content/40 text-xs'>N/A</span>
                                                     )}
                                                 </Link>
                                                 <div className='flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
                                                     <div className='min-w-0'>
                                                         <Link to={`/product/${item.productId}`}>
-                                                            <h3 className='font-medium text-gray-800 line-clamp-2 hover:text-blue-600 transition-colors'>{item.name}</h3>
+                                                            <h3 className='font-medium text-base-content line-clamp-2 hover:text-primary transition-colors'>{item.name}</h3>
                                                         </Link>
-                                                        <p className='text-blue-600 font-semibold mt-1'>{(item.price || 0).toLocaleString()}đ</p>
-                                                        {typeof item.stock === 'number' && <p className='text-gray-500 text-xs mt-0.5'>Tồn kho: {item.stock}</p>}
+                                                        <p className='text-primary font-semibold mt-1'>{(item.price || 0).toLocaleString()}đ</p>
+                                                        {typeof item.stock === 'number' && (
+                                                            <p className='text-base-content/55 text-xs mt-0.5'>Tồn kho: {item.stock}</p>
+                                                        )}
                                                     </div>
                                                     <div className='flex items-center gap-3'>
-                                                        <div className='flex items-center rounded-xl border border-gray-200 overflow-hidden'>
+                                                        <div className='flex items-center rounded-xl border border-base-300 overflow-hidden bg-base-100'>
                                                             <button
                                                                 type='button'
                                                                 disabled={isItemLoading || item.quantity <= 1}
                                                                 onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
-                                                                className='p-2.5 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
+                                                                className='p-2.5 text-base-content/70 hover:bg-base-200/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
                                                             >
                                                                 <Minus className='w-4 h-4' />
                                                             </button>
-                                                            <span className='px-4 py-2 min-w-10 text-center font-medium text-gray-800 bg-gray-50/50'>{item.quantity}</span>
+                                                            <span className='px-4 py-2 min-w-10 text-center font-medium text-base-content bg-base-200/50'>
+                                                                {item.quantity}
+                                                            </span>
                                                             <button
                                                                 type='button'
                                                                 disabled={isItemLoading || (typeof item.stock === 'number' && item.quantity >= item.stock)}
                                                                 onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
-                                                                className='p-2.5 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
+                                                                className='p-2.5 text-base-content/70 hover:bg-base-200/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
                                                             >
                                                                 <Plus className='w-4 h-4' />
                                                             </button>
                                                         </div>
-                                                        <p className='font-semibold text-gray-800 w-24 text-right shrink-0'>{subtotal.toLocaleString()}đ</p>
+                                                        <p className='font-semibold text-base-content w-24 text-right shrink-0'>{subtotal.toLocaleString()}đ</p>
                                                         <button
                                                             type='button'
                                                             disabled={!!actionLoading}
@@ -271,21 +276,21 @@ export default function CartPage() {
 
                             {/* Tóm tắt đơn hàng - sticky */}
                             <div className='lg:w-[360px] shrink-0'>
-                                <div className='bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-4'>
-                                    <h2 className='font-semibold text-gray-800 mb-4'>Tóm tắt đơn hàng</h2>
+                                <SurfaceCard className='p-6 sticky top-4'>
+                                    <h2 className='font-semibold text-base-content mb-4'>Tóm tắt đơn hàng</h2>
                                     <div className='space-y-3 mb-6'>
-                                        <div className='flex justify-between text-gray-600'>
+                                        <div className='flex justify-between text-base-content/70'>
                                             <span>Tạm tính ({selectedItems.length} mục đã chọn)</span>
                                             <span>{selectedSubtotal.toLocaleString()}đ</span>
                                         </div>
                                         {selectedItems.length === 0 && items.length > 0 && (
-                                            <p className='text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2'>
+                                            <p className='text-xs text-warning-content bg-warning/10 border border-warning/25 rounded-lg px-3 py-2'>
                                                 Chọn ít nhất một sản phẩm để thanh toán. Bỏ chọn để giữ hàng trong giỏ mà không mua lần này.
                                             </p>
                                         )}
-                                        <div className='flex justify-between text-lg font-bold text-gray-800 pt-3 border-t border-gray-100'>
+                                        <div className='flex justify-between text-lg font-bold text-base-content pt-3 border-t border-base-200'>
                                             <span>Tổng cộng (đã chọn)</span>
-                                            <span className='text-blue-600'>{selectedSubtotal.toLocaleString()}đ</span>
+                                            <span className='text-primary'>{selectedSubtotal.toLocaleString()}đ</span>
                                         </div>
                                     </div>
                                     <div className='space-y-3'>
@@ -339,7 +344,7 @@ export default function CartPage() {
                                         )}
                                         <Button
                                             variant='ghost'
-                                            className='w-full text-gray-500 hover:text-error hover:bg-error/5 rounded-xl'
+                                            className='w-full text-base-content/55 hover:text-error hover:bg-error/5 rounded-xl'
                                             size='sm'
                                             disabled={!!actionLoading}
                                             onClick={handleClearCart}
@@ -347,7 +352,7 @@ export default function CartPage() {
                                             Xóa giỏ hàng
                                         </Button>
                                     </div>
-                                </div>
+                                </SurfaceCard>
                             </div>
                         </div>
                     )}

@@ -6,6 +6,7 @@ import {
     updateEmployee,
     deleteEmployee,
     getEmployeeMonthlySalesReport,
+    getEmployeeLinkedUserIds,
 } from '../controllers/employeeController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
@@ -16,6 +17,7 @@ router.use(authenticate);
 // Chỉ admin và manager mới được quản lý hồ sơ nhân viên
 router.use(hasRole('admin'));
 
+router.get('/linked-user-ids', getEmployeeLinkedUserIds);
 router.get('/sales-report/monthly', getEmployeeMonthlySalesReport);
 router.get('/', getAllEmployees);
 router.get('/:id', getEmployeeById);

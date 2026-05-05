@@ -12,6 +12,7 @@ import { getProvinces, getDistricts, getWards } from '@/services/addressService'
 import { useUserRole } from '@/hooks/useUserRole';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
+import ModalPortal from '@/components/common/ModalPortal';
 import {
     Shield,
     Search,
@@ -37,6 +38,7 @@ import {
     Building2,
     Filter,
 } from 'lucide-react';
+import { FilterToolbar, FilterToolbarActions, FilterToolbarField } from '@/components/common/FilterToolbar';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (d) => {
@@ -189,8 +191,8 @@ function ClaimDetailModal({ claim, warrantyId, onClose, onUpdate, product, custo
     const IconCmp = s.icon || Clock;
 
     return (
-        <div className="modal modal-open">
-            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="modal modal-open" data-theme="light">
+            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white text-base-content border border-base-200 shadow-2xl">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
                         <Shield className="w-5 h-5 text-primary" />
@@ -445,8 +447,8 @@ function EditClaimModal({ claim, warrantyId, onClose, onSuccess, product, custom
     };
 
     return (
-        <div className="modal modal-open">
-            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="modal modal-open" data-theme="light">
+            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white text-base-content border border-base-200 shadow-2xl">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
                         <Edit className="w-5 h-5 text-primary" />
@@ -556,8 +558,8 @@ function DeleteConfirmModal({ claim, warrantyId, onClose, onConfirm }) {
     };
 
     return (
-        <div className="modal modal-open">
-            <div className="modal-box max-w-sm w-full">
+        <div className="modal modal-open" data-theme="light">
+            <div className="modal-box max-w-sm w-full bg-white text-base-content border border-base-200 shadow-2xl">
                 <div className="flex flex-col items-center gap-4 py-4 text-center">
                     <div className="w-14 h-14 rounded-full bg-error/10 flex items-center justify-center">
                         <Trash2 className="w-7 h-7 text-error" />
@@ -587,8 +589,8 @@ function DeleteConfirmModal({ claim, warrantyId, onClose, onConfirm }) {
 // ── Modal: Tra cứu hóa đơn ─────────────────────────────────────────────
 function LookupOrderModal({ onClose, onSelectProduct, orderData, setOrderData, lookupLoading, setLookupLoading, lookupError, setLookupError, orderCode, setOrderCode, handleLookup, handleNew }) {
     return (
-        <div className="modal modal-open">
-            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="modal modal-open" data-theme="light">
+            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white text-base-content border border-base-200 shadow-2xl">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
                         <Search className="w-5 h-5 text-primary" />
@@ -821,8 +823,8 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
 
     if (submitted && result) {
         return (
-            <div className="modal modal-open">
-                <div className="modal-box max-w-md w-full text-center">
+            <div className="modal modal-open" data-theme="light">
+                <div className="modal-box max-w-md w-full text-center bg-white text-base-content border border-base-200 shadow-2xl">
                     <div className="flex flex-col items-center gap-4 py-6">
                         <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center">
                             <div className="w-10 h-10 rounded-full bg-success flex items-center justify-center text-white text-xl">✓</div>
@@ -848,8 +850,8 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
     }
 
     return (
-        <div className="modal modal-open">
-            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="modal modal-open" data-theme="light">
+            <div className="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white text-base-content border border-base-200 shadow-2xl">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2"><Plus className="w-5 h-5 text-primary" />Tạo phiếu bảo hành</h3>
                     <button className="btn btn-sm btn-ghost btn-circle" onClick={onClose}><X className="w-4 h-4" /></button>
@@ -1019,8 +1021,9 @@ export default function WarrantyManagementPage() {
             const params = { page: pagination.page, limit: pagination.limit };
             if (appliedFilters.search?.trim()) params.search = appliedFilters.search.trim();
             if (appliedFilters.status) params.claimStatus = appliedFilters.status;
-            if (appliedFilters.locationId) params.locationId = appliedFilters.locationId;
-            if (!isAdmin && currentLocationId && currentLocationId !== 'all') {
+            if (appliedFilters.locationId) {
+                params.locationId = appliedFilters.locationId;
+            } else if (!isAdmin && currentLocationId && currentLocationId !== 'all') {
                 params.locationId = currentLocationId;
             }
 
@@ -1043,7 +1046,13 @@ export default function WarrantyManagementPage() {
 
     const loadStats = async () => {
         try {
-            const res = await getClaimStats();
+            const params = {};
+            if (appliedFilters.locationId) {
+                params.locationId = appliedFilters.locationId;
+            } else if (!isAdmin && currentLocationId && currentLocationId !== 'all') {
+                params.locationId = currentLocationId;
+            }
+            const res = await getClaimStats(params);
             if (res?.success) setStats(res.data);
         } catch { /* silent */ }
     };
@@ -1145,31 +1154,25 @@ export default function WarrantyManagementPage() {
                         )}
                     </div>
                     <div className="p-4">
-                        <div className="flex flex-wrap gap-3 items-end">
-                            <div className="flex-1 min-w-[180px]">
-                                <label className="label py-1">
-                                    <span className="label-text text-xs font-medium">Tìm kiếm</span>
-                                </label>
+                        <FilterToolbar>
+                            <FilterToolbarField label="Tìm kiếm" className="min-w-[180px] flex-1">
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" />
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-base-content/40" />
                                     <input
                                         type="text"
                                         value={filters.search}
                                         onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
                                         onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
                                         placeholder="Mã BH, mã YC, tên, SĐT..."
-                                        className="input input-bordered w-full pl-9 pr-3 h-10 text-sm"
+                                        className="input input-bordered input-sm w-full pl-9"
                                     />
                                 </div>
-                            </div>
-                            <div className="w-40">
-                                <label className="label py-1">
-                                    <span className="label-text text-xs font-medium">Trạng thái</span>
-                                </label>
+                            </FilterToolbarField>
+                            <FilterToolbarField label="Trạng thái" className="w-40">
                                 <select
                                     value={filters.status}
                                     onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-                                    className="select select-bordered w-full h-10 text-sm"
+                                    className="select select-bordered select-sm w-full"
                                 >
                                     <option value="">Tất cả</option>
                                     <option value="pending">Chờ xử lý</option>
@@ -1177,15 +1180,12 @@ export default function WarrantyManagementPage() {
                                     <option value="rejected">Từ chối</option>
                                     <option value="completed">Hoàn thành</option>
                                 </select>
-                            </div>
-                            <div className="w-48">
-                                <label className="label py-1">
-                                    <span className="label-text text-xs font-medium">Cơ sở BH</span>
-                                </label>
+                            </FilterToolbarField>
+                            <FilterToolbarField label="Cơ sở BH" className="w-48">
                                 <select
                                     value={filters.locationId}
                                     onChange={(e) => setFilters((f) => ({ ...f, locationId: e.target.value }))}
-                                    className="select select-bordered w-full h-10 text-sm"
+                                    className="select select-bordered select-sm w-full"
                                     disabled={!isAdmin && locations.length <= 1}
                                 >
                                     <option value="">
@@ -1197,11 +1197,13 @@ export default function WarrantyManagementPage() {
                                         </option>
                                     ))}
                                 </select>
-                            </div>
-                            <button onClick={applyFilters} className="btn btn-primary btn-sm">
-                                Lọc
-                            </button>
-                        </div>
+                            </FilterToolbarField>
+                            <FilterToolbarActions>
+                                <button type="button" onClick={applyFilters} className="btn btn-primary btn-sm">
+                                    Lọc
+                                </button>
+                            </FilterToolbarActions>
+                        </FilterToolbar>
                     </div>
                 </div>
 
@@ -1416,47 +1418,57 @@ export default function WarrantyManagementPage() {
                 </div>
             </div>
 
-            {/* Modals */}
+            {/* Modals — portal ra body để overlay không bị cắt bởi layout overflow */}
             {showLookupModal && (
-                <LookupOrderModal
-                    onClose={handleCloseAll} onSelectProduct={handleSelectProduct}
-                    orderData={orderData} setOrderData={setOrderData}
-                    lookupLoading={lookupLoading} setLookupLoading={setLookupLoading}
-                    lookupError={lookupError} setLookupError={setLookupError}
-                    orderCode={orderCode} setOrderCode={setOrderCode}
-                    handleLookup={handleLookup} handleNew={handleNewLookup}
-                />
+                <ModalPortal>
+                    <LookupOrderModal
+                        onClose={handleCloseAll} onSelectProduct={handleSelectProduct}
+                        orderData={orderData} setOrderData={setOrderData}
+                        lookupLoading={lookupLoading} setLookupLoading={setLookupLoading}
+                        lookupError={lookupError} setLookupError={setLookupError}
+                        orderCode={orderCode} setOrderCode={setOrderCode}
+                        handleLookup={handleLookup} handleNew={handleNewLookup}
+                    />
+                </ModalPortal>
             )}
             {showCreateModal && selectedProduct && (
-                <CreateWarrantyFormModal
-                    onClose={handleCloseAll} onSuccess={handleAfterAction}
-                    selectedProduct={selectedProduct} orderData={orderData} loadStats={loadStats}
-                    isAdmin={isAdmin} isManager={isManager} allLocations={allLocations} currentLocationId={currentLocationId}
-                />
+                <ModalPortal>
+                    <CreateWarrantyFormModal
+                        onClose={handleCloseAll} onSuccess={handleAfterAction}
+                        selectedProduct={selectedProduct} orderData={orderData} loadStats={loadStats}
+                        isAdmin={isAdmin} isManager={isManager} allLocations={allLocations} currentLocationId={currentLocationId}
+                    />
+                </ModalPortal>
             )}
             {showDetailModal && selectedClaim && (
-                <ClaimDetailModal
-                    claim={selectedClaim} warrantyId={selectedWarrantyId}
-                    onClose={handleCloseAll} onUpdate={handleAfterAction}
-                    product={selectedDetailProduct} customer={selectedCustomer}
-                    orderCode={selectedOrderCode}
-                    warrantyEndDate={selectedWarrantyEndDate}
-                    purchaseDate={selectedPurchaseDate}
-                />
+                <ModalPortal>
+                    <ClaimDetailModal
+                        claim={selectedClaim} warrantyId={selectedWarrantyId}
+                        onClose={handleCloseAll} onUpdate={handleAfterAction}
+                        product={selectedDetailProduct} customer={selectedCustomer}
+                        orderCode={selectedOrderCode}
+                        warrantyEndDate={selectedWarrantyEndDate}
+                        purchaseDate={selectedPurchaseDate}
+                    />
+                </ModalPortal>
             )}
             {showEditModal && selectedClaim && (
-                <EditClaimModal
-                    claim={selectedClaim} warrantyId={selectedWarrantyId}
-                    onClose={handleCloseAll} onSuccess={handleAfterAction}
-                    product={selectedDetailProduct} customer={selectedCustomer}
-                    orderCode={selectedOrderCode}
-                />
+                <ModalPortal>
+                    <EditClaimModal
+                        claim={selectedClaim} warrantyId={selectedWarrantyId}
+                        onClose={handleCloseAll} onSuccess={handleAfterAction}
+                        product={selectedDetailProduct} customer={selectedCustomer}
+                        orderCode={selectedOrderCode}
+                    />
+                </ModalPortal>
             )}
             {showDeleteModal && selectedClaim && (
-                <DeleteConfirmModal
-                    claim={selectedClaim} warrantyId={selectedWarrantyId}
-                    onClose={handleCloseAll} onConfirm={handleAfterAction}
-                />
+                <ModalPortal>
+                    <DeleteConfirmModal
+                        claim={selectedClaim} warrantyId={selectedWarrantyId}
+                        onClose={handleCloseAll} onConfirm={handleAfterAction}
+                    />
+                </ModalPortal>
             )}
         </div>
     );

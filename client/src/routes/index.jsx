@@ -49,8 +49,7 @@ import WarrantyLookupPage from '../pages/WarrantyLookupPage';
 import WarrantyManagementPage from '../pages/WarrantyManagementPage';
 
 // Dashboards
-import AdminDashboard from '../components/dashboard/AdminDashboard';
-import StaffDashboard from '../components/dashboard/StaffDashboard';
+import AdminDashboardGate from '../components/dashboard/AdminDashboardGate';
 
 // Route Guards
 import PublicRoute from '../components/auth/PublicRoute';
@@ -129,8 +128,8 @@ export const AppRoutes = () => {
 
             {/* PROTECTED ROUTES - Cần đăng nhập */}
             <Route element={<ProtectedRoute />}>
-                {/* Mua hàng online - Chỉ user, customer */}
-                <Route element={<RoleProtectedRoute allowedRoles={['user', 'customer']} redirectTo='/home' />}>
+                {/* Mua hàng online — chỉ role user hoặc customer (đồng bộ API /cart, POST /orders, checkout-preview) */}
+                <Route element={<RoleProtectedRoute allowedRoles={['user', 'customer']} redirectTo='/forbidden' />}>
                     <Route path='/cart' element={<CartPage />} />
                     <Route path='/checkout' element={<CheckoutPage />} />
                     <Route path='/orders' element={<OrderHistoryPage />} />
@@ -169,11 +168,26 @@ export const AppRoutes = () => {
                         element={<ProfilePage />}
                     />
 
-                    {/* Tổng quan */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
+                    {/* Tổng quan — admin/manager: dashboard đầy đủ; seller / quản lý kho: chào mừng */}
+                    <Route
+                        element={
+                            <RoleProtectedRoute
+                                allowedRoles={[
+                                    'admin',
+                                    'manager',
+                                    'Quản lý chi nhánh',
+                                    'seller',
+                                    'staff',
+                                    'Nhân viên bán hàng',
+                                    'warehouse_manager',
+                                    'Quản lý kho',
+                                ]}
+                            />
+                        }
+                    >
                         <Route
                             path='/admin'
-                            element={<AdminDashboard />}
+                            element={<AdminDashboardGate />}
                         />
                         <Route
                             path='/admin/dashboard'
@@ -281,8 +295,21 @@ export const AppRoutes = () => {
                         />
                     </Route>
 
-                    {/* Đơn hàng cửa hàng — không mở cho NV kho / NV bán hàng */}
-                    <Route element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'Quản lý chi nhánh']} />}>
+                    {/* Đơn hàng cửa hàng — NV bán hàng theo chi nhánh được phân; kho dùng route kho riêng */}
+                    <Route
+                        element={
+                            <RoleProtectedRoute
+                                allowedRoles={[
+                                    'admin',
+                                    'manager',
+                                    'Quản lý chi nhánh',
+                                    'seller',
+                                    'staff',
+                                    'Nhân viên bán hàng',
+                                ]}
+                            />
+                        }
+                    >
                         <Route
                             path='/admin/orders/pre-orders'
                             element={<AdminOrderManagementPage key="pre-orders" type="pre-orders" />}
@@ -364,11 +391,16 @@ export const AppRoutes = () => {
                         />
                     </Route>
 
-                    {/* Seller / Staff: dashboard nhân viên */}
+                    {/* Seller / Staff: giữ URL cũ, chuyển về Tổng quan /admin */}
                     <Route element={<RoleProtectedRoute allowedRoles={['seller', 'staff', 'Nhân viên bán hàng']} />}>
                         <Route
                             path='/staff/dashboard'
-                            element={<StaffDashboard />}
+                            element={
+                                <Navigate
+                                    to='/admin'
+                                    replace
+                                />
+                            }
                         />
                     </Route>
 

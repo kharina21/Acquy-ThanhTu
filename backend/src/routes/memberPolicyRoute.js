@@ -11,13 +11,22 @@ import { hasRole } from '../middlewares/rbac.js';
 const router = express.Router();
 
 router.use(authenticate);
-// Chỉ admin quản lý hạng thành viên
-router.use(hasRole('admin'));
 
-router.get('/', getAllMemberPolicies);
-router.post('/', createMemberPolicy);
-router.put('/:id', updateMemberPolicy);
-router.delete('/:id', deleteMemberPolicy);
+const policyReaders = hasRole(
+    'admin',
+    'manager',
+    'Quản lý chi nhánh',
+    'seller',
+    'staff',
+    'Nhân viên bán hàng',
+);
+
+router.get('/', policyReaders, getAllMemberPolicies);
+
+// Chỉ admin quản lý hạng thành viên (tạo/sửa/xóa)
+router.post('/', hasRole('admin'), createMemberPolicy);
+router.put('/:id', hasRole('admin'), updateMemberPolicy);
+router.delete('/:id', hasRole('admin'), deleteMemberPolicy);
 
 export default router;
 

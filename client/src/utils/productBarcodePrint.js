@@ -40,26 +40,21 @@ export const formatCapacityLabel = (capRaw) => {
  * Nội dung một ô tem (35×22mm), đồng bộ giữa quản lý sản phẩm và nhập hàng.
  * @param {object} p
  * @param {string} p.name
- * @param {string} [p.series]
  * @param {string} [p.capacity]
  * @param {string} [p.sku] — hiện nếu khác mã in trên vạch
  * @param {string} p.barcodeValue — mã đang mã hóa trên vạch (để so với sku)
  * @param {string} p.barcodeDataUrl
  * @param {string} [p.priceStr] — đã format (VD VND), hoặc rỗng
- * @param {string} [p.serialLine] — seri/IMEI từng chiếc (nhập hàng)
  */
 export const buildLabelCellInnerHtml = ({
     name,
-    series,
     capacity,
     sku,
     barcodeValue,
     barcodeDataUrl,
     priceStr,
-    serialLine,
 }) => {
     const nameEsc = escapeHtml(name || '');
-    const seriesEsc = series ? escapeHtml(String(series).trim()) : '';
     const capRaw = (capacity ?? '').toString().trim();
     const capacityEsc = capRaw ? escapeHtml(formatCapacityLabel(capRaw)) : '';
     const skuLine = (sku || '').toString().trim();
@@ -67,17 +62,14 @@ export const buildLabelCellInnerHtml = ({
         skuLine && skuLine.replace(/\s/g, '') !== String(barcodeValue || '').replace(/\s/g, '');
     const skuEsc = showSku ? escapeHtml(skuLine) : '';
     const priceEsc = priceStr ? escapeHtml(String(priceStr)) : '';
-    const serialEsc = serialLine ? escapeHtml(String(serialLine).trim()) : '';
 
     return `
             <div class="cell-inner">
               <div class="cell-title" title="${nameEsc}">${nameEsc}</div>
-              ${seriesEsc ? `<div class="cell-series" title="${seriesEsc}">${seriesEsc}</div>` : ''}
               ${capacityEsc ? `<div class="cell-spec" title="${capacityEsc}">${capacityEsc}</div>` : ''}
               ${skuEsc ? `<div class="cell-sku">${skuEsc}</div>` : ''}
               <img class="cell-barcode" src="${barcodeDataUrl}" alt="" />
               ${priceEsc ? `<div class="cell-price">${priceEsc}</div>` : ''}
-              ${serialEsc ? `<div class="cell-serial" title="${serialEsc}">Seri: ${serialEsc}</div>` : ''}
             </div>`;
 };
 
@@ -154,16 +146,6 @@ export const PRODUCT_BARCODE_PRINT_STYLES = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .cell-series {
-    font-size: 4.5pt;
-    font-weight: 600;
-    line-height: 1;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: #222;
-  }
   .cell-spec {
     font-size: 4.5pt;
     font-weight: 600;
@@ -196,16 +178,6 @@ export const PRODUCT_BARCODE_PRINT_STYLES = `
     font-size: 4.5pt;
     line-height: 1;
     white-space: nowrap;
-  }
-  .cell-serial {
-    font-size: 4.5pt;
-    font-weight: 600;
-    line-height: 1;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: #111;
   }
   @media screen {
     body { background: #2a2a2a; padding: 10px; }

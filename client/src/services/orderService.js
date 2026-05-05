@@ -18,6 +18,12 @@ export const createOrderFromItems = async (data) => {
     return res.data;
 };
 
+/** Bán tại quầy: sau «Hoàn thành» — trừ tồn, tạo phiếu xuất, đơn completed (không áp dụng đặt trước). */
+export const completePosCounterSale = async (orderId) => {
+    const res = await api.post(`/orders/${orderId}/complete-pos-counter`);
+    return res.data;
+};
+
 export const getMyOrders = async (params = {}) => {
     const res = await api.get('/orders', { params });
     return res.data;

@@ -67,11 +67,9 @@ const {
                 return true;
             })
         },
-        // Giả lập các hàm helper nội bộ để không bị lỗi undefined
         helpersMock: {
-            assertSerialsCountMatchesQuantity: vi.fn(() => true),
-            syncProductsCostPriceFromConfirmedStockIns: vi.fn(async () => true)
-        }
+            syncProductsCostPriceFromConfirmedStockIns: vi.fn(async () => true),
+        },
     };
 });
 

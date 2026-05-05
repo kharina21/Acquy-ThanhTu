@@ -3,9 +3,11 @@ import api from '@/lib/axios';
 /**
  * Lấy mã kiểm kho tiếp theo (tự động: KK-YYYYMMDD-XXX).
  */
-export const getNextStockCheckCode = async () => {
+export const getNextStockCheckCode = async (documentDateYmd) => {
     try {
-        const { data } = await api.get('/stock-checks/next-code');
+        const params = {};
+        if (documentDateYmd) params.date = documentDateYmd;
+        const { data } = await api.get('/stock-checks/next-code', { params });
         return data?.success ? data.data.code : null;
     } catch (error) {
         console.error('getNextStockCheckCode error:', error?.response?.data || error);
@@ -52,7 +54,7 @@ export const getStockCheckById = async (id) => {
 
 /**
  * Tạo phiếu kiểm kho.
- * Payload: { code, note?, items: [{ productId, quantityCounted }] }
+ * Payload: { code, note?, documentDate? (YYYY-MM-DD), items: [{ productId, quantityCounted }] }
  */
 export const createStockCheck = async (payload) => {
     try {
@@ -87,6 +89,28 @@ export const confirmStockCheck = async (id) => {
         return data;
     } catch (error) {
         console.error('confirmStockCheck error:', error?.response?.data || error);
+        throw error;
+    }
+};
+
+/** Hủy xác nhận: khôi phục tồn theo số sổ trước kiểm, phiếu về nháp. */
+export const reopenStockCheck = async (id) => {
+    try {
+        const { data } = await api.put(`/stock-checks/${id}/reopen`);
+        return data;
+    } catch (error) {
+        console.error('reopenStockCheck error:', error?.response?.data || error);
+        throw error;
+    }
+};
+
+/** Xóa phiếu (nháp hoặc đã xác nhận — đã xác nhận thì backend hoàn tác tồn trước). */
+export const deleteStockCheck = async (id) => {
+    try {
+        const { data } = await api.delete(`/stock-checks/${id}`);
+        return data;
+    } catch (error) {
+        console.error('deleteStockCheck error:', error?.response?.data || error);
         throw error;
     }
 };

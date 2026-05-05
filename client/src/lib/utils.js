@@ -19,9 +19,11 @@ export function getCustomerPolicy(accumulatedAmount, policies) {
     if (!Array.isArray(policies) || policies.length === 0) return null;
     const amount = Number(accumulatedAmount) || 0;
     const active = policies.filter((p) => p.isActive !== false);
+    /** Luôn xét theo ngưỡng tăng dần để bậc cao nhất đạt được là bản ghi cuối cùng thỏa điều kiện. */
+    const sorted = [...active].sort((a, b) => (Number(a.minTotalSpent) || 0) - (Number(b.minTotalSpent) || 0));
     let matched = null;
-    for (const p of active) {
-        if (amount >= (p.minTotalSpent ?? 0)) {
+    for (const p of sorted) {
+        if (amount >= (Number(p.minTotalSpent) || 0)) {
             matched = p;
         }
     }

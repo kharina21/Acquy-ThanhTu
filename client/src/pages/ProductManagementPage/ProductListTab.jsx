@@ -51,6 +51,15 @@ const formatVND = (num) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
 };
 
+/** Tồn thực trên sổ tại chi nhánh (khớp kiểm kho / ProductStock.quantity). */
+const branchPhysicalStock = (p) => {
+    const hasPhys = p.physicalStockAtLocation !== undefined && p.physicalStockAtLocation !== null;
+    const hasSell = p.stockAtLocation !== undefined && p.stockAtLocation !== null;
+    if (!hasPhys && !hasSell) return null;
+    if (hasPhys) return Math.max(0, Number(p.physicalStockAtLocation) || 0);
+    return Math.max(0, Number(p.stockAtLocation) || 0);
+};
+
 const emptyProductForm = () => ({
     category: null,
     brand: null,
@@ -112,8 +121,6 @@ const ProductListTab = () => {
     const [barcodeShowStoreName, setBarcodeShowStoreName] = useState(true);
     const [imageUploading, setImageUploading] = useState(false);
     const [detailImageIndex, setDetailImageIndex] = useState(0);
-    const [editImageIndex, setEditImageIndex] = useState(0);
-    const [createImageIndex, setCreateImageIndex] = useState(0);
 
     // Lọc theo tên thương hiệu / tên thiết bị sử dụng (để hỗ trợ cả dữ liệu cũ lẫn mới)
     const [filterCategory, setFilterCategory] = useState('');
@@ -368,12 +375,15 @@ const ProductListTab = () => {
             const extraHeaders = ['VAT (%)', 'Đang kinh doanh', 'Ghi chú', 'Ngày tạo', 'Ngày cập nhật'];
             const headers = [...PRODUCT_EXCEL_BASE_HEADERS, ...extraHeaders];
             const rows = list.map((p) => {
+                const ph = baseParams.locationId ? branchPhysicalStock(p) : null;
                 const stock =
-                    p.stockAtLocation !== undefined && p.stockAtLocation !== null
-                        ? p.stockAtLocation
-                        : p.totalStock !== undefined && p.totalStock !== null
-                          ? p.totalStock
-                          : '';
+                    ph != null
+                        ? ph
+                        : p.stockAtLocation !== undefined && p.stockAtLocation !== null
+                          ? p.stockAtLocation
+                          : p.totalStock !== undefined && p.totalStock !== null
+                            ? p.totalStock
+                            : '';
                 const base = [
                     p.category?.name || '',
                     p.usageDevice?.name || '',
@@ -476,7 +486,6 @@ const ProductListTab = () => {
                     : '',
         });
         setShowDetailModal(false);
-        setEditImageIndex(0);
         setShowEditModal(true);
     };
 
@@ -562,7 +571,6 @@ const ProductListTab = () => {
             barcodeValue,
             barcodeDataUrl,
             priceStr,
-            serialLine: null,
         });
         const sheetsHtml = buildSheetsFromCellInnerHtmls(Array.from({ length: qty }, () => cellInner));
 
@@ -623,7 +631,6 @@ const ProductListTab = () => {
 
     const openCreateModal = () => {
         setCreateFormData(emptyProductForm());
-        setCreateImageIndex(0);
         setShowCreateModal(true);
     };
 
@@ -1237,7 +1244,18 @@ const ProductListTab = () => {
                                             <td>{p.capacity || '...'}</td>
                                             <td className='text-right'>{formatVND(p.costPrice)}</td>
                                             <td className='text-right'>{formatVND(p.price)}</td>
-                                            <td className='text-right'>{p.stockAtLocation !== undefined ? p.stockAtLocation : (p.totalStock ?? '...')}</td>
+                                            <td className='text-right'>
+                                                {currentLocationId ? (
+                                                    <span className='tabular-nums'>
+                                                        {(() => {
+                                                            const n = branchPhysicalStock(p);
+                                                            return n != null ? n : '...';
+                                                        })()}
+                                                    </span>
+                                                ) : (
+                                                    <span className='tabular-nums'>{p.totalStock ?? '...'}</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1410,7 +1428,14 @@ const ProductListTab = () => {
                                                     Tồn kho{currentLocationId ? ' (chi nhánh)' : ''}
                                                 </span>
                                                 <span className='font-medium'>
-                                                    {selectedProduct.stockAtLocation !== undefined ? selectedProduct.stockAtLocation : (selectedProduct.totalStock ?? '—')}
+                                                    {currentLocationId ? (
+                                                        (() => {
+                                                            const n = branchPhysicalStock(selectedProduct);
+                                                            return n != null ? <span className='tabular-nums'>{n}</span> : '—';
+                                                        })()
+                                                    ) : (
+                                                        selectedProduct.totalStock ?? '—'
+                                                    )}
                                                 </span>
                                             </div>
                                             <div className='flex flex-col gap-0.5'>
@@ -1652,26 +1677,61 @@ const ProductListTab = () => {
                                 <div className='shrink-0'>
                                     <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide block mb-2'>Hình ảnh (tối đa 5)</span>
                                     {(() => {
-                                        const imgs = (Array.isArray(editFormData.images) ? editFormData.images : []).slice(0, 5);
-                                        const mainUrl = imgs[editImageIndex];
-                                        const otherIndices = imgs.map((_, i) => i).filter((i) => i !== editImageIndex);
+                                        const MAX_IMAGES = 5;
+                                        const imgs = (Array.isArray(editFormData.images) ? editFormData.images : []).slice(0, MAX_IMAGES);
                                         const isValidUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
                                         const removeEditImage = (idx) => {
                                             setEditFormData((prev) => ({
                                                 ...prev,
                                                 images: (prev.images || []).filter((_, i) => i !== idx),
                                             }));
-                                            if (editImageIndex === idx) setEditImageIndex(0);
-                                            else if (editImageIndex > idx) setEditImageIndex((i) => Math.max(0, i - 1));
                                         };
+                                        const runEditUpload = async (e) => {
+                                            const files = e.target.files ? Array.from(e.target.files) : [];
+                                            if (files.length === 0) return;
+                                            const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
+                                            if (oversized.length) {
+                                                toast.error('Mỗi ảnh tối đa 3MB');
+                                                e.target.value = '';
+                                                return;
+                                            }
+                                            setImageUploading(true);
+                                            try {
+                                                const res = await uploadProductImage(files);
+                                                if (res?.success && res?.data?.urls?.length) {
+                                                    setEditFormData((prev) => ({
+                                                        ...prev,
+                                                        images: [...(prev.images || []), ...(res.data.urls || [])].slice(0, MAX_IMAGES),
+                                                    }));
+                                                    toast.success(`Đã tải ảnh lên`);
+                                                } else {
+                                                    toast.error(res?.message || 'Tải ảnh thất bại');
+                                                }
+                                            } catch (err) {
+                                                toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
+                                            } finally {
+                                                setImageUploading(false);
+                                                e.target.value = '';
+                                            }
+                                        };
+                                        const fileInputProps = {
+                                            type: 'file',
+                                            accept: 'image/jpeg,image/png,image/webp,image/gif',
+                                            multiple: true,
+                                            className: 'hidden',
+                                            disabled: imageUploading,
+                                            onChange: runEditUpload,
+                                        };
+                                        const addBoxClass =
+                                            'border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors';
                                         return (
                                             <>
                                                 <div className='flex flex-row gap-3 mb-2'>
                                                     <div className='relative shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300'>
-                                                        {mainUrl && isValidUrl(mainUrl) ? (
+                                                        {imgs[0] && isValidUrl(imgs[0]) ? (
                                                             <>
                                                                 <img
-                                                                    src={mainUrl}
+                                                                    src={imgs[0]}
                                                                     alt=''
                                                                     className='w-full h-full object-contain'
                                                                 />
@@ -1680,13 +1740,22 @@ const ProductListTab = () => {
                                                                     className='absolute top-1 right-1 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300'
                                                                     onClick={(ev) => {
                                                                         ev.stopPropagation();
-                                                                        removeEditImage(editImageIndex);
+                                                                        removeEditImage(0);
                                                                     }}
                                                                     aria-label='Xóa ảnh chính'
                                                                 >
                                                                     <X className='w-3 h-3' />
                                                                 </button>
                                                             </>
+                                                        ) : imgs.length === 0 ? (
+                                                            <label className={`${addBoxClass} w-full h-full rounded-xl`}>
+                                                                <input {...fileInputProps} />
+                                                                {imageUploading ? (
+                                                                    <span className='loading loading-spinner loading-md' />
+                                                                ) : (
+                                                                    <Plus className='w-10 h-10 text-base-content/45' />
+                                                                )}
+                                                            </label>
                                                         ) : (
                                                             <ImageIcon
                                                                 className='w-10 h-10 text-base-content/30'
@@ -1695,48 +1764,41 @@ const ProductListTab = () => {
                                                         )}
                                                     </div>
                                                     <div className='flex flex-col gap-2'>
-                                                        {[0, 1, 2, 3].map((k) => {
-                                                            if (imgs.length < 5 && k === 0) {
+                                                        {[1, 2, 3, 4].map((i) => {
+                                                            const url = imgs[i];
+                                                            const hasUrl = url && isValidUrl(url);
+                                                            if (hasUrl) {
+                                                                return (
+                                                                    <div
+                                                                        key={i}
+                                                                        className='relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0'
+                                                                    >
+                                                                        <img
+                                                                            src={url}
+                                                                            alt=''
+                                                                            className='w-full h-full object-cover'
+                                                                        />
+                                                                        <button
+                                                                            type='button'
+                                                                            className='absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100'
+                                                                            onClick={(ev) => {
+                                                                                ev.stopPropagation();
+                                                                                removeEditImage(i);
+                                                                            }}
+                                                                            aria-label='Xóa ảnh'
+                                                                        >
+                                                                            <X className='w-3 h-3' />
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            if (imgs.length === i && imgs.length < MAX_IMAGES) {
                                                                 return (
                                                                     <label
-                                                                        key='add'
-                                                                        className='w-14 h-14 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors'
+                                                                        key={`add-${i}`}
+                                                                        className={`${addBoxClass} w-14 h-14 shrink-0 rounded-lg`}
                                                                     >
-                                                                        <input
-                                                                            type='file'
-                                                                            accept='image/jpeg,image/png,image/webp,image/gif'
-                                                                            multiple
-                                                                            className='hidden'
-                                                                            disabled={imageUploading}
-                                                                            onChange={async (e) => {
-                                                                                const files = e.target.files ? Array.from(e.target.files) : [];
-                                                                                if (files.length === 0) return;
-                                                                                const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
-                                                                                if (oversized.length) {
-                                                                                    toast.error('Mỗi ảnh tối đa 3MB');
-                                                                                    e.target.value = '';
-                                                                                    return;
-                                                                                }
-                                                                                setImageUploading(true);
-                                                                                try {
-                                                                                    const res = await uploadProductImage(files);
-                                                                                    if (res?.success && res?.data?.urls?.length) {
-                                                                                        setEditFormData((prev) => ({
-                                                                                            ...prev,
-                                                                                            images: [...(prev.images || []), ...(res.data.urls || [])].slice(0, 5),
-                                                                                        }));
-                                                                                        toast.success(`Đã tải ảnh lên`);
-                                                                                    } else {
-                                                                                        toast.error(res?.message || 'Tải ảnh thất bại');
-                                                                                    }
-                                                                                } catch (err) {
-                                                                                    toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
-                                                                                } finally {
-                                                                                    setImageUploading(false);
-                                                                                    e.target.value = '';
-                                                                                }
-                                                                            }}
-                                                                        />
+                                                                        <input {...fileInputProps} />
                                                                         {imageUploading ? (
                                                                             <span className='loading loading-spinner loading-sm' />
                                                                         ) : (
@@ -1745,44 +1807,12 @@ const ProductListTab = () => {
                                                                     </label>
                                                                 );
                                                             }
-                                                            const idx = otherIndices[k - (imgs.length < 5 ? 1 : 0)];
-                                                            const url = idx !== undefined ? imgs[idx] : null;
-                                                            const hasUrl = url && isValidUrl(url);
                                                             return (
                                                                 <div
-                                                                    key={k}
-                                                                    className='relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0'
+                                                                    key={`ph-${i}`}
+                                                                    className='w-14 h-14 rounded-lg border-2 border-base-300 bg-base-200 shrink-0 flex items-center justify-center'
                                                                 >
-                                                                    {hasUrl ? (
-                                                                        <>
-                                                                            <button
-                                                                                type='button'
-                                                                                className='w-full h-full block'
-                                                                                onClick={() => setEditImageIndex(idx)}
-                                                                            >
-                                                                                <img
-                                                                                    src={url}
-                                                                                    alt=''
-                                                                                    className='w-full h-full object-cover'
-                                                                                />
-                                                                            </button>
-                                                                            <button
-                                                                                type='button'
-                                                                                className='absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100'
-                                                                                onClick={(ev) => {
-                                                                                    ev.stopPropagation();
-                                                                                    removeEditImage(idx);
-                                                                                }}
-                                                                                aria-label='Xóa ảnh'
-                                                                            >
-                                                                                <X className='w-3 h-3' />
-                                                                            </button>
-                                                                        </>
-                                                                    ) : (
-                                                                        <div className='w-full h-full flex items-center justify-center'>
-                                                                            <ImageIcon className='w-6 h-6 text-base-content/25' />
-                                                                        </div>
-                                                                    )}
+                                                                    <ImageIcon className='w-6 h-6 text-base-content/25' />
                                                                 </div>
                                                             );
                                                         })}
@@ -2004,7 +2034,6 @@ const ProductListTab = () => {
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
-                                        <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Giá & Tồn kho</h4>
                                         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                                             <div>
                                                 <label className='label py-0'>
@@ -2057,9 +2086,18 @@ const ProductListTab = () => {
                                                     <span className='label-text text-xs font-medium'>Tồn kho (chỉ đọc)</span>
                                                 </label>
                                                 <p className='text-sm py-2 px-3 rounded-lg bg-base-200/80 border border-base-200'>
-                                                    {currentLocationId
-                                                        ? (selectedProduct?.stockAtLocation ?? '—')
-                                                        : (selectedProduct?.totalStock ?? '—')}{' '}
+                                                    {currentLocationId ? (
+                                                        (() => {
+                                                            const n = branchPhysicalStock(selectedProduct || {});
+                                                            return n != null ? (
+                                                                <span className='tabular-nums font-medium'>{n}</span>
+                                                            ) : (
+                                                                '—'
+                                                            );
+                                                        })()
+                                                    ) : (
+                                                        selectedProduct?.totalStock ?? '—'
+                                                    )}
                                                     <span className='text-base-content/50 text-xs block mt-1'>
                                                         Thay đổi tồn qua Nhập kho, Xuất kho hoặc Kiểm kho.
                                                     </span>
@@ -2202,26 +2240,62 @@ const ProductListTab = () => {
                                 <div className='shrink-0'>
                                     <span className='text-xs font-medium text-base-content/60 uppercase tracking-wide block mb-2'>Hình ảnh (tối đa 5)</span>
                                     {(() => {
-                                        const imgs = (Array.isArray(createFormData.images) ? createFormData.images : []).slice(0, 5);
-                                        const mainUrl = imgs[createImageIndex];
-                                        const otherIndices = imgs.map((_, i) => i).filter((i) => i !== createImageIndex);
+                                        const MAX_IMAGES = 5;
+                                        const imgs = (Array.isArray(createFormData.images) ? createFormData.images : []).slice(0, MAX_IMAGES);
                                         const isValidUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
                                         const removeCreateImage = (idx) => {
                                             setCreateFormData((prev) => ({
                                                 ...prev,
                                                 images: (prev.images || []).filter((_, i) => i !== idx),
                                             }));
-                                            if (createImageIndex === idx) setCreateImageIndex(0);
-                                            else if (createImageIndex > idx) setCreateImageIndex((i) => Math.max(0, i - 1));
                                         };
+                                        const runCreateUpload = async (e) => {
+                                            const files = e.target.files ? Array.from(e.target.files) : [];
+                                            if (files.length === 0) return;
+                                            const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
+                                            if (oversized.length) {
+                                                toast.error('Mỗi ảnh tối đa 3MB');
+                                                e.target.value = '';
+                                                return;
+                                            }
+                                            setImageUploading(true);
+                                            try {
+                                                const res = await uploadProductImage(files);
+                                                const urls = res?.data?.urls?.length ? res.data.urls : res?.data?.url ? [res.data.url] : [];
+                                                if (urls.length) {
+                                                    setCreateFormData((prev) => ({
+                                                        ...prev,
+                                                        images: [...(Array.isArray(prev.images) ? prev.images : []), ...urls].slice(0, MAX_IMAGES),
+                                                    }));
+                                                    toast.success('Đã tải ảnh lên');
+                                                } else {
+                                                    toast.error(res?.message || 'Tải ảnh thất bại');
+                                                }
+                                            } catch (err) {
+                                                toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
+                                            } finally {
+                                                setImageUploading(false);
+                                                e.target.value = '';
+                                            }
+                                        };
+                                        const fileInputProps = {
+                                            type: 'file',
+                                            accept: 'image/jpeg,image/png,image/webp,image/gif',
+                                            multiple: true,
+                                            className: 'hidden',
+                                            disabled: imageUploading,
+                                            onChange: runCreateUpload,
+                                        };
+                                        const addBoxClass =
+                                            'border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors';
                                         return (
                                             <>
                                                 <div className='flex flex-row gap-3 mb-2'>
                                                     <div className='relative shrink-0 w-40 h-40 rounded-xl overflow-hidden bg-base-200 flex items-center justify-center border border-base-300'>
-                                                        {mainUrl && isValidUrl(mainUrl) ? (
+                                                        {imgs[0] && isValidUrl(imgs[0]) ? (
                                                             <>
                                                                 <img
-                                                                    src={mainUrl}
+                                                                    src={imgs[0]}
                                                                     alt=''
                                                                     className='w-full h-full object-contain'
                                                                 />
@@ -2230,13 +2304,22 @@ const ProductListTab = () => {
                                                                     className='absolute top-1 right-1 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300'
                                                                     onClick={(ev) => {
                                                                         ev.stopPropagation();
-                                                                        removeCreateImage(createImageIndex);
+                                                                        removeCreateImage(0);
                                                                     }}
                                                                     aria-label='Xóa ảnh chính'
                                                                 >
                                                                     <X className='w-3 h-3' />
                                                                 </button>
                                                             </>
+                                                        ) : imgs.length === 0 ? (
+                                                            <label className={`${addBoxClass} w-full h-full rounded-xl`}>
+                                                                <input {...fileInputProps} />
+                                                                {imageUploading ? (
+                                                                    <span className='loading loading-spinner loading-md' />
+                                                                ) : (
+                                                                    <Plus className='w-10 h-10 text-base-content/45' />
+                                                                )}
+                                                            </label>
                                                         ) : (
                                                             <ImageIcon
                                                                 className='w-10 h-10 text-base-content/30'
@@ -2245,49 +2328,41 @@ const ProductListTab = () => {
                                                         )}
                                                     </div>
                                                     <div className='flex flex-col gap-2'>
-                                                        {[0, 1, 2, 3].map((k) => {
-                                                            if (imgs.length < 5 && k === 0) {
+                                                        {[1, 2, 3, 4].map((i) => {
+                                                            const url = imgs[i];
+                                                            const hasUrl = url && isValidUrl(url);
+                                                            if (hasUrl) {
+                                                                return (
+                                                                    <div
+                                                                        key={i}
+                                                                        className='relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0'
+                                                                    >
+                                                                        <img
+                                                                            src={url}
+                                                                            alt=''
+                                                                            className='w-full h-full object-cover'
+                                                                        />
+                                                                        <button
+                                                                            type='button'
+                                                                            className='absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100'
+                                                                            onClick={(ev) => {
+                                                                                ev.stopPropagation();
+                                                                                removeCreateImage(i);
+                                                                            }}
+                                                                            aria-label='Xóa ảnh'
+                                                                        >
+                                                                            <X className='w-3 h-3' />
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            if (imgs.length === i && imgs.length < MAX_IMAGES) {
                                                                 return (
                                                                     <label
-                                                                        key='add'
-                                                                        className='w-14 h-14 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 bg-base-200 flex items-center justify-center cursor-pointer transition-colors'
+                                                                        key={`add-${i}`}
+                                                                        className={`${addBoxClass} w-14 h-14 shrink-0 rounded-lg`}
                                                                     >
-                                                                        <input
-                                                                            type='file'
-                                                                            accept='image/jpeg,image/png,image/webp,image/gif'
-                                                                            multiple
-                                                                            className='hidden'
-                                                                            disabled={imageUploading}
-                                                                            onChange={async (e) => {
-                                                                                const files = e.target.files ? Array.from(e.target.files) : [];
-                                                                                if (files.length === 0) return;
-                                                                                const oversized = files.filter((f) => f.size > 3 * 1024 * 1024);
-                                                                                if (oversized.length) {
-                                                                                    toast.error('Mỗi ảnh tối đa 3MB');
-                                                                                    e.target.value = '';
-                                                                                    return;
-                                                                                }
-                                                                                setImageUploading(true);
-                                                                                try {
-                                                                                    const res = await uploadProductImage(files);
-                                                                                    const urls = res?.data?.urls?.length ? res.data.urls : res?.data?.url ? [res.data.url] : [];
-                                                                                    if (urls.length) {
-                                                                                        setCreateFormData((prev) => ({
-                                                                                            ...prev,
-                                                                                            images: [...(Array.isArray(prev.images) ? prev.images : []), ...urls].slice(0, 5),
-                                                                                        }));
-                                                                                        toast.success('Đã tải ảnh lên');
-                                                                                    } else {
-                                                                                        toast.error(res?.message || 'Tải ảnh thất bại');
-                                                                                    }
-                                                                                } catch (err) {
-                                                                                    toast.error(err?.response?.data?.message || 'Tải ảnh thất bại');
-                                                                                } finally {
-                                                                                    setImageUploading(false);
-                                                                                    e.target.value = '';
-                                                                                }
-                                                                            }}
-                                                                        />
+                                                                        <input {...fileInputProps} />
                                                                         {imageUploading ? (
                                                                             <span className='loading loading-spinner loading-sm' />
                                                                         ) : (
@@ -2296,44 +2371,12 @@ const ProductListTab = () => {
                                                                     </label>
                                                                 );
                                                             }
-                                                            const idx = otherIndices[k - (imgs.length < 5 ? 1 : 0)];
-                                                            const url = idx !== undefined ? imgs[idx] : null;
-                                                            const hasUrl = url && isValidUrl(url);
                                                             return (
                                                                 <div
-                                                                    key={k}
-                                                                    className='relative group w-14 h-14 rounded-lg overflow-hidden border-2 border-base-300 bg-base-200 shrink-0'
+                                                                    key={`ph-${i}`}
+                                                                    className='w-14 h-14 rounded-lg border-2 border-base-300 bg-base-200 shrink-0 flex items-center justify-center'
                                                                 >
-                                                                    {hasUrl ? (
-                                                                        <>
-                                                                            <button
-                                                                                type='button'
-                                                                                className='w-full h-full block'
-                                                                                onClick={() => setCreateImageIndex(idx)}
-                                                                            >
-                                                                                <img
-                                                                                    src={url}
-                                                                                    alt=''
-                                                                                    className='w-full h-full object-cover'
-                                                                                />
-                                                                            </button>
-                                                                            <button
-                                                                                type='button'
-                                                                                className='absolute top-0 right-0 btn btn-ghost btn-xs btn-circle bg-base-100/90 border border-base-300 opacity-0 group-hover:opacity-100'
-                                                                                onClick={(ev) => {
-                                                                                    ev.stopPropagation();
-                                                                                    removeCreateImage(idx);
-                                                                                }}
-                                                                                aria-label='Xóa ảnh'
-                                                                            >
-                                                                                <X className='w-3 h-3' />
-                                                                            </button>
-                                                                        </>
-                                                                    ) : (
-                                                                        <div className='w-full h-full flex items-center justify-center'>
-                                                                            <ImageIcon className='w-6 h-6 text-base-content/25' />
-                                                                        </div>
-                                                                    )}
+                                                                    <ImageIcon className='w-6 h-6 text-base-content/25' />
                                                                 </div>
                                                             );
                                                         })}
@@ -2555,7 +2598,6 @@ const ProductListTab = () => {
                                         </div>
                                     </section>
                                     <section className='pt-4 border-t border-base-200'>
-                                        <h4 className='text-xs font-semibold text-base-content/70 uppercase tracking-wide mb-3'>Giá & Tồn kho</h4>
                                         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                                             <div>
                                                 <label className='label py-0'>

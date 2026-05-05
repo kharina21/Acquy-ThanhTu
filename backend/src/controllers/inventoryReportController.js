@@ -46,6 +46,27 @@ export const getNxtReport = async (req, res) => {
             ],
         };
 
+        /** Phiếu kiểm kho: ưu tiên lọc theo ngày phiếu (documentDate); bản ghi cũ không có field — theo confirmedAt. */
+        const stockCheckPeriodMatch = {
+            location: locOid,
+            status: 'confirmed',
+            $or: [
+                { documentDate: { $gte: fromDate, $lte: toDate } },
+                {
+                    $and: [
+                        {
+                            $or: [
+                                { documentDate: null },
+                                { documentDate: '' },
+                                { documentDate: { $exists: false } },
+                            ],
+                        },
+                        { $expr: dateExpr },
+                    ],
+                },
+            ],
+        };
+
         const [inboundAgg, outboundAgg, returnAgg, checkAgg] = await Promise.all([
             StockIn.aggregate([
                 {
@@ -81,11 +102,7 @@ export const getNxtReport = async (req, res) => {
             ]),
             StockCheck.aggregate([
                 {
-                    $match: {
-                        location: locOid,
-                        status: 'confirmed',
-                        $expr: dateExpr,
-                    },
+                    $match: stockCheckPeriodMatch,
                 },
                 { $unwind: '$items' },
                 { $group: { _id: '$items.product', adjustment: { $sum: '$items.quantityChange' } } },

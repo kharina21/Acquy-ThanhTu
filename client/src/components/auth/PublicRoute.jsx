@@ -26,7 +26,7 @@ const PublicRoute = () => {
         if (isManager) return <Navigate to='/admin' replace />;
         if (isBranchManager) return <Navigate to='/admin' replace />;
         if (isWarehouseManager) return <Navigate to='/admin/warehouses' replace />;
-        if (isSeller) return <Navigate to='/sales' replace />;
+        if (isSeller) return <Navigate to='/admin' replace />;
         if (isUser) return <Navigate to='/home' replace />;
         // Fallback: Nếu có user nhưng không có role nào match, redirect về home
         return <Navigate to='/home' replace />;

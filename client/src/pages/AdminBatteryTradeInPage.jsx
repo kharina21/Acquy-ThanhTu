@@ -34,6 +34,7 @@ import {
     AlertCircle,
     CheckCircle,
 } from 'lucide-react';
+import { FilterToolbar, FilterToolbarField } from '@/components/common/FilterToolbar';
 
 const STATUS_META = {
     pending: { short: 'Tiếp nhận', badge: 'badge-warning', desc: 'Đang xử lý', color: '#f59e0b' },
@@ -895,7 +896,7 @@ export default function AdminBatteryTradeInPage() {
 
     return (
         <div className="flex-1 p-4 sm:p-6 bg-base-200 min-h-full overflow-y-auto">
-            <div className="max-w-5xl mx-auto space-y-5">
+            <div className="w-full max-w-none space-y-5">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -1057,58 +1058,51 @@ export default function AdminBatteryTradeInPage() {
 
                 {/* Bộ lọc */}
                 <div className="card bg-base-100 border border-base-200 shadow-sm">
-                    <div className="card-body p-4 flex flex-col sm:flex-row flex-wrap gap-3">
-                        <div className="form-control flex-1 min-w-[160px]">
-                            <label className="label py-1">
-                                <span className="label-text text-xs font-medium text-base-content/70">Trạng thái</span>
-                            </label>
-                            <select
-                                className="select select-bordered select-sm w-full"
-                                value={filters.status}
-                                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-                            >
-                                <option value="">Tất cả</option>
-                                {Object.entries(STATUS_META).map(([v, m]) => (
-                                    <option key={v} value={v}>{m.desc}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="form-control flex-1 min-w-[160px]">
-                            <label className="label py-1">
-                                <span className="label-text text-xs font-medium text-base-content/70">Tình trạng bán</span>
-                            </label>
-                            <select
-                                className="select select-bordered select-sm w-full"
-                                value={filters.sold}
-                                onChange={(e) => setFilters((f) => ({ ...f, sold: e.target.value }))}
-                            >
-                                <option value="">Tất cả</option>
-                                <option value="false">Chưa bán</option>
-                                <option value="true">Đã bán</option>
-                            </select>
-                        </div>
-                        <div className="form-control flex-1 min-w-[200px]">
-                            <label className="label py-1">
-                                <span className="label-text text-xs font-medium text-base-content/70">Tìm kiếm</span>
-                            </label>
-                            <div className="join w-full">
-                                <input
-                                    type="text"
-                                    placeholder="Mã TC-..., tên, SĐT, email..."
-                                    className="input input-bordered input-sm join-item flex-1 min-w-0"
-                                    value={filters.search}
-                                    onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-                                    onKeyDown={(e) => e.key === 'Enter' && setAppliedSearch(filters.search)}
-                                />
-                                <button
-                                    type="button"
-                                    className="btn btn-primary btn-sm join-item px-4"
-                                    onClick={() => setAppliedSearch(filters.search)}
+                    <div className="card-body p-4">
+                        <FilterToolbar>
+                            <FilterToolbarField label="Trạng thái" className="min-w-[160px] flex-1">
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={filters.status}
+                                    onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
                                 >
-                                    Tìm
-                                </button>
-                            </div>
-                        </div>
+                                    <option value="">Tất cả</option>
+                                    {Object.entries(STATUS_META).map(([v, m]) => (
+                                        <option key={v} value={v}>{m.desc}</option>
+                                    ))}
+                                </select>
+                            </FilterToolbarField>
+                            <FilterToolbarField label="Tình trạng bán" className="min-w-[160px] flex-1">
+                                <select
+                                    className="select select-bordered select-sm w-full"
+                                    value={filters.sold}
+                                    onChange={(e) => setFilters((f) => ({ ...f, sold: e.target.value }))}
+                                >
+                                    <option value="">Tất cả</option>
+                                    <option value="false">Chưa bán</option>
+                                    <option value="true">Đã bán</option>
+                                </select>
+                            </FilterToolbarField>
+                            <FilterToolbarField label="Tìm kiếm" className="min-w-[220px] flex-1">
+                                <div className="join w-full">
+                                    <input
+                                        type="text"
+                                        placeholder="Mã TC-..., tên, SĐT, email..."
+                                        className="input input-bordered input-sm join-item min-w-0 flex-1"
+                                        value={filters.search}
+                                        onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                                        onKeyDown={(e) => e.key === 'Enter' && setAppliedSearch(filters.search)}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm join-item px-4"
+                                        onClick={() => setAppliedSearch(filters.search)}
+                                    >
+                                        Tìm
+                                    </button>
+                                </div>
+                            </FilterToolbarField>
+                        </FilterToolbar>
                     </div>
                 </div>
 

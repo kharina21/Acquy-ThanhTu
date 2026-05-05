@@ -6,6 +6,7 @@ import { Navigation, Autoplay } from 'swiper/modules';
 import { ChevronLeft, ChevronRight, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { SurfaceCard } from '@/components/ui/surface-card';
 import { useCartStore } from '@/stores/useCartStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -73,10 +74,10 @@ export function ProductSection() {
   };
 
   const renderSection = (title, products, sectionKey) => (
-    <div className="mb-16 relative bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <SurfaceCard className="mb-16 relative p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between mb-8 border-b pb-4">
-        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 uppercase tracking-wide relative">
+      <div className="flex flex-col sm:flex-row items-center justify-between mb-8 border-b border-base-200 pb-4">
+        <h2 className="text-2xl md:text-3xl font-bold text-base-content uppercase tracking-wide relative">
           {title}
           <div className="absolute -bottom-[17px] left-0 w-1/3 h-1 bg-primary rounded-t-md"></div>
         </h2>
@@ -90,11 +91,11 @@ export function ProductSection() {
       </div>
 
       {/* Navigation Buttons */}
-      <button className={`prev-${sectionKey} hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 bg-white border border-gray-200 text-gray-600 hover:text-primary hover:border-primary shadow-md p-2 rounded-full transition-all`}>
+      <button className={`prev-${sectionKey} hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 bg-base-100 border border-base-200 text-base-content/70 hover:text-primary hover:border-primary shadow-md p-2 rounded-full transition-all`}>
         <ChevronLeft size={24} />
       </button>
 
-      <button className={`next-${sectionKey} hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 bg-white border border-gray-200 text-gray-600 hover:text-primary hover:border-primary shadow-md p-2 rounded-full transition-all`}>
+      <button className={`next-${sectionKey} hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 bg-base-100 border border-base-200 text-base-content/70 hover:text-primary hover:border-primary shadow-md p-2 rounded-full transition-all`}>
         <ChevronRight size={24} />
       </button>
 
@@ -123,7 +124,7 @@ export function ProductSection() {
           const isSoldOut = (product.totalStock ?? 0) <= 0;
           return (
             <SwiperSlide key={product._id} className="pb-4">
-              <div className={`relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group ${isSoldOut ? 'opacity-75' : ''}`}>
+              <div className={`relative bg-base-100 rounded-xl border border-base-200/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group ${isSoldOut ? 'opacity-75' : ''}`}>
                 {isSoldOut && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl pointer-events-auto">
                     <img
@@ -134,7 +135,7 @@ export function ProductSection() {
                   </div>
                 )}
                 <Link to={`/product/${product._id}`} className="block flex-1 relative overflow-hidden rounded-lg">
-                  <div className="aspect-square bg-gray-50 flex items-center justify-center">
+                  <div className="aspect-square bg-base-200/50 flex items-center justify-center">
                     {(product.images?.[0] || product.image) ? (
                       <img
                         src={product.images?.[0] || product.image}
@@ -142,19 +143,19 @@ export function ProductSection() {
                         className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500"
                       />
                     ) : (
-                      <div className="text-gray-400 text-sm">
+                      <div className="text-base-content/45 text-sm">
                         Không có ảnh
                       </div>
                     )}
                   </div>
 
                   <div className="mt-4">
-                    <h3 className="text-sm md:text-base font-semibold text-gray-700 group-hover:text-primary transition-colors line-clamp-2 min-h-[44px]">
+                    <h3 className="text-sm md:text-base font-semibold text-base-content/90 group-hover:text-primary transition-colors line-clamp-2 min-h-[44px]">
                       {product.name}
                     </h3>
 
                     <div className="mt-2 flex items-center justify-between">
-                      <span className="text-red-500 font-bold text-lg md:text-xl">
+                      <span className="text-primary font-bold text-lg md:text-xl">
                         {product.price?.toLocaleString()}đ
                       </span>
                     </div>
@@ -186,18 +187,18 @@ export function ProductSection() {
           );
         })}
       </Swiper>
-    </div>
+    </SurfaceCard>
   );
 
   return (
-    <div className="py-16 bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="py-16 bg-gradient-to-b from-base-200/50 to-base-200/80">
       <div className="container mx-auto px-4 max-w-7xl">
         <div className="text-center mb-12">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4 relative inline-block">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-base-content mb-4 relative inline-block">
             Sản Phẩm <span className="text-primary">Nổi Bật</span>
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-24 h-1 bg-primary rounded-full"></div>
           </h1>
-          <p className="text-gray-500 max-w-2xl mx-auto mt-4">
+          <p className="text-base-content/60 max-w-2xl mx-auto mt-4">
             Khám phá các dòng ắc quy chính hãng, chất lượng cao dành cho ô tô và xe máy với giá ưu đãi tốt nhất.
           </p>
         </div>

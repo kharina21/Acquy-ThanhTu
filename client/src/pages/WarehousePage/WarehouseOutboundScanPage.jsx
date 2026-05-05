@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router';
-import { ScanLine, ChevronDown, Printer } from 'lucide-react';
+import { ChevronDown, Package, Printer, RefreshCw, ScanLine } from 'lucide-react';
 import { getOnlineLocation } from '@/services/locationService';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { printWarehouseOrderSlip } from '@/lib/warehouseOrderSlipPrint';
 import {
     getMyOrders,
@@ -20,13 +21,15 @@ import { toast } from 'sonner';
 const channelStyles = {
     in_store: {
         label: 'Tại quầy',
-        badge: 'bg-amber-100 text-amber-950 border-amber-400/80',
-        rowBorder: 'border-l-4 border-l-amber-500',
+        badge: 'bg-amber-500/12 text-amber-950 border border-amber-400/50',
+        rowBorder: 'border-l-[5px] border-l-amber-500',
+        strip: 'from-amber-500/15 to-transparent',
     },
     online: {
         label: 'Online',
-        badge: 'bg-sky-100 text-sky-950 border-sky-500/80',
-        rowBorder: 'border-l-4 border-l-sky-500',
+        badge: 'bg-sky-500/12 text-sky-950 border border-sky-500/45',
+        rowBorder: 'border-l-[5px] border-l-sky-500',
+        strip: 'from-sky-500/15 to-transparent',
     },
 };
 
@@ -38,6 +41,9 @@ const QUEUE_FILTERS = [
 ];
 
 const WarehouseOutboundScanPage = () => {
+    const currentLocationId = useBranchStore((s) => s.currentLocationId);
+    const currentLocation = useBranchStore((s) => s.locations.find((l) => l._id === s.currentLocationId) || null);
+
     const [onlineInfo, setOnlineInfo] = useState({ location: null, resolvedAs: null });
     const [onlineLoading, setOnlineLoading] = useState(true);
     const onlineLocation = onlineInfo.location;
@@ -91,6 +97,8 @@ const WarehouseOutboundScanPage = () => {
                 limit: 50,
                 page: 1,
                 ...(queueChannelFilter && { channel: queueChannelFilter }),
+                ...(currentLocationId &&
+                    currentLocationId !== 'all' && { locationId: currentLocationId }),
             });
             setQueue(res?.data?.orders || []);
         } catch {
@@ -98,7 +106,7 @@ const WarehouseOutboundScanPage = () => {
         } finally {
             setQueueLoading(false);
         }
-    }, [queueChannelFilter]);
+    }, [queueChannelFilter, currentLocationId]);
 
     useEffect(() => {
         loadQueue();
@@ -286,16 +294,20 @@ const WarehouseOutboundScanPage = () => {
         const ch = ord.channel === 'in_store' ? 'in_store' : 'online';
         const chSt = channelStyles[ch];
         return (
-            <div className={`rounded-lg border border-base-200 bg-base-100 p-3 pl-3 space-y-2 text-sm ${chSt.rowBorder}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-base-content/50">Chi tiết đơn hàng</p>
-                    <span
-                        className={`shrink-0 inline-flex items-center rounded px-2.5 py-0.5 text-xs font-semibold border ${chSt.badge}`}
-                    >
+            <div
+                className={`relative overflow-hidden rounded-xl border border-base-300/70 bg-base-100 p-4 sm:p-5 text-sm shadow-sm ${chSt.rowBorder}`}
+            >
+                <div
+                    className={`pointer-events-none absolute inset-y-0 right-0 w-32 bg-linear-to-l ${chSt.strip} to-base-100`}
+                    aria-hidden
+                />
+                <div className="relative flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-base-content/45">Chi tiết đơn hàng</p>
+                    <span className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${chSt.badge}`}>
                         {chSt.label}
                     </span>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="relative mt-3 grid gap-3 sm:grid-cols-2">
                     <div>
                         <span className="text-base-content/55 text-xs block">Mã đơn</span>
                         <span className="font-mono font-semibold">{ord.code}</span>
@@ -338,20 +350,23 @@ const WarehouseOutboundScanPage = () => {
                     </div>
                 ) : null}
                 {Array.isArray(ord.items) && ord.items.length > 0 && (
-                    <div className="pt-2 border-t border-base-200">
-                        <span className="text-base-content/55 text-xs block mb-1">Sản phẩm trong đơn</span>
-                        <ul className="space-y-1 text-xs">
+                    <div className="relative pt-3 border-t border-base-200/90">
+                        <span className="text-base-content/55 text-xs mb-2 flex items-center gap-1.5 font-medium">
+                            <Package className="size-3.5 opacity-70" aria-hidden />
+                            Sản phẩm trong đơn
+                        </span>
+                        <ul className="divide-y divide-base-200/80 rounded-lg border border-base-200/80 bg-base-200/20">
                             {ord.items.map((it, idx) => {
                                 const p = it.product;
                                 const name = p?.name || 'Sản phẩm';
                                 const sku = p?.sku ? ` · SKU ${p.sku}` : '';
                                 return (
-                                    <li key={idx} className="flex justify-between gap-2">
+                                    <li key={idx} className="flex justify-between gap-3 px-3 py-2 text-xs">
                                         <span className="min-w-0 truncate">
-                                            {name}
+                                            <span className="font-medium text-base-content">{name}</span>
                                             <span className="text-base-content/55">{sku}</span>
                                         </span>
-                                        <span className="shrink-0 font-medium">×{it.quantity || 0}</span>
+                                        <span className="shrink-0 font-semibold tabular-nums">×{it.quantity || 0}</span>
                                     </li>
                                 );
                             })}
@@ -363,55 +378,78 @@ const WarehouseOutboundScanPage = () => {
     };
 
     return (
-        <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
-            <div className="container mx-auto max-w-3xl space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                        <ScanLine className="w-8 h-8 text-primary" />
-                        <div>
-                            <h1 className="text-2xl font-bold text-base-content">Quét xuất: Tại quầy & Online</h1>
-                            <p className="text-sm text-base-content/65 mt-0.5">
-                                Chọn đơn, quét SKU từng dòng, rồi xác nhận xuất kho. Màu viền &amp; tem bên dưới phân
-                                loại: <span className="text-amber-800 font-medium">Tại quầy</span> (bán/đặt tại cửa
-                                hàng) và <span className="text-sky-800 font-medium">Online</span> (đơn trên web).
-                            </p>
+        <div className="flex-1 bg-base-200/50 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[min(100%,1400px)] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 space-y-6">
+                <header className="rounded-2xl border border-base-300/60 bg-base-100 p-5 sm:p-6 shadow-sm ring-1 ring-black/3">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex min-w-0 gap-4">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                                <ScanLine className="size-6" aria-hidden />
+                            </span>
+                            <div className="min-w-0">
+                                <h1 className="text-2xl font-bold tracking-tight text-base-content sm:text-3xl">
+                                    Quét xuất: Tại quầy &amp; Online
+                                </h1>
+                                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
+                                    Chọn đơn trong danh sách, quét SKU từng dòng, rồi xác nhận xuất kho. Viền trái và nhãn
+                                    màu: <span className="font-semibold text-amber-800">tại quầy</span> (POS) và{' '}
+                                    <span className="font-semibold text-sky-800">online</span> (web).
+                                </p>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-base-content/60">
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300/80 bg-base-200/40 px-2.5 py-1">
+                                        <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+                                        Tại quầy (POS)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300/80 bg-base-200/40 px-2.5 py-1">
+                                        <span className="h-2 w-2 rounded-full bg-sky-500" aria-hidden />
+                                        Online (web)
+                                    </span>
+                                </div>
+                            </div>
                         </div>
+                        <Link
+                            to="/admin/warehouses/stock-out"
+                            className="btn btn-outline btn-sm shrink-0 rounded-xl border-base-300"
+                        >
+                            Phiếu xuất kho
+                        </Link>
                     </div>
-                    <Link to="/admin/warehouses/stock-out" className="btn btn-ghost btn-sm">
-                        Phiếu xuất kho
-                    </Link>
-                </div>
+                </header>
 
-                <div className="bg-base-100 rounded-xl border border-base-200 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-base-200 space-y-2">
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-base-content/80 pb-0.5">
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" aria-hidden />
-                                <span>Tại quầy (POS)</span>
-                            </span>
-                            <span className="text-base-content/30" aria-hidden>
-                                |
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" aria-hidden />
-                                <span>Online (web)</span>
-                            </span>
-                        </div>
-                        <div className="flex flex-wrap justify-between items-center gap-2">
-                            <h2 className="font-semibold">Đơn chờ xuất kho</h2>
-                            <button type="button" className="btn btn-ghost btn-xs" onClick={loadQueue} disabled={queueLoading}>
-                                {queueLoading ? <span className="loading loading-spinner loading-xs" /> : 'Làm mới'}
+                <section className="overflow-hidden rounded-2xl border border-base-300/60 bg-base-100 shadow-sm ring-1 ring-black/3">
+                    <div className="border-b border-base-200/90 bg-base-200/35 px-4 py-4 sm:px-6 sm:py-5">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                            <div>
+                                <h2 className="text-lg font-bold text-base-content">Đơn chờ xuất kho</h2>
+                                <p className="mt-0.5 text-xs text-base-content/55">Danh sách theo cơ sở đang chọn trên thanh điều hướng</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-sm gap-2 rounded-xl border border-base-300/80 bg-base-100"
+                                onClick={loadQueue}
+                                disabled={queueLoading}
+                            >
+                                {queueLoading ? (
+                                    <span className="loading loading-spinner loading-sm text-primary" />
+                                ) : (
+                                    <RefreshCw className="size-4" aria-hidden />
+                                )}
+                                Làm mới
                             </button>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                            <span className="text-xs text-base-content/60 shrink-0">Lọc theo kênh:</span>
-                            <div className="join join-horizontal flex-wrap">
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45 shrink-0">
+                                Lọc kênh
+                            </span>
+                            <div className="inline-flex flex-wrap gap-1 rounded-xl bg-base-100/90 p-1 ring-1 ring-base-300/60">
                                 {QUEUE_FILTERS.map((opt) => (
                                     <button
                                         key={opt.value || 'all'}
                                         type="button"
-                                        className={`btn btn-xs join-item min-h-8 ${
-                                            queueChannelFilter === opt.value ? 'btn-primary' : 'btn-ghost border border-base-300'
+                                        className={`min-h-9 rounded-lg px-3.5 text-sm font-medium transition-colors ${
+                                            queueChannelFilter === opt.value
+                                                ? 'bg-primary text-primary-content shadow-sm'
+                                                : 'text-base-content/70 hover:bg-base-200/80'
                                         }`}
                                         onClick={() => setQueueChannelFilter(opt.value)}
                                     >
@@ -420,31 +458,50 @@ const WarehouseOutboundScanPage = () => {
                                 ))}
                             </div>
                         </div>
-                        <div className="text-xs text-base-content/60">
-                            <span className="label-text">Kho bán online (giao từ xa):</span>{' '}
-                            {onlineLoading ? (
-                                <span className="loading loading-spinner loading-xs align-middle" />
-                            ) : onlineLocation ? (
-                                <>
-                                    <span className="font-medium text-base-content">{onlineLocation.name || onlineLocation.code}</span>
-                                    {onlineInfo.resolvedAs === 'fallback_first_active' && (
-                                        <span className="text-amber-700 ml-1">(fallback chi nhánh đầu tiên)</span>
-                                    )}
-                                </>
-                            ) : (
-                                <span className="text-base-content/50">Chưa cấu hình (đơn cửa hàng vẫn hiện theo quyền)</span>
+                        <div className="mt-4 space-y-2 rounded-xl border border-base-300/50 bg-base-100/60 px-3 py-3 text-xs text-base-content/70 sm:px-4">
+                            <p>
+                                <span className="font-medium text-base-content/80">Cơ sở đang xử lý:</span>{' '}
+                                {currentLocationId === 'all' || !currentLocationId ? (
+                                    <span className="text-base-content">Tất cả chi nhánh (admin)</span>
+                                ) : (
+                                    <span className="font-medium text-base-content">
+                                        {currentLocation?.name || currentLocation?.code || '—'}
+                                    </span>
+                                )}
+                            </p>
+                            <p>
+                                <span className="font-medium text-base-content/80">Kho bán online (giao từ xa):</span>{' '}
+                                {onlineLoading ? (
+                                    <span className="loading loading-spinner loading-xs align-middle" />
+                                ) : onlineLocation ? (
+                                    <>
+                                        <span className="font-medium text-base-content">{onlineLocation.name || onlineLocation.code}</span>
+                                        {onlineInfo.resolvedAs === 'fallback_first_active' && (
+                                            <span className="text-amber-700 ml-1">(fallback chi nhánh đầu tiên)</span>
+                                        )}
+                                    </>
+                                ) : (
+                                    <span className="text-base-content/50">Chưa cấu hình</span>
+                                )}
+                            </p>
+                            {currentLocationId && currentLocationId !== 'all' && onlineLocation?._id && (
+                                <p className="text-base-content/55 leading-relaxed">
+                                    {String(currentLocationId) === String(onlineLocation._id)
+                                        ? 'Đơn online web sẽ xuất hiện trong danh sách bên dưới (cùng đơn tại quầy của cơ sở này).'
+                                        : 'Đơn online chỉ thuộc kho bán online ở trên — khi bạn chọn cơ sở khác, danh sách chỉ còn đơn tại quầy của cơ sở đang chọn.'}
+                                </p>
                             )}
                         </div>
                     </div>
 
                     {queueLoading && queue.length === 0 ? (
-                        <div className="flex justify-center py-16">
-                            <span className="loading loading-spinner text-primary" />
+                        <div className="flex justify-center py-20">
+                            <span className="loading loading-spinner loading-lg text-primary" />
                         </div>
                     ) : queue.length === 0 ? (
-                        <p className="p-6 text-sm text-base-content/60">Không có đơn nào đang chờ xuất kho.</p>
+                        <p className="px-6 py-14 text-center text-sm text-base-content/55">Không có đơn nào đang chờ xuất kho.</p>
                     ) : (
-                        <ul className="divide-y divide-base-200 text-sm max-h-[min(70vh,640px)] overflow-y-auto">
+                        <ul className="divide-y divide-base-200/90 text-sm max-h-[min(78vh,800px)] overflow-y-auto">
                             {queue.map((o) => {
                                 const expanded = openOrderId === o._id;
                                 const isActive =
@@ -455,107 +512,119 @@ const WarehouseOutboundScanPage = () => {
                                 const ch = o.channel === 'in_store' ? 'in_store' : 'online';
                                 const chStyle = channelStyles[ch];
                                 return (
-                                    <li key={o._id} className={`bg-base-100 pl-0 ${chStyle.rowBorder}`}>
+                                    <li
+                                        key={o._id}
+                                        className={`bg-base-100 transition-colors hover:bg-base-200/25 ${chStyle.rowBorder}`}
+                                    >
                                         <div className="flex items-stretch">
-                                        <button
-                                            type="button"
-                                            className="flex-1 min-w-0 pl-3 pr-2 py-3 flex items-center gap-3 text-left hover:bg-base-200/60 transition-colors"
-                                            onClick={() => handleToggleOrder(o._id)}
-                                        >
-                                            <ChevronDown
-                                                className={`w-5 h-5 shrink-0 text-base-content/50 transition-transform ${
-                                                    expanded ? 'rotate-180' : ''
-                                                }`}
-                                                aria-hidden
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-mono font-semibold text-base-content">
-                                                    {o.code}
-                                                    <span
-                                                        className={`ml-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-sans font-semibold border ${chStyle.badge}`}
-                                                    >
-                                                        {chStyle.label}
+                                            <button
+                                                type="button"
+                                                className="flex min-w-0 flex-1 items-start gap-3 px-4 py-4 text-left sm:items-center sm:gap-4 sm:px-5 sm:py-4"
+                                                onClick={() => handleToggleOrder(o._id)}
+                                            >
+                                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-base-200/80 text-base-content/55 ring-1 ring-base-300/50">
+                                                    <ChevronDown
+                                                        className={`size-5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                                                        aria-hidden
+                                                    />
+                                                </span>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-wrap items-center gap-2 gap-y-1">
+                                                        <span className="font-mono text-base font-semibold tracking-tight text-base-content">
+                                                            {o.code}
+                                                        </span>
+                                                        <span
+                                                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${chStyle.badge}`}
+                                                        >
+                                                            {chStyle.label}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-base-content/70">
+                                                        <span>{formatOrderDate(o)}</span>
+                                                        <span className="text-base-content/35">·</span>
+                                                        <span className="font-semibold tabular-nums text-primary">
+                                                            {formatMoney(o.totalAmount)}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1.5 text-xs leading-snug text-base-content/60 sm:text-sm">
+                                                        <span className="font-medium text-base-content/80">{customerLabel(o)}</span>
+                                                        <span className="text-base-content/40"> · </span>
+                                                        <span>{itemCount(o)} sản phẩm</span>
+                                                        {addrPreview ? (
+                                                            <>
+                                                                <span className="text-base-content/40"> · </span>
+                                                                <span className="text-base-content/55">{addrPreview}</span>
+                                                            </>
+                                                        ) : null}
+                                                    </p>
+                                                </div>
+                                                <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
+                                                    {o.warehouseItemsPreparedAt ? (
+                                                        <span className="badge badge-success badge-sm border-0">Đã chuẩn bị</span>
+                                                    ) : (
+                                                        <span className="badge badge-ghost badge-sm border border-base-300/80">
+                                                            Chưa chuẩn bị
+                                                        </span>
+                                                    )}
+                                                    <span className="badge badge-warning badge-sm border-0">Chờ xuất kho</span>
+                                                </div>
+                                            </button>
+                                            <div className="flex shrink-0 flex-col border-l border-base-200/90 sm:hidden">
+                                                <div className="flex flex-1 flex-wrap content-center justify-end gap-1 px-3 py-2">
+                                                    {o.warehouseItemsPreparedAt ? (
+                                                        <span className="badge badge-success badge-sm scale-90 border-0 px-2 text-[10px]">
+                                                            Đã CB
+                                                        </span>
+                                                    ) : (
+                                                        <span className="badge badge-ghost badge-sm scale-90 border border-base-300/80 px-2 text-[10px]">
+                                                            Chưa CB
+                                                        </span>
+                                                    )}
+                                                    <span className="badge badge-warning badge-sm scale-90 border-0 px-2 text-[10px]">
+                                                        Chờ XK
                                                     </span>
-                                                </p>
-                                                <p className="text-xs text-base-content/65 mt-0.5">
-                                                    <span>{formatOrderDate(o)}</span>
-                                                    <span className="text-base-content/40 mx-1">·</span>
-                                                    <span className="font-medium text-base-content/80">
-                                                        {formatMoney(o.totalAmount)}
-                                                    </span>
-                                                </p>
-                                                <p className="text-xs text-base-content/55 truncate mt-0.5">
-                                                    {customerLabel(o)}
-                                                    <span className="text-base-content/40 mx-1">·</span>
-                                                    {itemCount(o)} sản phẩm
-                                                    {addrPreview ? (
-                                                        <>
-                                                            <span className="text-base-content/40 mx-1">·</span>
-                                                            <span className="italic">{addrPreview}</span>
-                                                        </>
-                                                    ) : null}
-                                                </p>
+                                                </div>
                                             </div>
-                                            <div className="shrink-0 flex flex-col items-end gap-1">
-                                                {o.warehouseItemsPreparedAt ? (
-                                                    <span className="badge badge-success badge-sm">Đã chuẩn bị</span>
+                                            <button
+                                                type="button"
+                                                className="flex w-12 shrink-0 items-center justify-center border-l border-base-200/90 bg-base-200/20 text-base-content/60 transition-colors hover:bg-primary/10 hover:text-primary sm:w-14"
+                                                title="In phiếu soạn hàng (không cần mở đơn)"
+                                                disabled={printLoadingId === o._id}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handlePrintWarehouseSlip(o);
+                                                }}
+                                            >
+                                                {printLoadingId === o._id ? (
+                                                    <span className="loading loading-spinner loading-sm text-primary" />
                                                 ) : (
-                                                    <span className="badge badge-ghost badge-sm">Chưa chuẩn bị</span>
+                                                    <Printer className="size-5" aria-hidden />
                                                 )}
-                                                <span className="badge badge-warning badge-sm">Chờ xuất kho</span>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="shrink-0 px-3 py-3 border-l border-base-200 hover:bg-base-200/80 transition-colors flex items-center justify-center"
-                                            title="In phiếu soạn hàng (không cần mở đơn)"
-                                            disabled={printLoadingId === o._id}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePrintWarehouseSlip(o);
-                                            }}
-                                        >
-                                            {printLoadingId === o._id ? (
-                                                <span className="loading loading-spinner loading-sm text-primary" />
-                                            ) : (
-                                                <Printer className="w-5 h-5 text-base-content/70" aria-hidden />
-                                            )}
-                                        </button>
+                                            </button>
                                         </div>
 
                                         {expanded && (
-                                            <div className="px-4 pb-4 pt-0 border-t border-base-200 bg-base-200/30">
+                                            <div className="border-t border-base-200/90 bg-linear-to-b from-base-200/40 to-base-200/15 px-4 pb-5 pt-1 sm:px-6">
                                                 {detailLoading && !isActive ? (
                                                     <div className="flex justify-center py-8">
                                                         <span className="loading loading-spinner text-primary" />
                                                     </div>
                                                 ) : isActive && packingProgress && activeOrder ? (
-                                                    <div className="space-y-3 pt-3">
-                                                        <div className="flex flex-wrap gap-2 items-center">
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-outline btn-sm gap-1"
-                                                                onClick={() => handlePrintWarehouseSlip(activeOrder)}
-                                                                title="In phiếu soạn hàng cho nhân viên kho (A4)"
-                                                            >
-                                                                <Printer className="w-4 h-4" aria-hidden />
-                                                                In phiếu soạn hàng
-                                                            </button>
-                                                        </div>
+                                                    <div className="mx-auto max-w-4xl space-y-4 pt-4">
                                                         <OrderDetailCard order={activeOrder} />
                                                         {!isItemsPrepared() ? (
-                                                            <div className="rounded-lg border border-amber-300/80 bg-amber-50/90 dark:bg-amber-950/20 p-3 space-y-2">
-                                                                <p className="text-sm font-medium text-base-content">
+                                                            <div className="rounded-xl border border-amber-400/50 bg-amber-500/8 p-4 shadow-sm dark:bg-amber-950/25 space-y-3">
+                                                                <p className="text-base font-semibold text-base-content">
                                                                     Bước 1 — Chuẩn bị hàng
                                                                 </p>
-                                                                <p className="text-xs text-base-content/80 leading-relaxed">
+                                                                <p className="text-sm text-base-content/80 leading-relaxed">
                                                                     Sau khi lấy đủ sản phẩm tại kho, bấm xác nhận. Sau đó bước 2 mới
                                                                     quét từng dòng đóng gói, bước 3 xuất kho (trừ tồn) — trạng thái
                                                                     đơn sẽ là <strong>Đã xuất kho / hoàn thành</strong>.
                                                                 </p>
                                                                 <button
                                                                     type="button"
-                                                                    className="btn btn-warning btn-sm"
+                                                                    className="btn btn-warning rounded-xl"
                                                                     disabled={preparedLoading}
                                                                     onClick={submitConfirmPrepared}
                                                                 >
@@ -568,10 +637,10 @@ const WarehouseOutboundScanPage = () => {
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                <p className="text-xs font-medium text-base-content/80 pt-1">
+                                                                <p className="text-sm font-semibold text-base-content pt-1">
                                                                     Bước 2 &amp; 3 — Đóng gói từng dòng, xuất kho
                                                                 </p>
-                                                                <p className="text-xs text-base-content/70">
+                                                                <p className="text-sm text-base-content/70">
                                                                     Đóng gói: {packingProgress.packedCount}/
                                                                     {packingProgress.totalLines} dòng
                                                                     {packingProgress.allPacked && (
@@ -581,7 +650,7 @@ const WarehouseOutboundScanPage = () => {
                                                                     )}
                                                                 </p>
 
-                                                                <ul className="rounded-lg border border-base-200 divide-y divide-base-200 bg-base-100 text-sm max-h-48 overflow-y-auto">
+                                                                <ul className="max-h-52 overflow-y-auto rounded-xl border border-base-300/60 divide-y divide-base-200/90 bg-base-100 text-sm shadow-inner">
                                                                     {packingProgress.lines.map((line) => (
                                                                         <li
                                                                             key={line.lineIndex}
@@ -605,14 +674,14 @@ const WarehouseOutboundScanPage = () => {
                                                                     ))}
                                                                 </ul>
 
-                                                                <form onSubmit={submitPackLine} className="space-y-2">
-                                                                    <label className="label py-0 text-xs font-medium">
+                                                                <form onSubmit={submitPackLine} className="space-y-3 rounded-xl border border-base-300/60 bg-base-100 p-4 shadow-sm">
+                                                                    <label className="label py-0 text-xs font-bold uppercase tracking-wide text-base-content/50">
                                                                         Quét SKU / mã vạch (dòng chưa đóng gói)
                                                                     </label>
                                                                     <input
                                                                         ref={skuInputRef}
                                                                         type="text"
-                                                                        className="input input-bordered input-sm w-full font-mono"
+                                                                        className="input input-bordered input-sm h-11 w-full font-mono text-base sm:h-12"
                                                                         placeholder="Quét sản phẩm vừa cho vào thùng"
                                                                         value={scanSku}
                                                                         onChange={(e) => setScanSku(e.target.value)}
@@ -622,7 +691,7 @@ const WarehouseOutboundScanPage = () => {
                                                                     <div className="flex flex-wrap gap-2">
                                                                         <button
                                                                             type="submit"
-                                                                            className="btn btn-primary btn-sm"
+                                                                            className="btn btn-primary rounded-xl"
                                                                             disabled={packLoading || packingProgress.allPacked}
                                                                         >
                                                                             {packLoading ? (
@@ -633,7 +702,7 @@ const WarehouseOutboundScanPage = () => {
                                                                         </button>
                                                                         <button
                                                                             type="button"
-                                                                            className="btn btn-success btn-sm"
+                                                                            className="btn btn-success rounded-xl"
                                                                             disabled={
                                                                                 confirmLoading || !isItemsPrepared() || !packingProgress.allPacked
                                                                             }
@@ -651,7 +720,7 @@ const WarehouseOutboundScanPage = () => {
                                                         )}
                                                     </div>
                                                 ) : expanded && !detailLoading ? (
-                                                    <p className="text-sm text-error py-4">Không tải được chi tiết đơn.</p>
+                                                    <p className="py-6 text-center text-sm text-error">Không tải được chi tiết đơn.</p>
                                                 ) : null}
                                             </div>
                                         )}
@@ -660,7 +729,7 @@ const WarehouseOutboundScanPage = () => {
                             })}
                         </ul>
                     )}
-                </div>
+                </section>
             </div>
         </div>
     );

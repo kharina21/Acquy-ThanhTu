@@ -6,9 +6,17 @@ import { hasRole } from '../middlewares/rbac.js';
 const router = express.Router();
 router.use(authenticate);
 
+const canRead = hasRole(
+    'admin',
+    'manager',
+    'Quản lý chi nhánh',
+    'seller',
+    'staff',
+    'Nhân viên bán hàng',
+);
 const canManage = hasRole('admin', 'manager', 'Quản lý chi nhánh');
 
-router.get('/', canManage, getStoreSettings);
+router.get('/', canRead, getStoreSettings);
 router.put('/', canManage, updateStoreSettings);
 
 export default router;

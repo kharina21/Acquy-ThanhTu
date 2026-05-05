@@ -26,6 +26,7 @@ const {
         orderOwnerId: 'valid_user_id',
         orderChannel: 'online',
         isPreOrder: false,
+        isLegacyImport: false,
         stock: 10,
         payosError: false,
         productExists: true,
@@ -59,6 +60,15 @@ const {
             }
             if (id === 'prod1' && state.productExists) {
                 return createQueryMock({ _id: 'prod1', name: 'Battery', price: 100000, isDeleted: false });
+            }
+            if (id === 'pos_customer_1') {
+                return createQueryMock({
+                    _id: 'pos_customer_1',
+                    name: 'KH Test',
+                    phone: '0900000001',
+                    type: 'retail',
+                    userId: null,
+                });
             }
             return createQueryMock(null);
         }),
@@ -105,6 +115,7 @@ const {
                     status: state.orderStatus,
                     paymentStatus: state.orderPaymentStatus,
                     isPreOrder: state.isPreOrder,
+                    isLegacyImport: state.isLegacyImport,
                     channel: state.orderChannel,
                     totalAmount: 100000,
                     items: [{ product: { _id: 'prod1', name: 'Battery' }, quantity: 1, price: 100000 }],
@@ -238,6 +249,7 @@ describe('orderController', () => {
         testState.orderOwnerId = 'valid_user_id';
         testState.orderChannel = 'online';
         testState.isPreOrder = false;
+        testState.isLegacyImport = false;
         testState.stock = 10;
         testState.payosError = false;
         testState.productExists = true;
@@ -379,7 +391,8 @@ describe('orderController', () => {
         const validPosPayload = {
             locationId: 'loc1',
             isPreOrder: false,
-            items: [{ productId: 'prod1', quantity: 1, price: 50000 }]
+            customerId: 'pos_customer_1',
+            items: [{ productId: 'prod1', quantity: 1, price: 50000 }],
         };
 
         it('UTCID01: Should return 201 for valid direct sale items (Normal)', async () => {
@@ -410,6 +423,20 @@ describe('orderController', () => {
             await createOrderFromItems(req, res);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith({ message: "Vui lòng chọn chi nhánh/kho" });
+        });
+
+        it('UTCID03b: Should return 400 if customer is missing for pre-order (Abnormal)', async () => {
+            testState.userRoles = ['seller'];
+            const { customerId: _c, ...rest } = validPosPayload;
+            const req = { user: { _id: 'seller_id' }, body: { ...rest, isPreOrder: true } };
+            const res = createMockRes();
+            await createOrderFromItems(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: expect.stringContaining('chọn khách hàng'),
+                }),
+            );
         });
 
         it('UTCID04: Should return 400 if target product is deleted or not found (Abnormal)', async () => {
@@ -555,6 +582,33 @@ describe('orderController', () => {
             await updateOrder(req, res);
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Lỗi khi cập nhật đơn hàng" }));
+        });
+
+        it('UTCID06: Should return 400 when setting completed without warehouse flow (Abnormal)', async () => {
+            testState.orderChannel = 'online';
+            testState.orderStatus = 'confirmed';
+            testState.orderPaymentStatus = 'paid';
+            testState.isLegacyImport = false;
+            const req = { user: { _id: 'admin_id' }, params: { id: 'valid_order_id' }, body: { status: 'completed' } };
+            const res = createMockRes();
+            await updateOrder(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: expect.stringContaining('Đã xuất kho / hoàn thành'),
+                }),
+            );
+        });
+
+        it('UTCID07: Should allow completed for legacy import (Normal)', async () => {
+            testState.orderChannel = 'online';
+            testState.orderStatus = 'confirmed';
+            testState.orderPaymentStatus = 'paid';
+            testState.isLegacyImport = true;
+            const req = { user: { _id: 'admin_id' }, params: { id: 'valid_order_id' }, body: { status: 'completed' } };
+            const res = createMockRes();
+            await updateOrder(req, res);
+            expect(res.status).toHaveBeenCalledWith(200);
         });
     });
 

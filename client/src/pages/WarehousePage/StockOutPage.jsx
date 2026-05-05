@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
+import ModalPortal from '@/components/common/ModalPortal';
 import { Package, Search, CheckCircle, X, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { getNextStockOutCode, getStockOuts, createStockOut, deleteStockOut, confirmStockOut } from '@/services/stockOutService';
 import { getProducts } from '@/services/productService';
-import { getLocations } from '@/services/locationService';
 import { useBranchStore } from '@/stores/useBranchStore';
+import { useUserRole } from '@/hooks/useUserRole';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { FilterToolbar, FilterToolbarActions, FilterToolbarField } from '@/components/common/FilterToolbar';
 import { toast } from 'sonner';
 
 const formatVND = (num) => {
@@ -12,17 +14,44 @@ const formatVND = (num) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
 };
 
+/** Ngày chứng từ mặc định (YYYY-MM-DD) — local */
+const todayInputDate = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+/** Loại xuất — phiếu nhập tay (không gồm sale_order; đơn hàng do hệ thống tạo) */
+const MANUAL_REASON_OPTIONS = [
+    { value: 'adjustment', label: 'Điều chỉnh / đối soát tồn' },
+    { value: 'internal_use', label: 'Xuất nội bộ / dùng nội bộ' },
+    { value: 'damage_loss', label: 'Xuất hủy / hỏng / mất' },
+    { value: 'supplier_return', label: 'Trả nhà cung cấp' },
+    { value: 'other', label: 'Khác' },
+];
+
+const MANUAL_REASON_LABEL = Object.fromEntries(MANUAL_REASON_OPTIONS.map((o) => [o.value, o.label]));
+
+const formatStockOutDisplayDate = (row) => {
+    const raw = row.documentDate || row.createdAt;
+    if (!raw) return '—';
+    return new Date(raw).toLocaleString('vi-VN');
+};
+
 const StockOutPage = () => {
     const [list, setList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
-    const [filters, setFilters] = useState({ fromDate: '', toDate: '', status: '', code: '', saleChannel: '' });
+    const [filters, setFilters] = useState({ fromDate: '', toDate: '', status: '', code: '', saleChannel: '', reasonType: '' });
     const [debouncedCode, setDebouncedCode] = useState('');
-    const [locations, setLocations] = useState([]);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createCode, setCreateCode] = useState('');
     const [createLocationId, setCreateLocationId] = useState('');
     const [createNote, setCreateNote] = useState('');
+    const [createDocumentDate, setCreateDocumentDate] = useState('');
+    const [createReasonType, setCreateReasonType] = useState('adjustment');
     const [createRows, setCreateRows] = useState([]);
     const [productSearch, setProductSearch] = useState('');
     const [productSearchResults, setProductSearchResults] = useState([]);
@@ -34,6 +63,14 @@ const StockOutPage = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
+    const locations = useBranchStore((s) => s.locations);
+    const fetchLocations = useBranchStore((s) => s.fetchLocations);
+    const { isAdmin } = useUserRole();
+
+    /** Chỉ chi nhánh được phân quyền (admin: tất cả; khác: scope mine) */
+    useEffect(() => {
+        fetchLocations({ scope: isAdmin ? undefined : 'mine' });
+    }, [isAdmin, fetchLocations]);
 
     const fetchList = async (overridePage) => {
         setLoading(true);
@@ -45,6 +82,7 @@ const StockOutPage = () => {
         if (filters.status) params.status = filters.status;
         if (debouncedCode?.trim()) params.code = debouncedCode.trim();
         if (filters.saleChannel === 'online' || filters.saleChannel === 'offline') params.saleChannel = filters.saleChannel;
+        if (filters.reasonType) params.reasonType = filters.reasonType;
 
         const res = await getStockOuts(params);
         if (res.success && res.data) {
@@ -55,21 +93,13 @@ const StockOutPage = () => {
     };
 
     useEffect(() => {
-        getLocations().then((res) => {
-            if (res.success && res.data?.locations) {
-                setLocations((res.data.locations || []).filter((l) => l.isActive !== false));
-            }
-        });
-    }, []);
-
-    useEffect(() => {
         const t = setTimeout(() => setDebouncedCode(filters.code), 300);
         return () => clearTimeout(t);
     }, [filters.code]);
 
     useEffect(() => {
         fetchList();
-    }, [pagination.page, filters.fromDate, filters.toDate, filters.status, filters.saleChannel, debouncedCode, currentLocationId]);
+    }, [pagination.page, filters.fromDate, filters.toDate, filters.status, filters.saleChannel, filters.reasonType, debouncedCode, currentLocationId]);
 
     useEffect(() => {
         if (!productSearchOpen || productSearch.trim().length < 1) {
@@ -93,8 +123,14 @@ const StockOutPage = () => {
     const openCreate = async () => {
         const code = (await getNextStockOutCode()) || '';
         setCreateCode(code);
-        setCreateLocationId(currentLocationId || '');
+        let locId = currentLocationId || '';
+        if (!locId || !locations.some((l) => l._id === locId)) {
+            locId = locations[0]?._id || '';
+        }
+        setCreateLocationId(locId);
         setCreateNote('');
+        setCreateDocumentDate(todayInputDate());
+        setCreateReasonType('adjustment');
         setCreateRows([]);
         setShowCreateModal(true);
     };
@@ -141,7 +177,8 @@ const StockOutPage = () => {
                 location: createLocationId,
                 note: createNote,
                 items,
-                reasonType: 'other',
+                reasonType: createReasonType,
+                documentDate: createDocumentDate?.trim() ? createDocumentDate : undefined,
             });
             if (res.success) {
                 toast.success('Đã tạo phiếu xuất (nháp)');
@@ -194,74 +231,81 @@ const StockOutPage = () => {
     return (
         <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
             <div className="container mx-auto space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <Package className="w-8 h-8 text-primary" />
-                            <h1 className="text-2xl font-bold text-base-content">Xuất kho</h1>
-                        </div>
-                        <p className="text-sm text-base-content/65 max-w-2xl mt-1 pl-10">
-                            Bán online & bán tại quầy: phiếu xuất theo đơn bán được tạo khi nhân viên kho xác nhận xuất (sau khi quét đủ dòng).
-                        </p>
-                    </div>
-                    <button type="button" className="btn btn-primary btn-sm gap-1" onClick={openCreate}>
-                        <Plus className="w-4 h-4" /> Tạo phiếu xuất
-                    </button>
+                <div className="flex items-center gap-2">
+                    <Package className="w-8 h-8 text-primary" />
+                    <h1 className="text-2xl font-bold text-base-content">Xuất kho</h1>
                 </div>
 
-                <div className="flex flex-wrap gap-2 items-end bg-base-100 p-4 rounded-xl border border-base-200">
-                    <div>
-                        <label className="label py-0 text-xs">Từ ngày</label>
-                        <input
-                            type="date"
-                            className="input input-bordered input-sm"
-                            value={filters.fromDate}
-                            onChange={(e) => setFilters((f) => ({ ...f, fromDate: e.target.value }))}
-                        />
-                    </div>
-                    <div>
-                        <label className="label py-0 text-xs">Đến ngày</label>
-                        <input
-                            type="date"
-                            className="input input-bordered input-sm"
-                            value={filters.toDate}
-                            onChange={(e) => setFilters((f) => ({ ...f, toDate: e.target.value }))}
-                        />
-                    </div>
-                    <div>
-                        <label className="label py-0 text-xs">Trạng thái</label>
-                        <select
-                            className="select select-bordered select-sm"
-                            value={filters.status}
-                            onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả</option>
-                            <option value="draft">Nháp</option>
-                            <option value="confirmed">Đã xác nhận</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="label py-0 text-xs">Kênh xuất</label>
-                        <select
-                            className="select select-bordered select-sm min-w-40"
-                            value={filters.saleChannel}
-                            onChange={(e) => setFilters((f) => ({ ...f, saleChannel: e.target.value }))}
-                        >
-                            <option value="">Tất cả</option>
-                            <option value="offline">Tại quầy (tự động)</option>
-                            <option value="online">Online (xác nhận tay)</option>
-                        </select>
-                    </div>
-                    <div className="flex-1 min-w-[140px]">
-                        <label className="label py-0 text-xs">Mã phiếu</label>
-                        <input
-                            type="text"
-                            className="input input-bordered input-sm w-full"
-                            placeholder="XK-..."
-                            value={filters.code}
-                            onChange={(e) => setFilters((f) => ({ ...f, code: e.target.value }))}
-                        />
-                    </div>
+                <div className="rounded-xl border border-base-200 bg-base-100 p-4">
+                    <FilterToolbar>
+                        <FilterToolbarField label="Từ ngày">
+                            <input
+                                type="date"
+                                className="input input-bordered input-sm"
+                                value={filters.fromDate}
+                                onChange={(e) => setFilters((f) => ({ ...f, fromDate: e.target.value }))}
+                            />
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Đến ngày">
+                            <input
+                                type="date"
+                                className="input input-bordered input-sm"
+                                value={filters.toDate}
+                                onChange={(e) => setFilters((f) => ({ ...f, toDate: e.target.value }))}
+                            />
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Trạng thái">
+                            <select
+                                className="select select-bordered select-sm"
+                                value={filters.status}
+                                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả</option>
+                                <option value="draft">Nháp</option>
+                                <option value="confirmed">Đã xác nhận</option>
+                            </select>
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Loại xuất">
+                            <select
+                                className="select select-bordered select-sm min-w-[200px]"
+                                value={filters.reasonType}
+                                onChange={(e) => setFilters((f) => ({ ...f, reasonType: e.target.value }))}
+                            >
+                                <option value="">Tất cả</option>
+                                <option value="sale_order">Theo đơn hàng</option>
+                                {MANUAL_REASON_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                        {o.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Kênh xuất">
+                            <select
+                                className="select select-bordered select-sm min-w-40"
+                                value={filters.saleChannel}
+                                onChange={(e) => setFilters((f) => ({ ...f, saleChannel: e.target.value }))}
+                            >
+                                <option value="">Tất cả</option>
+                                <option value="offline">Tại quầy (tự động)</option>
+                                <option value="online">Online (xác nhận tay)</option>
+                            </select>
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Mã phiếu" className="min-w-[140px] flex-1">
+                            <input
+                                type="text"
+                                className="input input-bordered input-sm w-full"
+                                placeholder="XK-..."
+                                value={filters.code}
+                                onChange={(e) => setFilters((f) => ({ ...f, code: e.target.value }))}
+                            />
+                        </FilterToolbarField>
+                        <FilterToolbarActions>
+                            <button type="button" className="btn btn-primary btn-sm gap-1" onClick={openCreate}>
+                                <Plus className="h-4 w-4" /> Tạo phiếu xuất
+                            </button>
+                        </FilterToolbarActions>
+                    </FilterToolbar>
                 </div>
 
                 <div className="bg-base-100 rounded-xl border border-base-200 overflow-hidden">
@@ -281,7 +325,7 @@ const StockOutPage = () => {
                                         <th>Chi nhánh</th>
                                         <th>Kênh / loại</th>
                                         <th>Trạng thái</th>
-                                        <th>Ngày</th>
+                                        <th>Ngày (CT / tạo)</th>
                                         <th className="text-right">Thành tiền</th>
                                         <th className="text-right">Thao tác</th>
                                     </tr>
@@ -303,13 +347,19 @@ const StockOutPage = () => {
                                                                 }`}
                                                             >
                                                                 {row.saleChannel === 'offline'
-                                                                    ? 'Tại quầy · tự động'
+                                                                    ? 'Đơn hàng · tại quầy'
                                                                     : row.saleChannel === 'online'
-                                                                      ? 'Online · xác nhận tay'
-                                                                      : 'Online · xác nhận tay'}
+                                                                      ? 'Đơn hàng · online'
+                                                                      : 'Đơn hàng'}
                                                             </span>
                                                         ) : (
-                                                            <span className="badge badge-ghost badge-sm">Điều chỉnh / khác</span>
+                                                            <span
+                                                                className={`badge badge-sm ${
+                                                                    row.reasonType === 'damage_loss' ? 'badge-warning' : 'badge-ghost'
+                                                                }`}
+                                                            >
+                                                                {MANUAL_REASON_LABEL[row.reasonType] || MANUAL_REASON_LABEL.other}
+                                                            </span>
                                                         )}
                                                     </td>
                                                     <td>
@@ -317,7 +367,12 @@ const StockOutPage = () => {
                                                             {row.status === 'confirmed' ? 'Đã xác nhận' : 'Nháp'}
                                                         </span>
                                                     </td>
-                                                    <td className="text-xs">{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : '—'}</td>
+                                                    <td className="text-xs">
+                                                        <span>{formatStockOutDisplayDate(row)}</span>
+                                                        <span className="block text-[10px] text-base-content/50 mt-0.5">
+                                                            {row.documentDate ? 'Ngày chứng từ' : 'Ngày tạo phiếu'}
+                                                        </span>
+                                                    </td>
                                                     <td className="text-right font-medium">{formatVND(row.totalAmount)}</td>
                                                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
                                                         {row.status === 'draft' && row.reasonType !== 'sale_order' && (
@@ -423,8 +478,18 @@ const StockOutPage = () => {
             </div>
 
             {showCreateModal && (
-                <div className="modal modal-open">
-                    <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
+                <ModalPortal>
+                <div
+                    className="fixed inset-0 z-100 flex items-center justify-center p-4 pointer-events-none"
+                    data-theme="light"
+                >
+                    <div
+                        role="presentation"
+                        className="pointer-events-auto absolute inset-0 min-h-dvh bg-neutral-900/50"
+                        onClick={() => setShowCreateModal(false)}
+                        aria-hidden
+                    />
+                    <div className="pointer-events-auto relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 text-base-content shadow-2xl">
                         <button
                             type="button"
                             className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
@@ -451,7 +516,52 @@ const StockOutPage = () => {
                                         <option value="">—</option>
                                         {locations.map((l) => (
                                             <option key={l._id} value={l._id}>
-                                                {l.name}
+                                                {l.code ? `${l.code} — ${l.name}` : l.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="label py-0 text-xs flex flex-wrap items-center gap-2">
+                                        Ngày chứng từ
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-xs h-6 min-h-0 px-2"
+                                            onClick={() => setCreateDocumentDate(todayInputDate())}
+                                        >
+                                            Hôm nay
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-xs h-6 min-h-0 px-2 text-base-content/60"
+                                            onClick={() => setCreateDocumentDate('')}
+                                        >
+                                            Bỏ ngày CT
+                                        </button>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="input input-bordered input-sm w-full"
+                                        value={createDocumentDate}
+                                        onChange={(e) => setCreateDocumentDate(e.target.value)}
+                                    />
+                                    <p className="text-[11px] text-base-content/50 mt-1">
+                                        Chọn ngày trên phiếu giấy (nhập tài liệu cũ). Để trống nếu chỉ cần ngày tạo phiếu trên hệ thống.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="label py-0 text-xs">Loại xuất *</label>
+                                    <select
+                                        className="select select-bordered select-sm w-full"
+                                        required
+                                        value={createReasonType}
+                                        onChange={(e) => setCreateReasonType(e.target.value)}
+                                    >
+                                        {MANUAL_REASON_OPTIONS.map((o) => (
+                                            <option key={o.value} value={o.value}>
+                                                {o.label}
                                             </option>
                                         ))}
                                     </select>
@@ -535,7 +645,7 @@ const StockOutPage = () => {
                                     ))
                                 )}
                             </div>
-                            <div className="modal-action">
+                            <div className="modal-action mt-4">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>
                                     Hủy
                                 </button>
@@ -545,8 +655,8 @@ const StockOutPage = () => {
                             </div>
                         </form>
                     </div>
-                    <button type="button" className="modal-backdrop bg-black/40" onClick={() => setShowCreateModal(false)} aria-label="Đóng" />
                 </div>
+                </ModalPortal>
             )}
 
             <ConfirmationModal

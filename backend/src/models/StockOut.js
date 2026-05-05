@@ -16,10 +16,19 @@ const stockOutSchema = new mongoose.Schema(
         location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         note: { type: String, default: '' },
+        /** Ngày trên chứng từ / phiếu xuất (nhập tay — nhập tài liệu cũ). Không có thì hiển thị theo ngày tạo phiếu */
+        documentDate: { type: Date, default: null },
         status: { type: String, enum: ['draft', 'confirmed'], default: 'draft' },
         confirmedAt: { type: Date, default: null },
-        /** sale_order: xuất theo đơn bán hàng; other: xuất điều chỉnh / hủy hàng / nội bộ… */
-        reasonType: { type: String, enum: ['sale_order', 'other'], default: 'other' },
+        /**
+         * sale_order: theo đơn hàng (hệ thống);
+         * adjustment | internal_use | damage_loss | supplier_return | other: phiếu nhập tay.
+         */
+        reasonType: {
+            type: String,
+            enum: ['sale_order', 'adjustment', 'internal_use', 'damage_loss', 'supplier_return', 'other'],
+            default: 'other',
+        },
         /**
          * Chỉ dùng khi reasonType = sale_order: online = xác nhận xuất tay từ kho;
          * offline = bán tại quầy, phiếu ghi nhận tự động khi lập đơn (đã trừ tồn).

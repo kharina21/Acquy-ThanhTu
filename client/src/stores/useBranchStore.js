@@ -27,7 +27,10 @@ export const useBranchStore = create(
                     const { currentLocationId } = get();
                     const isAll = currentLocationId === 'all';
                     const validId = activeList.some((l) => l._id === currentLocationId);
-                    if (activeList.length > 0 && !isAll && (!currentLocationId || !validId)) {
+                    /** scope mine: không dùng "tất cả" — ép về chi nhánh được phân. */
+                    if (activeList.length > 0 && opts.scope === 'mine' && isAll) {
+                        set({ currentLocationId: activeList[0]._id });
+                    } else if (activeList.length > 0 && !isAll && (!currentLocationId || !validId)) {
                         set({ currentLocationId: activeList[0]._id });
                     }
                     if (activeList.length === 0) {

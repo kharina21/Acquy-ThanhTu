@@ -40,6 +40,9 @@ export const getAssignableRoleOptionsForUser = (apiRoles = [], user = null) => {
     });
 };
 
+/** Luồng mua hàng online (giỏ, thanh toán web, đơn của tôi) — khớp backend `hasRole('user','customer')`. */
+export const ONLINE_SHOP_ROLES = ['user', 'customer'];
+
 export const ROLE_LABELS = {
     user: 'Người dùng thường',
     customer: 'Khách hàng',

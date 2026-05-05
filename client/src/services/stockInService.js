@@ -20,12 +20,6 @@ export const getStockInById = async (id) => {
     return res.data;
 };
 
-/** Sinh danh sách seri số không trùng (server kiểm tra DB). Body: { quantity, excludeSerials? } */
-export const generateStockInSerials = async (payload) => {
-    const res = await api.post('/stock-ins/generate-serials', payload);
-    return res.data;
-};
-
 export const createStockIn = async (data) => {
     const res = await api.post('/stock-ins', data);
     return res.data;

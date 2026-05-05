@@ -2,6 +2,7 @@ import Order from '../models/Order.js';
 import PaymentLink from '../models/PaymentLink.js';
 import Customer from '../models/Customer.js';
 import { verifyPayOSWebhook } from '../libs/payosHelper.js';
+import { notifyOrderCustomerStatusChange } from '../libs/orderNotificationHelper.js';
 
 /**
  * GET /payments/webhook – PayOS có thể gửi GET để kiểm tra URL khi đăng ký.
@@ -52,6 +53,8 @@ export const handlePayOSWebhook = async (req, res) => {
         if (success) {
             const order = await Order.findById(paymentLink.order);
             if (order) {
+                const prevWebhookOrderStatus = order.status;
+                const prevWebhookPaymentStatus = order.paymentStatus;
                 await Order.findByIdAndUpdate(paymentLink.order, {
                     paymentStatus: 'paid',
                     paidAt: new Date(),
@@ -62,6 +65,11 @@ export const handlePayOSWebhook = async (req, res) => {
                         $inc: { accumulatedAmount: order.totalAmount || 0 },
                     });
                 }
+                await notifyOrderCustomerStatusChange(
+                    paymentLink.order,
+                    prevWebhookOrderStatus,
+                    prevWebhookPaymentStatus,
+                );
             }
             await PaymentLink.updateOne({ _id: paymentLink._id }, { status: 'paid' });
         } else {

@@ -108,10 +108,6 @@ export default function InventoryNxtReportPage() {
                         <FileSpreadsheet className="w-8 h-8 text-primary" />
                         <div>
                             <h1 className="text-2xl font-bold text-base-content">Báo cáo xuất nhập tồn</h1>
-                            <p className="text-sm text-base-content/60 max-w-xl">
-                                Bảng theo dạng sổ NXT: mã hàng, tên hàng, tồn đầu / nhập / xuất trong kỳ, tồn cuối (không có
-                                cột ĐVT). Nhập và xuất trong kỳ đã gộp điều chỉnh kiểm kho để khớp tồn.
-                            </p>
                         </div>
                     </div>
                 </div>

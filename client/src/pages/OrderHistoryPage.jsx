@@ -7,14 +7,17 @@ import { Button } from '@/components/ui/button';
 import { OrderStatusBadge, PaymentStatusBadge, STATUS_CONFIG } from '@/components/order/StatusBadge';
 import { getMyOrders, cancelOrderByCustomer } from '@/services/orderService';
 import { toast } from 'sonner';
-import { XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import CancelOrderModal from '@/components/common/CancelOrderModal';
+import { PageState } from '@/components/ui/page-state';
+import { SurfaceCard } from '@/components/ui/surface-card';
 
 const TABS = [
     { key: '', label: 'Tất cả' },
     { key: 'pending', label: 'Chờ xử lý' },
     { key: 'completed', label: 'Hoàn thành' },
     { key: 'cancelled', label: 'Đã hủy' },
+    { key: 'refunded', label: 'Đã hoàn tiền' },
 ];
 
 const LIMIT = 8;
@@ -33,7 +36,11 @@ export default function OrderHistoryPage() {
         setLoading(true);
         try {
             const params = { page: currentPage, limit: LIMIT };
-            if (activeTab) params.status = activeTab;
+            if (activeTab === 'refunded') {
+                params.paymentStatus = 'refunded';
+            } else if (activeTab) {
+                params.status = activeTab;
+            }
             const res = await getMyOrders(params);
             const data = res?.data;
             setOrders(data?.orders || []);
@@ -94,15 +101,15 @@ export default function OrderHistoryPage() {
     const hasOrders = orders.length > 0;
 
     return (
-        <div className='min-h-screen bg-gray-50/50 flex flex-col'>
+        <div className='min-h-screen bg-base-200/40 flex flex-col'>
             <Header
                 user={user}
                 onLogout={handleLogout}
             />
 
             <main className='flex-1 container mx-auto px-4 py-8'>
-                <h1 className='text-2xl font-bold text-gray-800 mb-2'>Đơn hàng của tôi</h1>
-                <p className='text-gray-500 text-sm mb-6'>{total > 0 ? `${total} đơn hàng` : 'Chưa có đơn hàng'}</p>
+                <h1 className='text-2xl font-bold text-base-content mb-2'>Đơn hàng của tôi</h1>
+                <p className='text-base-content/60 text-sm mb-6'>{total > 0 ? `${total} đơn hàng` : 'Chưa có đơn hàng'}</p>
 
                 {/* Tabs */}
                 <div className='flex flex-wrap gap-2 mb-6'>
@@ -111,8 +118,10 @@ export default function OrderHistoryPage() {
                             key={tab.key || 'all'}
                             type='button'
                             onClick={() => handleTabChange(tab.key)}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                                activeTab === tab.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                activeTab === tab.key
+                                    ? 'bg-primary text-primary-content border-primary shadow-sm'
+                                    : 'bg-base-100 text-base-content/70 border-base-200 hover:bg-base-200/60 hover:border-base-300'
                             }`}
                         >
                             {tab.label}
@@ -121,18 +130,25 @@ export default function OrderHistoryPage() {
                 </div>
 
                 {loading ? (
-                    <div className='flex justify-center py-16'>
-                        <span className='loading loading-spinner loading-lg text-primary' />
-                    </div>
+                    <PageState variant='loading' title='Đang tải danh sách đơn...' className='max-w-2xl' />
                 ) : !hasOrders ? (
-                    <div className='bg-white rounded-2xl p-16 text-center border border-gray-100 shadow-sm'>
-                        <p className='text-gray-600 mb-4'>
-                            {activeTab ? `Không có đơn hàng ${STATUS_CONFIG[activeTab]?.label?.toLowerCase() || activeTab}` : 'Chưa có đơn hàng nào'}
-                        </p>
+                    <PageState
+                        variant='empty'
+                        icon={Package}
+                        title={
+                            activeTab
+                                ? activeTab === 'refunded'
+                                    ? 'Không có đơn đã hoàn tiền'
+                                    : `Không có đơn ${STATUS_CONFIG[activeTab]?.label?.toLowerCase() || activeTab}`
+                                : 'Chưa có đơn hàng nào'
+                        }
+                        description='Khám phá sản phẩm và đặt mua khi bạn sẵn sàng.'
+                        className='max-w-2xl'
+                    >
                         <Link to='/home'>
-                            <Button>Mua sắm ngay</Button>
+                            <Button className='rounded-xl'>Mua sắm ngay</Button>
                         </Link>
-                    </div>
+                    </PageState>
                 ) : (
                     <>
                         <div className='space-y-4'>
@@ -140,9 +156,9 @@ export default function OrderHistoryPage() {
                                 const firstImg = order.items?.[0]?.product?.images?.[0] || order.items?.[0]?.product?.image;
                                 const canCancel = order.status !== 'cancelled' && order.status === 'pending';
                                 return (
-                                    <div
+                                    <SurfaceCard
                                         key={order._id}
-                                        className='p-5 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200/50 transition-all duration-200'
+                                        className='p-5 hover:shadow-md hover:border-primary/25 transition-all duration-200'
                                     >
                                         <Link
                                             to={`/orders/${order._id}`}
@@ -150,7 +166,7 @@ export default function OrderHistoryPage() {
                                         >
                                             <div className='flex gap-4 sm:items-center'>
                                                 {firstImg && (
-                                                    <div className='w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center'>
+                                                    <div className='w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-base-200/80 border border-base-200/80 flex items-center justify-center'>
                                                         <img
                                                             src={firstImg}
                                                             alt=''
@@ -160,21 +176,21 @@ export default function OrderHistoryPage() {
                                                 )}
                                                 <div className='flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
                                                     <div>
-                                                        <p className='font-semibold text-gray-800'>{order.code}</p>
-                                                        <p className='text-sm text-gray-500 mt-0.5'>
+                                                        <p className='font-semibold text-base-content'>{order.code}</p>
+                                                        <p className='text-sm text-base-content/55 mt-0.5'>
                                                             Ngày đặt: {order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : '—'}
                                                         </p>
                                                     </div>
                                                     <div className='flex items-center gap-3 flex-wrap'>
                                                         <OrderStatusBadge status={order.status} />
                                                         <PaymentStatusBadge status={order.paymentStatus} />
-                                                        <span className='font-bold text-blue-600'>{order.totalAmount?.toLocaleString()}đ</span>
+                                                        <span className='font-bold text-primary'>{order.totalAmount?.toLocaleString()}đ</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </Link>
                                         {canCancel && (
-                                            <div className='mt-3 pt-3 border-t border-gray-100'>
+                                            <div className='mt-3 pt-3 border-t border-base-200'>
                                                 <Button
                                                     variant='outline'
                                                     size='sm'
@@ -187,7 +203,7 @@ export default function OrderHistoryPage() {
                                                 </Button>
                                             </div>
                                         )}
-                                    </div>
+                                    </SurfaceCard>
                                 );
                             })}
                         </div>
@@ -209,12 +225,14 @@ export default function OrderHistoryPage() {
                                         .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
                                         .map((p, idx, arr) => (
                                             <span key={p}>
-                                                {idx > 0 && arr[idx - 1] !== p - 1 && <span className='px-2 text-gray-400'>…</span>}
+                                                {idx > 0 && arr[idx - 1] !== p - 1 && <span className='px-2 text-base-content/40'>…</span>}
                                                 <button
                                                     type='button'
                                                     onClick={() => handlePageChange(p)}
-                                                    className={`min-w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
-                                                        p === page ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                    className={`min-w-9 h-9 rounded-lg text-sm font-medium transition-colors border ${
+                                                        p === page
+                                                            ? 'bg-primary text-primary-content border-primary'
+                                                            : 'bg-base-100 border-base-200 text-base-content/70 hover:bg-base-200/50'
                                                     }`}
                                                 >
                                                     {p}

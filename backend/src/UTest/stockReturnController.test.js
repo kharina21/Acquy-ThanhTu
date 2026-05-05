@@ -15,7 +15,7 @@ const {
         importedQty: 10,
         alreadyReturnedQty: 0,
         physicalStockQty: 100,
-        stockInSerials: [] // Danh sách serial lúc nhập
+        stockInSerials: [], // legacy field trên mock phiếu nhập (không còn validate trả theo seri)
     };
 
     const createChain = (data) => ({
@@ -176,23 +176,26 @@ describe('stockReturnController - createStockReturn', () => {
         }));
     });
 
-    it('UTCID05: Should return 400 on serial validation failure (wrong length) (Abnormal)', async () => {
-        testState.stockInSerials = ['S1', 'S2', 'S3']; // Sản phẩm này quản lý bằng serial
-        const req = { 
+    it('UTCID05: Should create when legacy stock-in has serials on file (seri không còn bắt buộc)', async () => {
+        testState.stockInSerials = ['S1', 'S2', 'S3'];
+        const req = {
             user: { _id: 'admin_id' },
-            body: { 
-                stockInId: 'IN01', 
-                items: [{ product: 'A', quantity: 2, serials: ['S1'] }] // Trả 2 nhưng chỉ nhập 1 serial
-            } 
+            body: {
+                code: 'RET-05',
+                stockInId: 'IN01',
+                items: [{ product: 'A', quantity: 2 }],
+            },
         };
         const res = createMockRes();
 
         await createStockReturn(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ 
-            message: expect.stringContaining("Cần nhập đúng 2 seri/IMEI để trả") 
-        }));
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: 'Tạo phiếu trả hàng thành công',
+            }),
+        );
     });
 
     it('UTCID06: Should return 500 on database execution error (Abnormal)', async () => {

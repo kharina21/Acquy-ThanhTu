@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { SurfaceCard } from "@/components/ui/surface-card";
 
 export default function ProductFilter({
     categories = [],
@@ -123,9 +124,9 @@ export default function ProductFilter({
     }, [searchParams]);
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
+        <SurfaceCard className="p-6 w-full">
 
-            <h3 className="font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">Bộ lọc</h3>
+            <h3 className="font-semibold text-base-content mb-4 pb-2 border-b border-base-200">Bộ lọc</h3>
 
             {/* CATEGORY */}
             <div className="mb-4">
@@ -240,10 +241,10 @@ export default function ProductFilter({
                 {errorPrice && <p className="text-error text-xs mt-1">{errorPrice}</p>}
             </div>
 
-            <Button onClick={handleSubmit} className="w-full">
+            <Button onClick={handleSubmit} className="w-full rounded-xl">
                 Áp dụng bộ lọc
             </Button>
 
-        </div>
+        </SurfaceCard>
     );
 }

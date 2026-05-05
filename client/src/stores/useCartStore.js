@@ -117,6 +117,11 @@ export const useCartStore = create(
           set({ items });
         } catch (err) {
           if (err.response?.status === 401) return;
+          /** 403: tài khoản không phải user/customer — API giỏ từ chối; không log như lỗi hệ thống. */
+          if (err.response?.status === 403) {
+            set({ items: [] });
+            return;
+          }
           console.error('loadCartFromServer:', err);
           set({ items: [] });
         }

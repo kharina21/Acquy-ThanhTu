@@ -23,18 +23,15 @@ import { hasRole } from '../middlewares/rbac.js';
 
 const router = express.Router();
 
-// Tất cả routes đều cần authenticate và có role admin hoặc manager
 router.use(authenticate);
+
+// Đọc danh sách / roles / chi tiết: admin hoặc quản lý chi nhánh (POS cần tải người bán)
+router.get('/roles', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getAllRoles);
+router.get('/', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getAllUsers);
+router.get('/:id', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getUserById);
+
+// Thao tác ghi: chỉ admin
 router.use(hasRole('admin'));
-
-// Lấy danh sách tất cả roles (để hiển thị trong dropdown)
-router.get('/roles', getAllRoles);
-
-// Lấy danh sách users
-router.get('/', getAllUsers);
-
-// Lấy thông tin chi tiết một user
-router.get('/:id', getUserById);
 
 // Tạo user mới
 router.post(

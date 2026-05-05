@@ -67,7 +67,7 @@ export function getAddressId(addr) {
  * Sổ địa chỉ (danh sách + form thêm/sửa) — dùng chung Checkout và chi tiết đơn (chỉnh địa chỉ).
  * @param {object} props
  * @param {(addresses: object[]) => void} props.onAddressesChange — gọi sau khi tải/lưu/xóa/đặt mặc định
- * @param {boolean} [props.pickForOrder] — true: mỗi thẻ có nút chọn giao đến địa chỉ đó (đơn hàng)
+ * @param {boolean} [props.pickForOrder] — true: nhấn vào phần nội dung thẻ địa chỉ để chọn giao đến đó cho đơn hiện tại
  * @param {(addr: object) => void | Promise<void>} [props.onPickAddress]
  */
 export function ShippingAddressBookDialog({
@@ -279,12 +279,20 @@ export function ShippingAddressBookDialog({
   };
 
   const handlePick = async (addr) => {
-    if (!onPickAddress) return;
+    if (!onPickAddress || !pickForOrder) return;
     try {
       await onPickAddress(addr);
       onOpenChange(false);
     } catch (e) {
       /* toast từ parent */
+    }
+  };
+
+  const handleCardPickKeyDown = (e, addr) => {
+    if (!pickForOrder || !onPickAddress) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handlePick(addr);
     }
   };
 
@@ -312,12 +320,25 @@ export function ShippingAddressBookDialog({
                   const summary = [addr.addressLine, addr.wardName, addr.districtName, addr.provinceName]
                     .filter(Boolean)
                     .join(', ');
+                  const cardPickable = pickForOrder && onPickAddress;
                   return (
                     <div
                       key={addrId || `addr-${index}`}
-                      className="rounded-xl border border-gray-300 bg-white p-3 text-left shadow-sm"
+                      className={`rounded-xl border border-gray-300 bg-white p-3 text-left shadow-sm ${
+                        cardPickable ? 'focus-within:ring-2 focus-within:ring-blue-500/30' : ''
+                      }`}
                     >
-                      <div className="flex gap-2 items-start">
+                      <div
+                        role={cardPickable ? 'button' : undefined}
+                        tabIndex={cardPickable ? 0 : undefined}
+                        className={`flex gap-2 items-start rounded-lg -m-1 p-1 ${
+                          cardPickable
+                            ? 'cursor-pointer hover:bg-blue-50/80 transition-colors outline-none'
+                            : ''
+                        }`}
+                        onClick={cardPickable ? () => handlePick(addr) : undefined}
+                        onKeyDown={cardPickable ? (e) => handleCardPickKeyDown(e, addr) : undefined}
+                      >
                         <MapPin className="w-4 h-4 shrink-0 text-blue-600 mt-0.5 pointer-events-none" />
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -328,55 +349,48 @@ export function ShippingAddressBookDialog({
                               </span>
                             )}
                           </div>
+                          {cardPickable && (
+                            <p className="text-[11px] text-blue-700 font-medium mt-0.5">Nhấn để chọn giao đến đây cho đơn này</p>
+                          )}
                           <p className="text-sm text-gray-900 mt-0.5">{addr.recipientName}</p>
                           <p className="text-xs text-gray-600">{addr.shippingPhone}</p>
                           <p className="text-xs text-gray-500 mt-1 leading-relaxed">{summary}</p>
                         </div>
                       </div>
-                      <div className="mt-3 pt-2 border-t border-gray-200 space-y-2">
-                        {pickForOrder && onPickAddress && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="w-full !bg-blue-600 hover:!bg-blue-700 !text-white !border-0 rounded-lg h-9"
-                            onClick={() => handlePick(addr)}
-                          >
-                            Giao đến địa chỉ này
-                          </Button>
-                        )}
+                      <div className="mt-3 pt-2 border-t border-gray-200">
                         <div className="flex flex-wrap gap-2">
-                        {!isDef && (
+                          {!isDef && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={`h-8 gap-1 ${ADDRESS_BOOK_OUTLINE_BTN}`}
+                              onClick={() => handleSetDefaultInBook(addrId)}
+                            >
+                              <Star className="w-3.5 h-3.5" />
+                              Đặt mặc định
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             className={`h-8 gap-1 ${ADDRESS_BOOK_OUTLINE_BTN}`}
-                            onClick={() => handleSetDefaultInBook(addrId)}
+                            onClick={() => openDialogEdit(addr)}
                           >
-                            <Star className="w-3.5 h-3.5" />
-                            Đặt mặc định
+                            <Pencil className="w-3.5 h-3.5" />
+                            Sửa
                           </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className={`h-8 gap-1 ${ADDRESS_BOOK_OUTLINE_BTN}`}
-                          onClick={() => openDialogEdit(addr)}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Sửa
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className={`h-8 gap-1 ${ADDRESS_BOOK_DELETE_BTN}`}
-                          onClick={() => handleDeleteAddress(addrId)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Xóa
-                        </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className={`h-8 gap-1 ${ADDRESS_BOOK_DELETE_BTN}`}
+                            onClick={() => handleDeleteAddress(addrId)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Xóa
+                          </Button>
                         </div>
                       </div>
                     </div>

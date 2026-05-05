@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react';
-import {
-    getCustomers,
-    createCustomer,
-    updateCustomer,
-    deleteCustomer,
-    restoreCustomer,
-} from '@/services/customerService';
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, restoreCustomer } from '@/services/customerService';
 import { getMemberPolicies } from '@/services/memberPolicyService';
 import { toast } from 'sonner';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Users } from 'lucide-react';
 import CustomerTable from './CustomerTable';
 import CustomerModal from './CustomerModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { FilterToolbar, FilterToolbarField } from '@/components/common/FilterToolbar';
 
 const CustomersPage = () => {
     const [customers, setCustomers] = useState([]);
@@ -150,52 +145,68 @@ const CustomersPage = () => {
     };
 
     return (
-        <div className="flex-1 min-h-0 p-6 bg-base-200 overflow-y-auto">
-            <div className="container mx-auto space-y-4">
-                <h1 className="text-2xl font-bold text-base-content">Khách hàng</h1>
-
-                <div className="flex flex-wrap gap-2 items-center">
-                    <div>
-                        <label className="label py-0 text-xs">Tìm kiếm</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40 z-10" />
-                            <input
-                                type="text"
-                                placeholder="Tên, SĐT..."
-                                className="input input-bordered input-sm w-48 pl-10"
-                                value={search}
-                                onChange={(e) => {
-                                    setSearch(e.target.value);
-                                    setPagination((p) => ({ ...p, page: 1 }));
-                                }}
-                            />
+        <div className='flex-1 min-h-0 overflow-y-auto bg-base-200/50'>
+            <div className='mx-auto w-full max-w-[min(100%,1280px)] space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8'>
+                <header className='rounded-2xl border border-base-300/60 bg-base-100 p-5 shadow-sm ring-1 ring-black/3 sm:p-6'>
+                    <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                        <div className='flex min-w-0 gap-4'>
+                            <span className='flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20'>
+                                <Users className='size-6' aria-hidden />
+                            </span>
+                            <div>
+                                <h1 className='text-2xl font-bold tracking-tight text-base-content sm:text-3xl'>Khách hàng</h1>
+                                <p className='mt-1.5 max-w-xl text-sm leading-relaxed text-base-content/65'>
+                                    Quản lý danh bạ, hạng thành viên và tài khoản liên kết — tìm nhanh theo tên hoặc số điện thoại.
+                                </p>
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <label className="label py-0 text-xs">Loại khách</label>
-                        <select
-                            className="select select-bordered select-sm w-40"
-                            value={typeFilter}
-                            onChange={(e) => {
-                                setTypeFilter(e.target.value);
-                                setPagination((p) => ({ ...p, page: 1 }));
-                            }}
+                        <button
+                            type='button'
+                            onClick={handleCreate}
+                            className='btn btn-primary shrink-0 gap-2 rounded-xl px-5 shadow-sm sm:btn-md'
                         >
-                            <option value="">Tất cả loại</option>
-                            <option value="walkin">Khách vãng lai</option>
-                            <option value="retail">Khách lẻ</option>
-                            <option value="registered">Liên kết tài khoản</option>
-                        </select>
-                    </div>
-                    <div className="flex items-end">
-                        <button onClick={handleCreate} className="btn btn-primary btn-sm gap-1">
-                            <Plus className="w-4 h-4" />
+                            <Plus className='size-5' />
                             Thêm khách hàng
                         </button>
                     </div>
+                </header>
+
+                <div className='rounded-2xl border border-base-300/60 bg-base-100 p-4 shadow-sm ring-1 ring-black/3 sm:p-5'>
+                    <FilterToolbar className='gap-x-4 gap-y-3'>
+                        <FilterToolbarField label='Tìm kiếm' className='min-w-[200px] flex-1'>
+                            <div className='relative max-w-md'>
+                                <Search className='pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-base-content/40' />
+                                <input
+                                    type='text'
+                                    placeholder='Tên, SĐT...'
+                                    className='input input-bordered input-sm h-10 w-full min-w-0 rounded-xl border-base-300/80 pl-10 sm:h-11'
+                                    value={search}
+                                    onChange={(e) => {
+                                        setSearch(e.target.value);
+                                        setPagination((p) => ({ ...p, page: 1 }));
+                                    }}
+                                />
+                            </div>
+                        </FilterToolbarField>
+                        <FilterToolbarField label='Loại khách'>
+                            <select
+                                className='select select-bordered select-sm h-10 min-w-[11rem] rounded-xl border-base-300/80 sm:h-11'
+                                value={typeFilter}
+                                onChange={(e) => {
+                                    setTypeFilter(e.target.value);
+                                    setPagination((p) => ({ ...p, page: 1 }));
+                                }}
+                            >
+                                <option value=''>Tất cả loại</option>
+                                <option value='walkin'>Khách vãng lai</option>
+                                <option value='retail'>Khách lẻ</option>
+                                <option value='registered'>Liên kết tài khoản</option>
+                            </select>
+                        </FilterToolbarField>
+                    </FilterToolbar>
                 </div>
 
-                <div className="bg-base-100 rounded-lg shadow-lg">
+                <div className='overflow-hidden rounded-2xl border border-base-300/60 bg-base-100 shadow-sm ring-1 ring-black/3'>
                     <CustomerTable
                         customers={customers}
                         loading={loading}

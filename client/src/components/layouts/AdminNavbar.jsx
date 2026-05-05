@@ -7,7 +7,16 @@ import AdminUserDropdown from './AdminUserDropdown';
 
 export default function AdminNavbar() {
     const { hasAnyRole } = useUserRole();
-    const needsBranch = hasAnyRole('admin', 'manager', 'warehouse_manager');
+    /** Giống AdminLayout: ai có phạm vi chi nhánh (kể cả NV nhiều cơ sở) đều thấy switcher khi có dữ liệu. */
+    const needsBranch = hasAnyRole(
+        'admin',
+        'manager',
+        'warehouse_manager',
+        'seller',
+        'Quản lý chi nhánh',
+        'staff',
+        'Nhân viên bán hàng',
+    );
 
     return (
         <nav className='navbar px-4 w-full bg-white border-b border-base-content/10 flex items-center justify-between'>

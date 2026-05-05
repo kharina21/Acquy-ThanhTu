@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Header from '../UserManagementPage/Header';
 import {
     getEmployees,
@@ -6,6 +6,7 @@ import {
     updateEmployee,
     deleteEmployee,
     getEmployeeMonthlySalesReport,
+    getEmployeeLinkedUserIds,
 } from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
 import { getUsers, updateUser, resetUserPassword } from '@/services/userService';
@@ -13,9 +14,35 @@ import { toast } from 'sonner';
 import { Plus, ChevronRight, ChevronLeft, ChevronDown, User, UserCircle, Pencil, Trash2, Eye, EyeOff } from 'lucide-react';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { rolesMeetsAny } from '@/utils/roleMatch';
+import { ROLE_LABELS } from '@/config/roleConfig';
 
 /** Tài khoản được chọn khi tạo hồ sơ nhân viên (đồng bộ backend kind=staff & createEmployee). */
 const EMPLOYEE_ACCOUNT_ROLES = ['seller', 'manager', 'warehouse_manager'];
+
+const ROLE_OBJECT_ID_HEX = /^[a-fA-F0-9]{24}$/;
+
+function roleLabelForStaffTable(role) {
+    if (!role) return '';
+    if (typeof role === 'string') {
+        if (ROLE_OBJECT_ID_HEX.test(role)) return '';
+        return ROLE_LABELS[role] || role;
+    }
+    const n = role?.name;
+    if (n && ROLE_LABELS[n]) return ROLE_LABELS[n];
+    if (role?.description) {
+        const short = String(role.description).split(' - ')[0]?.trim();
+        if (short) return short;
+    }
+    if (n && !ROLE_OBJECT_ID_HEX.test(n)) return n;
+    return '';
+}
+
+const STAFF_TABLE_ROLE_FILTER_OPTIONS = [
+    { value: '', label: 'Tất cả vai trò' },
+    { value: 'seller', label: ROLE_LABELS.seller },
+    { value: 'manager', label: ROLE_LABELS.manager },
+    { value: 'warehouse_manager', label: ROLE_LABELS.warehouse_manager },
+];
 
 const StaffManagementPage = () => {
 
@@ -30,16 +57,14 @@ const StaffManagementPage = () => {
     const [filters, setFilters] = useState({
         status: '',
         locationId: '',
+        role: '',
     });
     const [salesFilter, setSalesFilter] = useState({
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear(),
     });
-    const [salesSummary, setSalesSummary] = useState({
-        totalRevenue: 0,
-        totalOrders: 0,
-        employeeCount: 0,
-    });
+    /** User đã có Employee (toàn DB) — không phụ thuộc trang danh sách. */
+    const [linkedUserIds, setLinkedUserIds] = useState(() => new Set());
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState(null);
@@ -91,6 +116,17 @@ const StaffManagementPage = () => {
         }
     };
 
+    const fetchLinkedUserIds = useCallback(async () => {
+        try {
+            const res = await getEmployeeLinkedUserIds();
+            if (res?.success) {
+                setLinkedUserIds(new Set((res.data?.userIds || []).map(String)));
+            }
+        } catch (error) {
+            console.error('Error fetching linked user ids:', error);
+        }
+    }, []);
+
     const fetchEmployees = async () => {
         try {
             setLoading(true);
@@ -125,19 +161,14 @@ const StaffManagementPage = () => {
             const res = await getEmployeeMonthlySalesReport(params);
             if (res.success) {
                 const rows = res?.data?.employees || [];
-                const salesMap = new Map(rows.map((row) => [row._id, row.sales || { revenue: 0, orderCount: 0, avgOrderValue: 0 }]));
+                const salesMap = new Map(
+                    rows.map((row) => [String(row._id), row.sales || { revenue: 0, orderCount: 0, avgOrderValue: 0 }]),
+                );
                 setEmployees((prev) =>
                     prev.map((emp) => ({
                         ...emp,
-                        sales: salesMap.get(emp._id) || { revenue: 0, orderCount: 0, avgOrderValue: 0 },
-                    }))
-                );
-                setSalesSummary(
-                    res?.data?.summary || {
-                        totalRevenue: 0,
-                        totalOrders: 0,
-                        employeeCount: rows.length,
-                    }
+                        sales: salesMap.get(String(emp._id)) || { revenue: 0, orderCount: 0, avgOrderValue: 0 },
+                    })),
                 );
             }
         } catch (error) {
@@ -149,12 +180,13 @@ const StaffManagementPage = () => {
     useEffect(() => {
         fetchLocations();
         fetchStaffUsers();
-    }, []);
+        fetchLinkedUserIds();
+    }, [fetchLinkedUserIds]);
 
     useEffect(() => {
         fetchEmployees();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pagination.page, pagination.limit, filters.status, filters.locationId]);
+    }, [pagination.page, pagination.limit, filters.status, filters.locationId, filters.role]);
 
     useEffect(() => {
         if (employees.length > 0) {
@@ -164,6 +196,7 @@ const StaffManagementPage = () => {
     }, [employees.length, salesFilter.month, salesFilter.year, filters.locationId]);
 
     const openCreateModal = () => {
+        void fetchLinkedUserIds();
         setEditingEmployee(null);
         setFormData({
             empCode: '',
@@ -221,6 +254,7 @@ const StaffManagementPage = () => {
             setEditingEmployee(null);
             fetchEmployees();
             fetchStaffUsers();
+            fetchLinkedUserIds();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Lưu hồ sơ nhân viên thất bại');
         }
@@ -242,10 +276,10 @@ const StaffManagementPage = () => {
         setPagination((prev) => ({ ...prev, page: newPage }));
     };
 
-    // Tài khoản seller / quản lý chi nhánh / quản lý kho chưa có hồ sơ Employee
+    // Tài khoản seller / quản lý / quản lý kho chưa có hồ sơ Employee (theo toàn hệ thống, không chỉ trang hiện tại)
     const availableStaffUsers = staffUsers.filter((u) => {
-        if (employees.some((emp) => emp.user && emp.user._id === u._id)) return false;
-        const names = Array.isArray(u.roles) ? u.roles.map((r) => r.name) : [];
+        if (linkedUserIds.has(String(u._id))) return false;
+        const names = Array.isArray(u.roles) ? u.roles.map((r) => (typeof r === 'string' ? r : r?.name)).filter(Boolean) : [];
         return names.length > 0 && rolesMeetsAny(names, ...EMPLOYEE_ACCOUNT_ROLES);
     });
 
@@ -397,6 +431,7 @@ const StaffManagementPage = () => {
                         setEditingInfo(false);
                         setEditingAccount(false);
                         fetchEmployees();
+                        fetchLinkedUserIds();
                     }
                 } catch (err) {
                     toast.error(err?.response?.data?.message || 'Xóa thất bại');
@@ -451,6 +486,25 @@ const StaffManagementPage = () => {
                                         ))}
                                     </select>
                                 </div>
+                                <div className="flex flex-col">
+                                    <label className="label">
+                                        <span className="label-text font-semibold text-sm">Vai trò</span>
+                                    </label>
+                                    <select
+                                        className="select select-sm w-48 focus:outline-none focus:ring-0"
+                                        value={filters.role}
+                                        onChange={(e) => {
+                                            setFilters((prev) => ({ ...prev, role: e.target.value }));
+                                            setPagination((prev) => ({ ...prev, page: 1 }));
+                                        }}
+                                    >
+                                        {STAFF_TABLE_ROLE_FILTER_OPTIONS.map((opt) => (
+                                            <option key={opt.value || 'all'} value={opt.value}>
+                                                {opt.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                                 <div className='flex flex-col'>
                                     <label className="label">
                                         <span className="label-text font-semibold text-sm">Tháng</span>
@@ -494,22 +548,6 @@ const StaffManagementPage = () => {
                                 </button>
                             </div>
                         </div>
-                        <div className="bg-base-100 rounded-lg shadow-lg p-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                <div>
-                                    <span className="text-base-content/60">Doanh thu tháng</span>
-                                    <p className="font-semibold text-primary">{formatMoney(salesSummary.totalRevenue)}</p>
-                                </div>
-                                <div>
-                                    <span className="text-base-content/60">Số đơn đã thanh toán</span>
-                                    <p className="font-semibold">{(salesSummary.totalOrders || 0).toLocaleString('vi-VN')}</p>
-                                </div>
-                                <div>
-                                    <span className="text-base-content/60">Nhân viên trong báo cáo</span>
-                                    <p className="font-semibold">{(salesSummary.employeeCount || 0).toLocaleString('vi-VN')}</p>
-                                </div>
-                            </div>
-                        </div>
 
                         {/* Bảng nhân viên */}
                         <div className="bg-base-100 rounded-lg shadow-lg">
@@ -531,6 +569,7 @@ const StaffManagementPage = () => {
                                                     <th className="w-8"></th>
                                                     <th className="font-medium text-neutral text-xs">Mã NV</th>
                                                     <th className="font-medium text-neutral text-xs">Nhân viên</th>
+                                                    <th className="font-medium text-neutral text-xs min-w-32">Vai trò</th>
                                                     <th className="font-medium text-neutral text-xs">Chi nhánh làm việc</th>
                                                     <th className="font-medium text-neutral text-xs">Ngày vào làm</th>
                                                     <th className="font-medium text-neutral text-xs">Đơn/tháng</th>
@@ -571,6 +610,29 @@ const StaffManagementPage = () => {
                                                                     </div>
                                                                 </td>
                                                                 <td>
+                                                                    <div className="flex flex-wrap gap-1 max-w-56">
+                                                                        {emp.user?.roles?.length ? (
+                                                                            emp.user.roles.map((r, ri) => {
+                                                                                const label = roleLabelForStaffTable(r);
+                                                                                const rk =
+                                                                                    (r && typeof r === 'object' && r._id != null && String(r._id)) ||
+                                                                                    (r && typeof r === 'object' && r.name) ||
+                                                                                    `${ri}-${label}`;
+                                                                                return label ? (
+                                                                                    <span
+                                                                                        key={rk}
+                                                                                        className="badge badge-xs badge-outline font-normal whitespace-nowrap"
+                                                                                    >
+                                                                                        {label}
+                                                                                    </span>
+                                                                                ) : null;
+                                                                            })
+                                                                        ) : (
+                                                                            <span className="text-base-content/50">—</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td>
                                                                     <div className="flex flex-wrap gap-1 max-w-xs">
                                                                         {(emp.locations || []).map((loc) => (
                                                                             <span
@@ -595,7 +657,7 @@ const StaffManagementPage = () => {
                                                             </tr>
                                                             {isExpanded && (
                                                                 <tr className="bg-primary/5">
-                                                                    <td colSpan={8} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
+                                                                    <td colSpan={9} className="p-4 border-l-4 border-l-primary align-top" onClick={(e) => e.stopPropagation()}>
                                                                         {(() => {
                                                                             const expEmp = employees.find((e) => e._id === expandedId);
                                                                             return (

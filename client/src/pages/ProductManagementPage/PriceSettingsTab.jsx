@@ -100,11 +100,6 @@ const PriceSettingsTab = () => {
                 <DollarSign className="w-6 h-6 text-primary" />
                 <h2 className="text-lg font-bold">Thiết lập giá</h2>
             </div>
-            <p className="text-base-content/70 text-sm leading-relaxed mb-6 max-w-3xl">
-                Giá vốn: đơn giá nhập tối đa trên các phiếu nhập đã xác nhận; nếu chưa có thì dùng giá vốn đang lưu. Có
-                thể sửa trước khi Lưu. Giá cột bên phải là bảng giá bán chung.
-            </p>
-
             <form onSubmit={handleSearchSubmit} className="flex gap-2 mb-4">
                 <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-base-content/40" />

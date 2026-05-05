@@ -233,7 +233,6 @@ const StockReturnsPage = () => {
                                                                                             <th>Mã hàng</th>
                                                                                             <th>Tên sản phẩm</th>
                                                                                             <th className='text-right'>Số lượng trả</th>
-                                                                                            <th>Seri/IMEI</th>
                                                                                             <th>Lý do</th>
                                                                                         </tr>
                                                                                     </thead>
@@ -243,11 +242,6 @@ const StockReturnsPage = () => {
                                                                                                 <td>{it.product?.sku || '—'}</td>
                                                                                                 <td>{it.product?.name || '—'}</td>
                                                                                                 <td className='text-right'>{it.quantity}</td>
-                                                                                                <td className='font-mono text-xs'>
-                                                                                                    {Array.isArray(it.serials) && it.serials.length
-                                                                                                        ? it.serials.join(', ')
-                                                                                                        : '—'}
-                                                                                                </td>
                                                                                                 <td>{it.reason || '—'}</td>
                                                                                             </tr>
                                                                                         ))}

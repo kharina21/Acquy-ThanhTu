@@ -68,10 +68,10 @@ export const getWarrantyStats = async () => {
 
 /**
  * Thống kê phiếu yêu cầu bảo hành (Claims)
- * GET /api/warranties/claims/stats
+ * GET /api/warranties/claims/stats — optional params: locationId
  */
-export const getClaimStats = async () => {
-    const res = await api.get('/warranties/claims/stats');
+export const getClaimStats = async (params = {}) => {
+    const res = await api.get('/warranties/claims/stats', { params });
     return res.data;
 };
 

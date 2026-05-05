@@ -1,6 +1,7 @@
 import { BadgePercent, Boxes, LayoutDashboard, Package, Receipt, RotateCw, ShoppingCart, UserRound, UserRoundPen, UsersRound, ShieldCheck } from 'lucide-react';
 
 const SELLER_ROLES = ['seller', 'staff', 'Nhân viên bán hàng'];
+const WAREHOUSE_MANAGER_ROLES = ['warehouse_manager', 'Quản lý kho'];
 
 export const SIDEBAR_MENU_ITEMS = [
     {
@@ -10,23 +11,25 @@ export const SIDEBAR_MENU_ITEMS = [
         label: 'Tổng quan',
         ariaLabel: 'Tổng quan',
         activePaths: ['/admin', '/admin/dashboard'],
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES, ...WAREHOUSE_MANAGER_ROLES],
     },
     {
         id: 'pos-sales',
         to: '/sales',
         icon: ShoppingCart,
         label: 'Bán hàng',
-        ariaLabel: 'Bán hàng tại quầy',
+        ariaLabel: 'Bán hàng tại quầy (mở tab mới)',
         activePaths: ['/sales'],
         allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
+        /** POS full màn hình — mở tab mới để không rời trang quản trị hiện tại */
+        openInNewTab: true,
     },
     {
         id: 'orders',
         icon: Receipt,
         label: 'Đơn hàng',
         ariaLabel: 'Quản lý đơn hàng cửa hàng',
-        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh'],
+        allowedRoles: ['admin', 'manager', 'Quản lý chi nhánh', ...SELLER_ROLES],
         activePaths: ['/admin/orders'],
         subItems: [
             { id: 'pre-orders', to: '/admin/orders/pre-orders', label: 'Đặt hàng' },

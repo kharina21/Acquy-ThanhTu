@@ -11,6 +11,7 @@ import { SoldOutOverlay } from '@/components/product/SoldOutOverlay';
 import { ShoppingCart } from 'lucide-react';
 import { useNavigate, Link, useSearchParams } from "react-router";
 import ProductFilter from '@/components/ProductFilter';
+import { SurfaceCard } from '@/components/ui/surface-card';
 
 const ListProduct = () => {
 
@@ -191,7 +192,7 @@ const ListProduct = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex flex-col">
+        <div className="min-h-screen bg-gradient-to-b from-base-200/40 to-base-200/70 flex flex-col">
             <Header user={user} onLogout={handleLogout} />
 
             <div className="flex-1 w-full max-w-[1600px] mx-auto px-6 py-8">
@@ -211,22 +212,23 @@ const ListProduct = () => {
 
                     {/* PRODUCT LIST */}
                     <div className="flex-1 min-w-0">
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                        <SurfaceCard className="p-6">
                             {/* Header */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-base-200">
                                 <div>
-                                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 relative inline-block">
+                                    <h1 className="text-2xl md:text-3xl font-bold text-base-content relative inline-block">
                                         Sản phẩm
                                         <span className="absolute -bottom-1 left-0 w-12 h-0.5 bg-primary rounded-full" />
                                     </h1>
                                     {search && (
-                                        <p className="text-sm text-gray-500 mt-2">
-                                            Kết quả tìm kiếm: <span className="font-medium text-gray-700">{search}</span>
+                                        <p className="text-sm text-base-content/60 mt-2">
+                                            Kết quả tìm kiếm:{' '}
+                                            <span className="font-medium text-base-content">{search}</span>
                                         </p>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-3 flex-wrap">
-                                    <span className="text-sm text-gray-500">
+                                    <span className="text-sm text-base-content/55">
                                         {products.length} / {totalProducts} sản phẩm
                                     </span>
                                     <select
@@ -245,9 +247,11 @@ const ListProduct = () => {
 
                             {/* Grid */}
                             {products.length === 0 ? (
-                                <div className="text-center py-16 rounded-xl bg-gray-50 border border-gray-100">
-                                    <p className="text-gray-500 text-lg">Không có sản phẩm nào</p>
-                                    <p className="text-sm text-gray-400 mt-1">Thử điều chỉnh bộ lọc để xem thêm kết quả</p>
+                                <div className="text-center py-16 rounded-xl bg-base-200/40 border border-base-200/80">
+                                    <p className="text-base-content/70 text-lg">Không có sản phẩm nào</p>
+                                    <p className="text-sm text-base-content/50 mt-1">
+                                        Thử điều chỉnh bộ lọc để xem thêm kết quả
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
@@ -256,14 +260,14 @@ const ListProduct = () => {
                                         return (
                                             <div
                                                 key={p._id}
-                                                className={`relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group ${isSoldOut ? 'opacity-75' : ''}`}
+                                                className={`relative bg-base-100 rounded-xl border border-base-200/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4 flex flex-col h-full group ${isSoldOut ? 'opacity-75' : ''}`}
                                             >
                                                 {isSoldOut && <SoldOutOverlay className="rounded-xl" />}
                                                 <Link
                                                     to={`/product/${p._id}`}
                                                     className="flex-1 flex flex-col"
                                                 >
-                                                    <div className="aspect-square bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-4">
+                                                    <div className="aspect-square bg-base-200/50 rounded-lg flex items-center justify-center overflow-hidden mb-4 border border-base-200/60">
                                                         {(p.images?.[0] || p.image) ? (
                                                             <img
                                                                 src={p.images?.[0] || p.image}
@@ -271,10 +275,10 @@ const ListProduct = () => {
                                                                 className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500"
                                                             />
                                                         ) : (
-                                                            <span className="text-gray-400 text-sm">Không có ảnh</span>
+                                                            <span className="text-base-content/45 text-sm">Không có ảnh</span>
                                                         )}
                                                     </div>
-                                                    <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 min-h-[40px] group-hover:text-primary transition-colors">
+                                                    <h3 className="text-sm font-semibold text-base-content line-clamp-2 min-h-[40px] group-hover:text-primary transition-colors">
                                                         {p.name}
                                                     </h3>
                                                     <p className="mt-2 text-primary font-bold text-lg">
@@ -321,7 +325,7 @@ const ListProduct = () => {
 
                             {/* Pagination */}
                             {totalPages > 1 && (
-                                <div className="flex justify-center items-center mt-8 pt-6 border-t border-gray-100 gap-2 flex-wrap">
+                                <div className="flex justify-center items-center mt-8 pt-6 border-t border-base-200 gap-2 flex-wrap">
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -332,7 +336,7 @@ const ListProduct = () => {
                                     </Button>
                                     {getPageNumbers().map((p, index) =>
                                         p === "..." ? (
-                                            <span key={index} className="px-3 py-1.5 text-sm text-gray-500">...</span>
+                                            <span key={index} className="px-3 py-1.5 text-sm text-base-content/50">...</span>
                                         ) : (
                                             <Button
                                                 key={index}
@@ -354,7 +358,7 @@ const ListProduct = () => {
                                     </Button>
                                 </div>
                             )}
-                        </div>
+                        </SurfaceCard>
                     </div>
                 </div>
             </div>

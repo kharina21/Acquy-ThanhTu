@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 
 /**
@@ -68,7 +69,7 @@ const ConfirmationModal = ({
         info: 'bg-info text-info-content',
     };
 
-    return (
+    return createPortal(
         <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="modal-title">
             <div className="modal-box max-w-md">
                 <div className="flex items-start gap-4">
@@ -115,7 +116,8 @@ const ConfirmationModal = ({
             <form method="dialog" className="modal-backdrop" onClick={handleCancel}>
                 <button type="button" aria-label="Đóng modal">close</button>
             </form>
-        </dialog>
+        </dialog>,
+        document.body
     );
 };
 

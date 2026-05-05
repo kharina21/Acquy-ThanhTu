@@ -9,7 +9,9 @@ import { createOrder, generateVietQR, getCheckoutPreview } from '@/services/orde
 import { getProvinces } from '@/services/addressService';
 import { getShippingAddresses } from '@/services/shippingAddressService';
 import { ShippingAddressBookDialog } from '@/components/checkout/ShippingAddressBookDialog';
-import { MapPin, Plus } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MapPin, Plus, ShoppingBag } from 'lucide-react';
+import { PageState } from '@/components/ui/page-state';
+import { SurfaceCard } from '@/components/ui/surface-card';
 import { toast } from 'sonner';
 
 const emptyShippingFields = () => ({
@@ -23,6 +25,21 @@ const emptyShippingFields = () => ({
   wardName: '',
   addressLine: '',
 });
+
+const normStr = (s) => String(s ?? '').trim();
+
+/** Form đang khớp một dòng trong sổ địa chỉ (để hiển thị nhãn / mặc định). */
+function savedAddressMatchesForm(addr, f) {
+  if (!addr || !f) return false;
+  return (
+    normStr(addr.provinceCode) === normStr(f.provinceCode) &&
+    normStr(addr.districtCode) === normStr(f.districtCode) &&
+    normStr(addr.wardCode) === normStr(f.wardCode) &&
+    normStr(addr.addressLine) === normStr(f.addressLine) &&
+    normStr(addr.shippingPhone) === normStr(f.shippingPhone) &&
+    normStr(addr.recipientName) === normStr(f.recipientName)
+  );
+}
 
 // Validate tên người nhận: 2–100 ký tự, chữ và dấu cách, không số
 const validateRecipientName = (name) => {
@@ -86,11 +103,6 @@ export default function CheckoutPage() {
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [addressBookOpen, setAddressBookOpen] = useState(false);
 
-  const defaultAddress = useMemo(
-    () => savedAddresses.find((a) => a.isDefault) ?? null,
-    [savedAddresses]
-  );
-
   const applySavedAddress = (addr) => {
     if (!addr) return;
     setForm((f) => ({
@@ -115,6 +127,7 @@ export default function CheckoutPage() {
       setSavedAddresses(list);
       const def = list.find((a) => a.isDefault);
       if (def) applySavedAddress(def);
+      else if (list.length === 1) applySavedAddress(list[0]);
       else setForm((f) => ({ ...f, ...emptyShippingFields() }));
     } catch (e) {
       console.error(e);
@@ -198,8 +211,12 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!defaultAddress) {
-      toast.error('Vui lòng thêm địa chỉ giao hàng mặc định');
+    if (savedAddresses.length === 0) {
+      toast.error('Vui lòng thêm ít nhất một địa chỉ trong sổ địa chỉ giao hàng');
+      return;
+    }
+    if (!hasValidShippingSelection) {
+      toast.error('Vui lòng chọn địa chỉ giao hàng trong sổ địa chỉ');
       return;
     }
 
@@ -280,6 +297,24 @@ export default function CheckoutPage() {
     }
   };
 
+  const matchedSavedForDisplay = useMemo(
+    () => savedAddresses.find((a) => savedAddressMatchesForm(a, form)) ?? null,
+    [savedAddresses, form],
+  );
+
+  const hasValidShippingSelection = useMemo(
+    () =>
+      Boolean(
+        normStr(form.recipientName) &&
+          normStr(form.shippingPhone) &&
+          normStr(form.provinceCode) &&
+          normStr(form.districtCode) &&
+          normStr(form.wardCode) &&
+          normStr(form.addressLine),
+      ),
+    [form],
+  );
+
   const selectedItems = useMemo(
     () => items.filter((i) => i.selected !== false),
     [items]
@@ -300,142 +335,166 @@ export default function CheckoutPage() {
   if (!accessToken) return null;
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-base-200/40 flex flex-col">
       <Header user={user} onLogout={handleLogout} />
 
       <main className="flex-1 container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Thanh toán</h1>
+        <h1 className="text-2xl font-bold text-base-content mb-1">Thanh toán</h1>
+        <p className="text-sm text-base-content/60 mb-6">Kiểm tra địa chỉ và xác nhận đơn hàng</p>
 
         {loading ? (
-          <div className="bg-gray-50 rounded-2xl p-12 text-center border border-gray-100">
-            <p className="text-gray-600">Đang tải...</p>
-          </div>
+          <PageState variant="loading" title="Đang tải thông tin..." />
         ) : orderSuccess ? (
-          <div className="max-w-lg mx-auto space-y-6">
-            <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl shadow-sm border border-emerald-100 p-6 text-center">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p className="font-semibold text-emerald-800 text-lg">Đặt hàng thành công!</p>
-              <p className="text-sm text-emerald-700 mt-1">Nhấn nút bên dưới để thanh toán qua PayOS.</p>
-            </div>
+          <div className="max-w-lg mx-auto space-y-5">
+            <PageState
+              variant="success"
+              icon={CheckCircle2}
+              title="Đặt hàng thành công!"
+              description="Hoàn tất thanh toán qua PayOS để cửa hàng xử lý đơn nhanh hơn."
+            >
+              {orderSuccess.order?.code ? (
+                <p className="text-sm text-base-content/70 mb-4 font-mono bg-base-200/50 rounded-xl py-2 px-3 inline-block">
+                  Mã đơn: <span className="font-semibold text-base-content">{orderSuccess.order.code}</span>
+                  {orderSuccess.order?.totalAmount != null ? (
+                    <span className="text-base-content/60">
+                      {' '}
+                      · Tổng {Number(orderSuccess.order.totalAmount).toLocaleString('vi-VN')}đ
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+            </PageState>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2 className="font-semibold text-gray-800 mb-4">Thanh toán chuyển khoản</h2>
+            <SurfaceCard className="p-6">
+              <h2 className="font-semibold text-base-content mb-1">Thanh toán chuyển khoản</h2>
+              <p className="text-sm text-base-content/60 mb-4">Cổng PayOS — an toàn, có xác nhận tức thì.</p>
               {orderSuccess.checkoutUrl ? (
-                <Button asChild size="lg" className="w-full">
-                  <a
-                    href={orderSuccess.checkoutUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                <Button asChild size="lg" className="w-full rounded-xl">
+                  <a href={orderSuccess.checkoutUrl} target="_blank" rel="noopener noreferrer">
                     Thanh toán qua PayOS
                   </a>
                 </Button>
               ) : (
-                <p className="text-gray-600">Vui lòng xem chi tiết đơn hàng để thanh toán.</p>
+                <p className="text-base-content/70 text-sm">Vui lòng xem chi tiết đơn hàng để thanh toán.</p>
               )}
-            </div>
+            </SurfaceCard>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Link to={orderSuccess.orderId ? `/orders/${orderSuccess.orderId}` : '/orders'} className="flex-1">
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full rounded-xl">
                   Xem đơn hàng
                 </Button>
               </Link>
               <Link to="/home" className="flex-1">
-                <Button className="w-full">Tiếp tục mua sắm</Button>
+                <Button className="w-full rounded-xl">Tiếp tục mua sắm</Button>
               </Link>
             </div>
           </div>
         ) : items.length === 0 ? (
-          <div className="bg-gray-50 rounded-2xl p-12 text-center border border-gray-100">
-            <p className="text-gray-600 mb-4">Giỏ hàng trống</p>
+          <PageState
+            variant="empty"
+            icon={ShoppingBag}
+            title="Giỏ hàng trống"
+            description="Thêm sản phẩm vào giỏ trước khi thanh toán."
+          >
             <Link to="/cart">
-              <Button variant="outline">Quay lại giỏ hàng</Button>
+              <Button variant="outline" className="rounded-xl">
+                Quay lại giỏ hàng
+              </Button>
             </Link>
-          </div>
+          </PageState>
         ) : selectedItems.length === 0 ? (
-          <div className="bg-amber-50 rounded-2xl p-12 text-center border border-amber-100 max-w-lg mx-auto">
-            <p className="text-amber-900 font-medium mb-2">Chưa chọn sản phẩm nào để thanh toán</p>
-            <p className="text-sm text-amber-800/90 mb-6">
-              Vào giỏ hàng và tick chọn các mục bạn muốn mua, hoặc bỏ chọn những mục chỉ để xem sau.
-            </p>
+          <PageState
+            variant="warning"
+            icon={AlertCircle}
+            title="Chưa chọn sản phẩm để thanh toán"
+            description="Vào giỏ hàng và chọn các mục bạn muốn mua, hoặc bỏ chọn những mục chỉ để xem sau."
+          >
             <Link to="/cart">
-              <Button>Quay lại giỏ hàng</Button>
+              <Button className="rounded-xl">Quay lại giỏ hàng</Button>
             </Link>
-          </div>
+          </PageState>
         ) : (
           <div className="flex flex-col lg:flex-row gap-8">
             <form id="checkout-form" onSubmit={handleSubmit} className="flex-1 max-w-xl space-y-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h2 className="font-semibold text-gray-800 mb-4">Địa chỉ giao hàng</h2>
+              <SurfaceCard className="p-6">
+                <h2 className="font-semibold text-base-content mb-4">Địa chỉ giao hàng</h2>
 
                 {addressesLoading ? (
-                  <p className="text-sm text-gray-500 py-4">Đang tải địa chỉ...</p>
-                ) : defaultAddress ? (
+                  <p className="text-sm text-base-content/55 py-4">Đang tải địa chỉ...</p>
+                ) : savedAddresses.length > 0 ? (
                   <button
                     type="button"
                     onClick={openAddressBook}
-                    className="w-full text-left rounded-xl border border-gray-100 bg-gray-50/50 p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                    className="w-full text-left rounded-xl border border-base-200 bg-base-200/40 p-4 transition-colors hover:border-primary/35 hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                   >
                     <div className="flex gap-3 items-start">
-                      <MapPin className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
+                      <MapPin className="w-5 h-5 shrink-0 text-primary mt-0.5" />
                       <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-gray-800">
-                            {defaultAddress.label?.trim() || 'Địa chỉ mặc định'}
+                          <span className="font-medium text-base-content">
+                            {matchedSavedForDisplay?.label?.trim() || 'Địa chỉ giao hàng'}
                           </span>
-                          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                            Mặc định
-                          </span>
+                          {matchedSavedForDisplay?.isDefault === true || matchedSavedForDisplay?.isDefault === 'true' ? (
+                            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                              Mặc định
+                            </span>
+                          ) : matchedSavedForDisplay ? (
+                            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                              Đã chọn
+                            </span>
+                          ) : hasValidShippingSelection ? (
+                            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-base-200 text-base-content/80">
+                              Đang dùng
+                            </span>
+                          ) : null}
                         </div>
-                        <p className="text-sm font-medium text-gray-900">{defaultAddress.recipientName}</p>
-                        <p className="text-sm text-gray-600">{defaultAddress.shippingPhone}</p>
-                        <p className="text-sm text-gray-600 leading-relaxed">
+                        <p className="text-sm font-medium text-base-content">{form.recipientName || '—'}</p>
+                        <p className="text-sm text-base-content/70">{form.shippingPhone || '—'}</p>
+                        <p className="text-sm text-base-content/70 leading-relaxed">
                           {[
-                            defaultAddress.addressLine,
-                            defaultAddress.wardName,
-                            defaultAddress.districtName,
-                            defaultAddress.provinceName,
+                            form.addressLine,
+                            form.wardName,
+                            form.districtName,
+                            form.provinceName,
                           ]
                             .filter(Boolean)
-                            .join(', ')}
+                            .join(', ') || '—'}
                         </p>
                       </div>
-                      <span className="text-xs text-blue-600 font-medium shrink-0 pt-1">Thay đổi</span>
+                      <span className="text-xs text-primary font-medium shrink-0 pt-1">Sổ địa chỉ</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-3">
-                      Nhấn để quản lý địa chỉ: thêm, sửa, xóa hoặc đổi địa chỉ mặc định.
+                    <p className="text-xs text-base-content/55 mt-3">
+                      Địa chỉ mặc định chỉ tự điền lúc vào trang; nhấn vào thẻ trong sổ để chọn giao đến địa chỉ khác cho đơn này.
                     </p>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={openAddressBook}
-                    className="w-full rounded-xl border border-dashed border-amber-200 bg-amber-50/40 p-6 text-center transition-colors hover:bg-amber-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50"
+                    className="w-full rounded-xl border border-dashed border-warning/40 bg-warning/8 p-6 text-center transition-colors hover:bg-warning/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-warning/35"
                   >
-                    <p className="text-amber-900 font-medium mb-1">Chưa có địa chỉ giao hàng mặc định</p>
-                    <p className="text-sm text-amber-800/90 mb-4">Nhấn để thêm địa chỉ và tiếp tục đặt hàng.</p>
+                    <p className="text-warning-content font-medium mb-1">Chưa có địa chỉ đã lưu</p>
+                    <p className="text-sm text-base-content/75 mb-4">Nhấn để thêm địa chỉ vào sổ rồi chọn địa chỉ giao hàng.</p>
                     <span className="inline-flex items-center gap-1 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium">
                       <Plus className="w-4 h-4" />
                       Mở sổ địa chỉ
                     </span>
                   </button>
                 )}
-              </div>
+              </SurfaceCard>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h2 className="font-semibold text-gray-800 mb-2">Hình thức thanh toán</h2>
-                <p className="text-sm text-gray-600">Mua online: Chuyển khoản qua PayOS. Sau khi đặt hàng, nhấn nút thanh toán để hoàn tất.</p>
-              </div>
+              <SurfaceCard className="p-6">
+                <h2 className="font-semibold text-base-content mb-2">Hình thức thanh toán</h2>
+                <p className="text-sm text-base-content/65">
+                  Mua online: chuyển khoản qua PayOS. Sau khi đặt hàng, nhấn nút thanh toán để hoàn tất.
+                </p>
+              </SurfaceCard>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h2 className="font-semibold text-gray-800 mb-3">Ghi chú</h2>
+              <SurfaceCard className="p-6">
+                <h2 className="font-semibold text-base-content mb-3">Ghi chú</h2>
                 <textarea
-                  className={`w-full px-4 py-3 border rounded-xl min-h-[60px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.note ? 'border-red-500' : 'border-gray-200'}`}
+                  className={`w-full px-4 py-3 border border-base-300 bg-base-100 rounded-xl min-h-[60px] focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors ${errors.note ? 'border-error' : ''}`}
                   placeholder="Ghi chú cho đơn hàng (tùy chọn, tối đa 500 ký tự)"
                   value={form.note}
                   onChange={(e) => {
@@ -443,115 +502,117 @@ export default function CheckoutPage() {
                     if (errors.note) setErrors((er) => ({ ...er, note: null }));
                   }}
                 />
-                {errors.note && <p className="text-xs text-red-600 mt-1">{errors.note}</p>}
-              </div>
+                {errors.note && <p className="text-xs text-error mt-1">{errors.note}</p>}
+              </SurfaceCard>
 
-              <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 lg:hidden">
-                <div className="flex justify-between text-lg font-bold text-gray-800 mb-4">
+              <SurfaceCard className="p-5 lg:hidden bg-base-200/30 border-base-200/80">
+                <div className="flex justify-between text-lg font-bold text-base-content mb-4">
                   <span>Tổng thanh toán:</span>
-                  <span className="text-blue-600">{finalTotal.toLocaleString()}đ</span>
+                  <span className="text-primary">{finalTotal.toLocaleString()}đ</span>
                 </div>
                 <div className="flex gap-2">
                   <Link to="/cart" className="flex-1">
-                    <Button type="button" variant="outline" className="w-full">
+                    <Button type="button" variant="outline" className="w-full rounded-xl">
                       Quay lại giỏ hàng
                     </Button>
                   </Link>
-                  <Button type="submit" disabled={submitting || !defaultAddress} className="flex-1">
+                  <Button
+                    type="submit"
+                    disabled={submitting || savedAddresses.length === 0 || !hasValidShippingSelection}
+                    className="flex-1 rounded-xl"
+                  >
                     {submitting ? 'Đang xử lý...' : 'Đặt hàng'}
                   </Button>
                 </div>
-              </div>
+              </SurfaceCard>
             </form>
 
             <div className="lg:w-[380px] shrink-0">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-4">
+              <SurfaceCard className="p-6 sticky top-4">
                 {tierName && (
-                  <div className="mb-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100">
-                    <p className="text-xs text-amber-700 font-medium">Hạng thành viên</p>
-                    <p className="text-sm font-semibold text-amber-800">{tierName}</p>
+                  <div className="mb-4 px-3 py-2 rounded-xl bg-warning/10 border border-warning/25">
+                    <p className="text-xs text-warning-content font-medium">Hạng thành viên</p>
+                    <p className="text-sm font-semibold text-base-content">{tierName}</p>
                     {discountPercent > 0 && (
-                      <p className="text-xs text-amber-600 mt-0.5">Giảm {discountPercent}% cho đơn này</p>
+                      <p className="text-xs text-success mt-0.5">Giảm {discountPercent}% cho đơn này</p>
                     )}
                   </div>
                 )}
                 {!tierName && selectedItems.length > 0 && (
-                  <div className="mb-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
-                    <p className="text-xs text-gray-600">Hạng thành viên: Chưa có hạng</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Mua thêm để tích lũy và nhận ưu đãi</p>
+                  <div className="mb-4 px-3 py-2 rounded-xl bg-base-200/60 border border-base-200">
+                    <p className="text-xs text-base-content/70">Hạng thành viên: chưa có hạng</p>
+                    <p className="text-xs text-base-content/55 mt-0.5">Mua thêm để tích lũy và nhận ưu đãi</p>
                   </div>
                 )}
-                <h2 className="font-semibold text-gray-800 mb-4">Sản phẩm đặt mua</h2>
+                <h2 className="font-semibold text-base-content mb-4">Sản phẩm đặt mua</h2>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {selectedItems.map((item) => {
                     const lineSub = (Number(item.price) || 0) * (Number(item.quantity) || 1);
                     return (
                       <div
                         key={item.productId}
-                        className="flex gap-3 py-3 border-b border-gray-100 last:border-0 last:pb-0"
+                        className="flex gap-3 py-3 border-b border-base-200 last:border-0 last:pb-0"
                       >
-                        <div className="w-14 h-14 bg-gray-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
+                        <div className="w-14 h-14 bg-base-200/80 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-base-200/80">
                           {item.image ? (
                             <img src={item.image} alt={item.name} className="w-full h-full object-contain" />
                           ) : (
-                            <span className="text-gray-400 text-xs">N/A</span>
+                            <span className="text-base-content/40 text-xs">N/A</span>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-gray-800 text-sm line-clamp-2">{item.name}</h3>
-                          <p className="text-gray-500 text-xs mt-0.5">
+                          <h3 className="font-medium text-base-content text-sm line-clamp-2">{item.name}</h3>
+                          <p className="text-base-content/55 text-xs mt-0.5">
                             {(item.price || 0).toLocaleString()}đ × {item.quantity || 1}
                           </p>
-                          <p className="text-blue-600 font-semibold text-sm mt-1">
-                            {lineSub.toLocaleString()}đ
-                          </p>
+                          <p className="text-primary font-semibold text-sm mt-1">{lineSub.toLocaleString()}đ</p>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                  <div className="flex justify-between text-sm text-gray-600">
+                <div className="mt-4 pt-4 border-t border-base-200 space-y-2">
+                  <div className="flex justify-between text-sm text-base-content/70">
                     <span>Tiền hàng (chưa thuế):</span>
                     <span>{subtotal.toLocaleString()}đ</span>
                   </div>
                   {vatTotal > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
+                    <div className="flex justify-between text-sm text-base-content/70">
                       <span>Thuế GTGT:</span>
                       <span>{vatTotal.toLocaleString()}đ</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs text-base-content/55">
                     <span>Cộng (gồm thuế, trước chiết khấu hạng):</span>
                     <span>{grossSubtotal.toLocaleString()}đ</span>
                   </div>
                   {discount > 0 && (
-                    <div className="flex justify-between text-sm text-emerald-600">
+                    <div className="flex justify-between text-sm text-success">
                       <span>Chiết khấu ({discountPercent}%):</span>
                       <span>-{discount.toLocaleString()}đ</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-lg font-bold text-gray-800 pt-2">
+                  <div className="flex justify-between text-lg font-bold text-base-content pt-2">
                     <span>Tổng thanh toán:</span>
-                    <span className="text-blue-600">{finalTotal.toLocaleString()}đ</span>
+                    <span className="text-primary">{finalTotal.toLocaleString()}đ</span>
                   </div>
                   <div className="hidden lg:flex gap-2 mt-4">
                     <Link to="/cart">
-                      <Button type="button" variant="outline" className="flex-1">
+                      <Button type="button" variant="outline" className="flex-1 rounded-xl">
                         Quay lại giỏ hàng
                       </Button>
                     </Link>
                     <Button
                       type="submit"
                       form="checkout-form"
-                      disabled={submitting || !defaultAddress}
-                      className="flex-1"
+                      disabled={submitting || savedAddresses.length === 0 || !hasValidShippingSelection}
+                      className="flex-1 rounded-xl"
                     >
                       {submitting ? 'Đang xử lý...' : 'Đặt hàng'}
                     </Button>
                   </div>
                 </div>
-              </div>
+              </SurfaceCard>
             </div>
           </div>
         )}
@@ -561,11 +622,13 @@ export default function CheckoutPage() {
         open={addressBookOpen}
         onOpenChange={setAddressBookOpen}
         provinces={provinces}
+        pickForOrder
+        onPickAddress={(addr) => {
+          applySavedAddress(addr);
+          toast.success('Đã chọn địa chỉ giao hàng cho đơn này');
+        }}
         onAddressesChange={(list) => {
           setSavedAddresses(list);
-          const def = list.find((a) => a.isDefault);
-          if (def) applySavedAddress(def);
-          else setForm((f) => ({ ...f, ...emptyShippingFields() }));
         }}
       />
 

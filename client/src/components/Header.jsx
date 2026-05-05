@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useCartStore } from '@/stores/useCartStore';
 import { getProducts } from '@/services/productService';
+import { useUserRole } from '@/hooks/useUserRole';
+import { ONLINE_SHOP_ROLES } from '@/config/roleConfig';
 
 const navLinks = [
     { label: 'Trang chủ', to: '/' },
@@ -15,6 +17,8 @@ const navLinks = [
 
 export function Header({ user, onLogout }) {
     const navigate = useNavigate();
+    const { hasAnyRole } = useUserRole();
+    const canShopOnline = !user || hasAnyRole(...ONLINE_SHOP_ROLES);
     const items = useCartStore((s) => s.items);
     const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
     const [search, setSearch] = useState('');
@@ -101,20 +105,22 @@ export function Header({ user, onLogout }) {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 lg:gap-3 shrink-0">
-                        <Link to="/cart" className="relative">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="rounded-xl text-gray-600 hover:text-primary hover:bg-primary/5 transition-colors"
-                            >
-                                <ShoppingCart className="w-5 h-5" />
-                                {totalQuantity > 0 && (
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-primary text-primary-content text-[10px] font-semibold rounded-full">
-                                        {totalQuantity > 99 ? '99+' : totalQuantity}
-                                    </span>
-                                )}
-                            </Button>
-                        </Link>
+                        {canShopOnline ? (
+                            <Link to="/cart" className="relative">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="rounded-xl text-gray-600 hover:text-primary hover:bg-primary/5 transition-colors"
+                                >
+                                    <ShoppingCart className="w-5 h-5" />
+                                    {totalQuantity > 0 && (
+                                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-primary text-primary-content text-[10px] font-semibold rounded-full">
+                                            {totalQuantity > 99 ? '99+' : totalQuantity}
+                                        </span>
+                                    )}
+                                </Button>
+                            </Link>
+                        ) : null}
 
                         {user ? (
                             <DropdownMenu>
@@ -135,12 +141,14 @@ export function Header({ user, onLogout }) {
                                     >
                                         <User className="w-4 h-4" /> Hồ sơ cá nhân
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                        onClick={() => navigate('/orders')}
-                                        className="rounded-lg cursor-pointer gap-2 py-2.5"
-                                    >
-                                        <Package className="w-4 h-4" /> Đơn hàng
-                                    </DropdownMenuItem>
+                                    {hasAnyRole(...ONLINE_SHOP_ROLES) ? (
+                                        <DropdownMenuItem
+                                            onClick={() => navigate('/orders')}
+                                            className="rounded-lg cursor-pointer gap-2 py-2.5"
+                                        >
+                                            <Package className="w-4 h-4" /> Đơn hàng của tôi
+                                        </DropdownMenuItem>
+                                    ) : null}
                                     <DropdownMenuSeparator className="my-1" />
                                     <DropdownMenuItem
                                         onClick={onLogout}

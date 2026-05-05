@@ -1,6 +1,7 @@
 import { Search, X } from 'lucide-react';
 import React from 'react';
 import { ROLE_LABELS } from '@/config/roleConfig';
+import { FilterToolbar, FilterToolbarActions, FilterToolbarField } from '@/components/common/FilterToolbar';
 
 const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [] }) => {
     const clearFilters = () => {
@@ -23,17 +24,14 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
         <div className="bg-base-100 rounded-lg shadow-lg p-6 mb-6">
             <div className="space-y-4">
                 {/* Row 1: Search and Role */}
-                <div className="flex items-end gap-4 flex-wrap">
-                    <div className="">
-                        <label className="label">
-                            <span className="label-text font-semibold text-sm">Tìm kiếm</span>
-                        </label>
+                <FilterToolbar>
+                    <FilterToolbarField label="Tìm kiếm" className="min-w-[200px] flex-1 max-w-md">
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-base-content/40 z-40" />
+                            <Search className="absolute left-3 top-1/2 z-40 h-5 w-5 -translate-y-1/2 text-base-content/40" />
                             <input
                                 type="text"
                                 placeholder="Tìm theo tên, email, username..."
-                                className="input w-full pl-10 focus:outline-none"
+                                className="input input-bordered input-sm w-full pl-10"
                                 value={filters.search}
                                 onChange={(e) => {
                                     setFilters({ ...filters, search: e.target.value });
@@ -41,13 +39,10 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
                                 }}
                             />
                         </div>
-                    </div>
-                    <div className="w-40">
-                        <label className="label">
-                            <span className="label-text font-semibold text-sm">Lọc theo role</span>
-                        </label>
+                    </FilterToolbarField>
+                    <FilterToolbarField label="Lọc theo role" className="w-40">
                         <select
-                            className="select w-full focus:ring-0 outline-none"
+                            className="select select-bordered select-sm w-full"
                             value={filters.role}
                             onChange={(e) => {
                                 setFilters({ ...filters, role: e.target.value });
@@ -61,13 +56,10 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
                                 </option>
                             ))}
                         </select>
-                    </div>
-                    <div className="w-40">
-                        <label className="label">
-                            <span className="label-text font-semibold text-sm">Xác thực</span>
-                        </label>
+                    </FilterToolbarField>
+                    <FilterToolbarField label="Xác thực" className="w-40">
                         <select
-                            className="select w-full focus:ring-0 outline-none"
+                            className="select select-bordered select-sm w-full"
                             value={filters.isVerified}
                             onChange={(e) => {
                                 setFilters({ ...filters, isVerified: e.target.value });
@@ -78,13 +70,10 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
                             <option value="true">Đã xác thực</option>
                             <option value="false">Chưa xác thực</option>
                         </select>
-                    </div>
-                    <div className="w-40">
-                        <label className="label">
-                            <span className="label-text font-semibold text-sm">Trạng thái</span>
-                        </label>
+                    </FilterToolbarField>
+                    <FilterToolbarField label="Trạng thái" className="w-40">
                         <select
-                            className="select w-full focus:ring-0 outline-none"
+                            className="select select-bordered select-sm w-full"
                             value={filters.status}
                             onChange={(e) => {
                                 setFilters({ ...filters, status: e.target.value });
@@ -97,25 +86,22 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
                             <option value="banned">Bị cấm</option>
                             <option value="suspended">Tạm ngưng</option>
                         </select>
-                    </div>
-                    <div className="">
-                        <label className="label">
-                            <span className="label-text font-semibold text-sm">Tìm theo ngày</span>
-                        </label>
-                        <div className="flex items-center input outline-none">
+                    </FilterToolbarField>
+                    <FilterToolbarField label="Tìm theo ngày" className="min-w-[260px]">
+                        <div className="flex items-center gap-1">
                             <input
                                 type="date"
-                                className="input w-full outline-none focus:outline-none border-none"
+                                className="input input-bordered input-sm min-w-0 flex-1"
                                 value={filters.dateFrom}
                                 onChange={(e) => {
                                     setFilters({ ...filters, dateFrom: e.target.value });
                                     setPagination({ ...pagination, page: 1 });
                                 }}
                             />
-                            -
+                            <span className="shrink-0 text-xs text-base-content/45">–</span>
                             <input
                                 type="date"
-                                className="input w-full outline-none focus:outline-none border-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="input input-bordered input-sm min-w-0 flex-1 disabled:cursor-not-allowed disabled:opacity-50"
                                 value={filters.dateTo}
                                 disabled={!filters.dateFrom}
                                 onChange={(e) => {
@@ -125,18 +111,16 @@ const FilterField = ({ filters, setFilters, pagination, setPagination, roles = [
                                 min={filters.dateFrom || undefined}
                             />
                         </div>
-                    </div>
-
+                    </FilterToolbarField>
                     {hasActiveFilters && (
-                        <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={clearFilters}
-                        >
-                            <X className="w-4 h-4" />
-                            Xóa bộ lọc
-                        </button>
+                        <FilterToolbarActions>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
+                                <X className="h-4 w-4" />
+                                Xóa bộ lọc
+                            </button>
+                        </FilterToolbarActions>
                     )}
-                </div>
+                </FilterToolbar>
 
 
             </div>

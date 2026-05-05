@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getVietQrBanks } from '@/services/bankService';
@@ -93,7 +94,7 @@ const CancelOrderModal = ({ isOpen, onClose, onConfirm, order, isLoading = false
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <dialog className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
             <div className="modal-box max-w-md max-h-[90vh] overflow-y-auto">
                 <div className="flex items-start gap-4">
@@ -213,7 +214,8 @@ const CancelOrderModal = ({ isOpen, onClose, onConfirm, order, isLoading = false
                     close
                 </button>
             </form>
-        </dialog>
+        </dialog>,
+        document.body
     );
 };
 

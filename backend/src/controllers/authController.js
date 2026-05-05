@@ -9,6 +9,7 @@ import PasswordReset from '../models/PasswordReset.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 import { createVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../libs/emailHelper.js';
+import { getLoginDenialReason } from '../libs/loginAccessCheck.js';
 
 //jwt
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -130,7 +131,7 @@ export const login = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng nhập username và password' });
         }
 
-        const user = await User.findOne({ username });
+        const user = await User.findOne({ username }).populate('roles', 'name');
         if (!user) {
             return res.status(400).json({ message: 'Tài khoản hoặc mật khẩu không chính xác' });
         }
@@ -138,6 +139,20 @@ export const login = async (req, res) => {
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
         if (!isPasswordCorrect) {
             return res.status(400).json({ message: 'Tài khoản hoặc mật khẩu không chính xác' });
+        }
+
+        const denial = await getLoginDenialReason(user);
+        if (denial) {
+            await logAuthActivity({
+                userId: user._id,
+                action: 'login',
+                description: denial.message,
+                ipAddress: getClientIp(req),
+                userAgent: getUserAgent(req),
+                status: 'failed',
+                errorMessage: denial.code,
+            });
+            return res.status(403).json({ message: denial.message, code: denial.code });
         }
 
         //access token và refresh token

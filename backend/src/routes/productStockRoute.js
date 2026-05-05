@@ -6,10 +6,21 @@ import { hasRole } from '../middlewares/rbac.js';
 const router = express.Router();
 
 router.use(authenticate);
-router.use(hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'));
-
-router.get('/', getProductStocks);
-router.put('/', setProductStock);
-router.put('/bulk', bulkSetProductStock);
+/** Đọc tồn: POS / NV bán hàng cần xem tồn theo chi nhánh; chỉnh tồn vẫn hạn chế role kho/quản lý. */
+router.get(
+    '/',
+    hasRole(
+        'admin',
+        'manager',
+        'warehouse_manager',
+        'Quản lý chi nhánh',
+        'seller',
+        'staff',
+        'Nhân viên bán hàng',
+    ),
+    getProductStocks,
+);
+router.put('/', hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'), setProductStock);
+router.put('/bulk', hasRole('admin', 'manager', 'warehouse_manager', 'Quản lý chi nhánh'), bulkSetProductStock);
 
 export default router;

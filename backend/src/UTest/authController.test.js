@@ -11,7 +11,8 @@ const {
     bcryptMock,
     jwtMock,
     rbacHelpersMock,
-    activityLoggerMock
+    activityLoggerMock,
+    employeeModelMock
 } = vi.hoisted(() => {
     const mockUserInstance = {
         _id: 'mock-user-id',
@@ -19,6 +20,9 @@ const {
         password: 'hashed_password',
         email: 'test@gmail.com',
         phoneNumber: '0999999999',
+        status: 'active',
+        isDeleted: false,
+        roles: [],
         save: vi.fn().mockResolvedValue(true)
     };
 
@@ -46,6 +50,8 @@ const {
     PasswordResetFunction.findOne = vi.fn();
     PasswordResetFunction.deleteMany = vi.fn().mockResolvedValue({});
 
+    const employeeModelMock = { findOne: vi.fn() };
+
     return {
         userMock: UserFunction,
         mockUserInstance,
@@ -59,7 +65,8 @@ const {
             logAuthActivity: vi.fn(),
             getClientIp: vi.fn(() => '127.0.0.1'),
             getUserAgent: vi.fn(() => 'vitest-agent')
-        }
+        },
+        employeeModelMock
     };
 });
 
@@ -72,6 +79,7 @@ vi.mock('bcryptjs', () => ({ default: bcryptMock }));
 vi.mock('jsonwebtoken', () => ({ default: jwtMock }));
 vi.mock('../libs/rbacHelpers.js', () => rbacHelpersMock);
 vi.mock('../libs/activityLogger.js', () => activityLoggerMock);
+vi.mock('../models/Employee.js', () => ({ default: employeeModelMock }));
 
 import { login, registerUser, refreshToken, resetPassword } from '../controllers/authController.js';
 
@@ -84,6 +92,7 @@ const createMockRes = () => ({
 
 const mockQuery = (data) => ({
     select: vi.fn().mockReturnThis(),
+    populate: vi.fn().mockReturnThis(),
     then: vi.fn(resolve => Promise.resolve(data).then(resolve))
 });
 
@@ -98,6 +107,13 @@ describe('authController', () => {
     // BẢNG 1: LOGIN (5 CASE)
     // ==========================================
     describe('1. login', () => {
+        beforeEach(() => {
+            mockUserInstance.status = 'active';
+            mockUserInstance.isDeleted = false;
+            mockUserInstance.roles = [];
+            employeeModelMock.findOne.mockReset();
+        });
+
         it('UTCID01: Trả về 200 và đăng nhập thành công (Normal)', async () => {
             const req = { body: { username: 'test', password: 'ooo123' } };
             const res = createMockRes();
@@ -155,6 +171,46 @@ describe('authController', () => {
             
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Lỗi khi gọi login" }));
+        });
+
+        it('Trả về 403 nếu tài khoản inactive', async () => {
+            const req = { body: { username: 'test', password: 'ooo123' } };
+            const res = createMockRes();
+            mockUserInstance.status = 'inactive';
+            userMock.findOne.mockReturnValue(mockQuery(mockUserInstance));
+            bcryptMock.compare.mockResolvedValue(true);
+
+            await login(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    code: 'account_inactive',
+                    message: expect.stringContaining('không hoạt động'),
+                })
+            );
+            expect(sessionMock.create).not.toHaveBeenCalled();
+        });
+
+        it('Trả về 403 nếu seller chưa có Employee/cơ sở', async () => {
+            const req = { body: { username: 'test', password: 'ooo123' } };
+            const res = createMockRes();
+            mockUserInstance.roles = [{ name: 'seller' }];
+            employeeModelMock.findOne.mockResolvedValue(null);
+            userMock.findOne.mockReturnValue(mockQuery(mockUserInstance));
+            bcryptMock.compare.mockResolvedValue(true);
+
+            await login(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    code: 'staff_needs_setup',
+                    message: expect.stringContaining('quản trị viên'),
+                })
+            );
+            expect(employeeModelMock.findOne).toHaveBeenCalled();
+            expect(sessionMock.create).not.toHaveBeenCalled();
         });
     });
 

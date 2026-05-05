@@ -5,6 +5,12 @@ export const getEmployees = async (params = {}) => {
     return res.data;
 };
 
+/** User đã có hồ sơ nhân viên (mọi trang) — dùng để ẩn tài khoản khi tạo NV mới. */
+export const getEmployeeLinkedUserIds = async () => {
+    const res = await api.get('/employees/linked-user-ids');
+    return res.data;
+};
+
 export const getEmployeeById = async (id) => {
     const res = await api.get(`/employees/${id}`);
     return res.data;

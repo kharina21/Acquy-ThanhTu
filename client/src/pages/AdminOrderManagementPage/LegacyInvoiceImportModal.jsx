@@ -277,9 +277,8 @@ export default function LegacyInvoiceImportModal({ open, onClose, locations, def
                         </button>
                     </div>
                     <div className='px-5 sm:px-7 py-4 space-y-3 text-sm'>
-                        <p className='text-xs text-amber-900 dark:text-amber-100/90 font-medium leading-snug rounded-lg bg-amber-50/90 dark:bg-amber-950/35 border border-amber-200 dark:border-amber-800/60 px-3 py-2'>
-                            Lưu ý: ghi nhận <strong>hóa đơn / chứng từ cũ</strong> (theo ngày trên giấy) — bản ghi này{' '}
-                            <strong>không trừ tồn kho</strong>.
+                        <p className='rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100/90'>
+                            Chứng từ cũ theo ngày trên giấy — <strong>không trừ tồn kho</strong>.
                         </p>
 
                         <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
@@ -467,9 +466,8 @@ export default function LegacyInvoiceImportModal({ open, onClose, locations, def
                         <div>
                             <div className='flex flex-col gap-0.5 py-0.5 sm:flex-row sm:items-end sm:justify-between'>
                                 <span className='text-xs font-medium'>Dòng hàng</span>
-                                <span className='text-[11px] text-base-content/60 max-w-2xl'>
-                                    Đơn giá: <strong>chưa thuế</strong>, ghi theo hóa đơn giấy tại thời điểm đó (có thể khác giá
-                                    danh mục hiện tại).
+                                <span className='max-w-xl text-[11px] text-base-content/60'>
+                                    Đơn giá <strong>chưa thuế</strong>, theo hóa đơn giấy.
                                 </span>
                             </div>
                             <div className='border border-base-300 rounded-lg overflow-x-auto'>

@@ -549,3 +549,134 @@ export const sendWarrantyClaimStatusUpdateEmail = async ({
     transporter.close?.();
 };
 
+// ─────────────────────────────────────────────────────────────
+// ĐƠN HÀNG — thông báo đổi trạng thái / thanh toán
+// ─────────────────────────────────────────────────────────────
+
+function orderEmailFrontendBase() {
+    return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+}
+
+const ORDER_STATUS_EMAIL_LABELS = {
+    pending: 'Chờ xử lý',
+    confirmed: 'Đã xác nhận (chờ xuất kho)',
+    completed: 'Đã hoàn thành / đã xuất kho',
+    cancelled: 'Đã hủy',
+};
+
+const ORDER_PAYMENT_EMAIL_LABELS = {
+    pending: 'Chưa thanh toán',
+    paid: 'Đã thanh toán',
+    failed: 'Thanh toán thất bại',
+    refunded: 'Đã hoàn tiền',
+};
+
+/**
+ * Gửi email cho khách khi trạng thái đơn hoặc thanh toán thay đổi.
+ * Lỗi SMTP chỉ ghi log — không ném ra ngoài.
+ */
+export const sendOrderStatusUpdateEmail = async ({
+    toEmail,
+    customerName,
+    orderCode,
+    orderId,
+    prevStatus,
+    newStatus,
+    prevPaymentStatus,
+    newPaymentStatus,
+}) => {
+    try {
+        const smtpPort = Number(process.env.SMTP_PORT) || 465;
+        const isSecurePort = smtpPort === 465;
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: smtpPort,
+            secure: isSecurePort,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+            tls: {
+                rejectUnauthorized: process.env.NODE_ENV === 'production',
+            },
+        });
+
+        const safeName = escapeHtml(customerName || 'Quý khách');
+        const safeCode = escapeHtml(orderCode || '—');
+        const statusChanged = prevStatus !== newStatus;
+        const payChanged = prevPaymentStatus !== newPaymentStatus;
+        if (!statusChanged && !payChanged) {
+            transporter.close?.();
+            return;
+        }
+
+        const oldSL = ORDER_STATUS_EMAIL_LABELS[prevStatus] || prevStatus;
+        const newSL = ORDER_STATUS_EMAIL_LABELS[newStatus] || newStatus;
+        const oldPL = ORDER_PAYMENT_EMAIL_LABELS[prevPaymentStatus] || prevPaymentStatus;
+        const newPL = ORDER_PAYMENT_EMAIL_LABELS[newPaymentStatus] || newPaymentStatus;
+
+        let changeRows = '';
+        if (statusChanged) {
+            changeRows += `
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b; vertical-align: top;"><strong>Trạng thái đơn:</strong></td>
+                    <td style="padding: 8px 0;">
+                        <span style="color: #6b7280;">${escapeHtml(oldSL)}</span>
+                        <span style="margin: 0 8px; color: #9ca3af;">→</span>
+                        <strong style="color: #0c4a6e;">${escapeHtml(newSL)}</strong>
+                    </td>
+                </tr>`;
+        }
+        if (payChanged) {
+            changeRows += `
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b; vertical-align: top;"><strong>Thanh toán:</strong></td>
+                    <td style="padding: 8px 0;">
+                        <span style="color: #6b7280;">${escapeHtml(oldPL)}</span>
+                        <span style="margin: 0 8px; color: #9ca3af;">→</span>
+                        <strong style="color: #0c4a6e;">${escapeHtml(newPL)}</strong>
+                    </td>
+                </tr>`;
+        }
+
+        const base = orderEmailFrontendBase();
+        const oid = orderId ? String(orderId) : '';
+        const detailPath = oid ? `${base}/orders/${oid}` : `${base}/orders`;
+        const hrefAttr = detailPath.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        const safeDetailText = escapeHtml(detailPath);
+
+        await transporter.verify();
+
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            to: toEmail,
+            subject: `Cập nhật đơn hàng ${orderCode || ''} — Thanh Tú Store`.trim(),
+            html: `
+            <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #1e40af;">Cập nhật đơn hàng</h2>
+                <p>Xin chào <strong>${safeName}</strong>,</p>
+                <p>Đơn hàng <strong style="font-family: monospace;">${safeCode}</strong> của bạn vừa được cập nhật.</p>
+
+                <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+                    ${changeRows}
+                </table>
+
+                <p style="margin: 20px 0;">
+                    <a href="${hrefAttr}" style="display: inline-block; padding: 12px 24px; background-color: #1d4ed8; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">Xem chi tiết đơn hàng</a>
+                </p>
+                <p style="word-break: break-all; background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 12px; color: #444;">${safeDetailText}</p>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+                <p style="color: #666; font-size: 12px;">Mọi thắc mắc xin gọi: <strong>0386806456</strong></p>
+                <p style="color: #666; font-size: 12px;">Thanh Tú Store</p>
+            </div>
+            `,
+        });
+
+        transporter.close?.();
+        console.log(`✅ Đã gửi email cập nhật đơn ${orderCode} tới ${toEmail}`);
+    } catch (err) {
+        console.error('❌ sendOrderStatusUpdateEmail:', err.message);
+    }
+};
+

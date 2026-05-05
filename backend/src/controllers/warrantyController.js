@@ -7,7 +7,7 @@ import Employee from '../models/Employee.js';
 import Location from '../models/Location.js';
 import { addMonths } from '../utils/parseWarrantyText.js';
 import { sendWarrantyClaimConfirmationEmail, sendWarrantyClaimStatusUpdateEmail } from '../libs/emailHelper.js';
-import { validateLocationForUser, getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
 
 /**
@@ -209,17 +209,18 @@ export const getWarranties = async (req, res) => {
         const isAdmin = roleNames.includes('admin');
 
         if (!isAdmin) {
-            // Non-admin: chỉ xem được bảo hành tại chi nhánh được phân
-            const { allowedIds } = await validateLocationForUser(req.user._id, null);
-            if (allowedIds === null) {
-                // User có role nhưng không có Employee record
-                filter.locationId = { $in: [] };
-            } else if (allowedIds.length > 0) {
-                filter.locationId = { $in: allowedIds };
+            const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+            const oidList = (allowedIds || [])
+                .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                .map((id) => new mongoose.Types.ObjectId(id));
+            const allowedSet = new Set(oidList.map((id) => id.toString()));
+            if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+                const want = new mongoose.Types.ObjectId(locationId);
+                filter.locationId = allowedSet.has(want.toString()) ? want : { $in: [] };
             } else {
-                filter.locationId = { $in: [] };
+                filter.locationId = oidList.length > 0 ? { $in: oidList } : { $in: [] };
             }
-        } else if (locationId) {
+        } else if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
             // Admin: có thể filter theo location cụ thể
             filter.locationId = new mongoose.Types.ObjectId(locationId);
         }
@@ -380,15 +381,19 @@ export const getAllClaims = async (req, res) => {
         const isAdmin = roleNames.includes('admin');
 
         if (!isAdmin) {
-            const { allowedIds } = await validateLocationForUser(req.user._id, null);
-            if (allowedIds === null) {
-                matchFilter.locationId = { $in: [] };
-            } else if (allowedIds.length > 0) {
-                matchFilter.locationId = { $in: allowedIds };
+            const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+            const oidList = (allowedIds || [])
+                .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                .map((id) => new mongoose.Types.ObjectId(id));
+            const allowedSet = new Set(oidList.map((id) => id.toString()));
+            // Seller/manager: có thể lọc theo cơ sở nếu thuộc phạm vi được phân — không thì toàn bộ cơ sở được phép
+            if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+                const want = new mongoose.Types.ObjectId(locationId);
+                matchFilter.locationId = allowedSet.has(want.toString()) ? want : { $in: [] };
             } else {
-                matchFilter.locationId = { $in: [] };
+                matchFilter.locationId = oidList.length > 0 ? { $in: oidList } : { $in: [] };
             }
-        } else if (locationId) {
+        } else if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
             matchFilter.locationId = new mongoose.Types.ObjectId(locationId);
         }
 
@@ -788,9 +793,32 @@ export const getClaimStats = async (req, res) => {
     try {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const { locationId } = req.query;
 
-        // Đếm số lượng claims theo từng trạng thái
-        // Sử dụng aggregation để đếm claims trong tất cả warranties
+        const user = await User.findById(req.user._id).populate('roles', 'name').lean();
+        const roleNames = user?.roles?.map((r) => r.name) || [];
+        const isAdmin = roleNames.includes('admin');
+        let locScope = {};
+        if (!isAdmin) {
+            const allowedIds = await getManagerAllowedLocationIds(req.user._id);
+            const oidList = (allowedIds || [])
+                .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                .map((id) => new mongoose.Types.ObjectId(id));
+            const allowedSet = new Set(oidList.map((id) => id.toString()));
+            if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+                const want = new mongoose.Types.ObjectId(locationId);
+                locScope = allowedSet.has(want.toString())
+                    ? { locationId: want }
+                    : { locationId: { $in: [] } };
+            } else {
+                locScope = oidList.length > 0 ? { locationId: { $in: oidList } } : { locationId: { $in: [] } };
+            }
+        } else if (locationId && mongoose.Types.ObjectId.isValid(locationId)) {
+            locScope = { locationId: new mongoose.Types.ObjectId(locationId) };
+        }
+        const baseMatch = { isDeleted: false, ...locScope };
+
+        // Đếm số lượng claims theo từng trạng thái (seller/manager: theo chi nhánh được phân)
         const [
             totalClaims,
             pendingClaims,
@@ -799,43 +827,37 @@ export const getClaimStats = async (req, res) => {
             rejectedClaims,
             claimsThisMonth,
         ] = await Promise.all([
-            // Tổng số claims
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $count: 'total' },
             ]),
-            // Claims đang chờ xử lý
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $match: { 'claims.status': 'pending' } },
                 { $count: 'pending' },
             ]),
-            // Claims đã duyệt
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $match: { 'claims.status': 'approved' } },
                 { $count: 'approved' },
             ]),
-            // Claims hoàn thành
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $match: { 'claims.status': 'completed' } },
                 { $count: 'completed' },
             ]),
-            // Claims bị từ chối
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $match: { 'claims.status': 'rejected' } },
                 { $count: 'rejected' },
             ]),
-            // Claims trong tháng này
             Warranty.aggregate([
-                { $match: { isDeleted: false } },
+                { $match: baseMatch },
                 { $unwind: '$claims' },
                 { $match: { 'claims.createdAt': { $gte: startOfMonth } } },
                 { $count: 'thisMonth' },
@@ -903,28 +925,20 @@ export const createWarrantyClaim = async (req, res) => {
             }
             resolvedLocationId = new mongoose.Types.ObjectId(locationId);
         } else {
-            // Manager/Seller: lấy cơ sở được phân của nhân viên
-            console.log('[createWarrantyClaim] userId:', userId);
-            
             const employee = await Employee.findOne({ user: userId, isDeleted: { $ne: true } }).lean();
-            console.log('[createWarrantyClaim] employee:', employee);
-            
             if (!employee) {
                 return res.status(403).json({
                     message: 'Không tìm thấy thông tin nhân viên. Vui lòng liên hệ quản lý.',
                 });
             }
 
-            const { allowedIds } = await validateLocationForUser(userId, null);
-            console.log('[createWarrantyClaim] allowedIds:', allowedIds);
-            
-            if (!allowedIds || allowedIds.length === 0) {
+            const allowedIds = await getManagerAllowedLocationIds(userId);
+            if (!allowedIds?.length) {
                 return res.status(403).json({
                     message: 'Bạn không được phân công vào chi nhánh nào. Liên hệ quản lý.',
                 });
             }
 
-            // Ưu tiên primaryLocation, fallback chi nhánh đầu tiên được phép
             resolvedLocationId = employee.primaryLocation
                 ? new mongoose.Types.ObjectId(employee.primaryLocation)
                 : new mongoose.Types.ObjectId(allowedIds[0]);

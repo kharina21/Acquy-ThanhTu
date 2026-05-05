@@ -21,6 +21,7 @@ import {
     getRefundTransferQrForOrder,
     confirmOrderRefundTransfer,
     checkoutPreview,
+    completePosCounterSale,
 } from '../controllers/orderController.js';
 
 const router = express.Router();
@@ -74,9 +75,18 @@ router.post(
     hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     createOrderFromItems,
 );
+router.post(
+    '/:id/complete-pos-counter',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    completePosCounterSale,
+);
 
 // Báo cáo đơn hàng
-router.get('/report', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getOrderReport);
+router.get(
+    '/report',
+    hasRole('admin', 'manager', 'Quản lý chi nhánh', 'seller', 'staff', 'Nhân viên bán hàng'),
+    getOrderReport,
+);
 
 router.post(
     '/warehouse/lookup-online-order',

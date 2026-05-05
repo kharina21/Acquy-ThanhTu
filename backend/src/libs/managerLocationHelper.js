@@ -1,6 +1,16 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Employee from '../models/Employee.js';
 import { userHasEquivalentRole } from '../utils/roleEquivalence.js';
+
+/** Tránh CastError khi query Location — dữ liệu Employee cũ có thể chứa giá trị không phải ObjectId. */
+const normalizeLocationObjectId = (raw) => {
+    if (raw == null || raw === '') return null;
+    const id =
+        typeof raw === 'object' && raw !== null && '_id' in raw ? String(raw._id) : String(raw);
+    if (!id || id === 'undefined') return null;
+    return mongoose.isValidObjectId(id) ? id : null;
+};
 
 /** Role có phạm vi chi nhánh theo bản ghi Employee (không phải admin toàn hệ thống). */
 const BRANCH_SCOPED_ROLE_NAMES = [
@@ -31,11 +41,12 @@ export const getManagerAllowedLocationIds = async (userId) => {
     if (!emp) return [];
 
     const ids = [];
-    if (emp.primaryLocation) ids.push(String(emp.primaryLocation));
-    (emp.locations || []).forEach((loc) => {
-        const id = String(loc);
-        if (id && id !== 'undefined' && !ids.includes(id)) ids.push(id);
-    });
+    const push = (raw) => {
+        const id = normalizeLocationObjectId(raw);
+        if (id && !ids.includes(id)) ids.push(id);
+    };
+    push(emp.primaryLocation);
+    (emp.locations || []).forEach((loc) => push(loc));
     return ids;
 };
 
@@ -47,6 +58,7 @@ export const validateLocationForUser = async (userId, locationId) => {
     const allowedIds = await getManagerAllowedLocationIds(userId);
     if (allowedIds === null) return { valid: true, allowedIds: null };
     if (!locationId || !allowedIds.length) return { valid: false, allowedIds: [] };
-    const lid = locationId.toString();
+    const lid = normalizeLocationObjectId(locationId);
+    if (!lid) return { valid: false, allowedIds };
     return { valid: allowedIds.includes(lid), allowedIds };
 };

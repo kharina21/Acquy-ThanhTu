@@ -14,8 +14,20 @@ import {
 import { getProducts } from '@/services/productService';
 import { getActiveLocations } from '@/services/locationService';
 import { searchCustomersByPhone } from '@/services/customerService';
+import { getProductStocks } from '@/services/productStockService';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
+import {
+    ArrowLeft,
+    User,
+    Building2,
+    UserCircle,
+    Truck,
+    FileText,
+    Banknote,
+    Package,
+    Layers,
+} from 'lucide-react';
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
@@ -23,6 +35,9 @@ const STATUS_LABELS = {
     completed: 'Đã xuất kho / hoàn thành',
     cancelled: 'Đã hủy',
 };
+
+/** Không gán «hoàn thành» tay — chỉ kho / POS. */
+const STATUS_MANUAL_SELECT_KEYS = ['pending', 'confirmed', 'cancelled'];
 
 const PAYMENT_STATUS_LABELS = {
     pending: 'Chờ thanh toán',
@@ -32,6 +47,20 @@ const PAYMENT_STATUS_LABELS = {
 };
 
 const formatMoney = (n) => `${Number(n || 0).toLocaleString('vi-VN')}đ`;
+
+function DetailMetaRow({ icon: Icon, label, children }) {
+    return (
+        <div className="flex flex-col gap-0.5 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-base-200/70 last:border-0 last:pb-0 first:pt-0">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45 flex items-center gap-2 shrink-0">
+                {Icon ? <Icon className="size-3.5 opacity-80" aria-hidden /> : null}
+                {label}
+            </span>
+            <div className="text-sm font-medium text-base-content sm:text-right sm:max-w-[min(100%,20rem)] wrap-break-word">
+                {children}
+            </div>
+        </div>
+    );
+}
 
 /** Khớp backend getRefundTransferQr: cần BIN ≥6 số và STK ≥6 số (số). */
 function hasRefundBankForVietQr(order) {
@@ -69,8 +98,21 @@ export default function AdminOrderDetailPage() {
     const [customerHits, setCustomerHits] = useState([]);
     const [savingPreOrder, setSavingPreOrder] = useState(false);
     const [deletingPreOrder, setDeletingPreOrder] = useState(false);
+    const [invoiceNoteOpen, setInvoiceNoteOpen] = useState(false);
+    const [invoiceNoteDraft, setInvoiceNoteDraft] = useState('');
+    const [savingInvoiceNote, setSavingInvoiceNote] = useState(false);
+    /** Tồn tại chi nhánh đơn — snapshot hiện tại (productId string → { qty, reserved, avail }). */
+    const [branchStockMap, setBranchStockMap] = useState({});
 
     const canConfirmWarehouse = hasAnyRole('admin', 'manager', 'warehouse_manager');
+    const canManageInvoice = hasAnyRole(
+        'admin',
+        'manager',
+        'seller',
+        'Quản lý chi nhánh',
+        'staff',
+        'Nhân viên bán hàng',
+    );
     const canProcessRefund = hasAnyRole(
         'admin',
         'manager',
@@ -109,6 +151,35 @@ export default function AdminOrderDetailPage() {
     useEffect(() => {
         fetchOrder();
     }, [id]);
+
+    useEffect(() => {
+        const locId = order?.location?._id ?? order?.location;
+        if (!locId) {
+            setBranchStockMap({});
+            return;
+        }
+        let cancelled = false;
+        getProductStocks({ locationId: locId })
+            .then((res) => {
+                if (cancelled) return;
+                const map = {};
+                (res?.data?.stocks || []).forEach((s) => {
+                    const raw = s.product?._id ?? s.product;
+                    const pid = raw != null ? String(raw) : '';
+                    if (!pid) return;
+                    const q = Number(s.quantity) || 0;
+                    const r = Number(s.reservedOnlineQty) || 0;
+                    map[pid] = { qty: q, reserved: r, avail: Math.max(0, q - r) };
+                });
+                setBranchStockMap(map);
+            })
+            .catch(() => {
+                if (!cancelled) setBranchStockMap({});
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [order?.location, order?._id]);
 
     useEffect(() => {
         getActiveLocations()
@@ -150,6 +221,34 @@ export default function AdminOrderDetailPage() {
         order?.isPreOrder && order?.status === 'pending' && order?.paymentStatus === 'pending',
     );
     const canDeletePreOrder = Boolean(order?.isPreOrder && order?.status !== 'completed');
+
+    const invoiceTotals = useMemo(() => {
+        const items = order?.items;
+        if (!Array.isArray(items) || !items.length) {
+            return { sumNet: 0, sumVat: 0, sumLineGross: 0 };
+        }
+        let sumNet = 0;
+        let sumVat = 0;
+        let sumLineGross = 0;
+        for (const it of items) {
+            const qty = Number(it.quantity || 0);
+            const price = Number(it.price || 0);
+            const net = qty * price;
+            const declaredTotal = Number(it.total);
+            const vatField = Number(it.vatAmount);
+            let vat = 0;
+            if (Number.isFinite(vatField) && vatField >= 0) {
+                vat = vatField;
+            } else if (Number.isFinite(declaredTotal)) {
+                vat = Math.max(0, declaredTotal - net);
+            }
+            sumNet += net;
+            sumVat += vat;
+            sumLineGross +=
+                Number.isFinite(declaredTotal) && declaredTotal > 0 ? declaredTotal : net + vat;
+        }
+        return { sumNet, sumVat, sumLineGross };
+    }, [order]);
 
     const beginPreOrderEdit = () => {
         if (!order) return;
@@ -223,6 +322,33 @@ export default function AdminOrderDetailPage() {
         } finally {
             setDeletingPreOrder(false);
         }
+    };
+
+    const handleSaveInvoiceNote = async () => {
+        if (!id) return;
+        setSavingInvoiceNote(true);
+        try {
+            await updateOrder(id, { note: invoiceNoteDraft });
+            toast.success('Đã lưu ghi chú');
+            setInvoiceNoteOpen(false);
+            fetchOrder();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Không lưu được ghi chú');
+        } finally {
+            setSavingInvoiceNote(false);
+        }
+    };
+
+    const handleCancelInvoice = async () => {
+        if (!id) return;
+        if (
+            !window.confirm(
+                'Hủy đơn hàng này? Tồn kho sẽ được hoàn lại theo quy tắc hệ thống. Nếu khách đã thanh toán, cần hoàn tiền theo nghiệp vụ (mục hoàn tiền bên dưới khi đơn ở trạng thái đã hủy).',
+            )
+        ) {
+            return;
+        }
+        await handleUpdate('status', 'cancelled');
     };
 
     const handleUpdate = async (field, value) => {
@@ -350,36 +476,53 @@ export default function AdminOrderDetailPage() {
     };
 
     return (
-        <div className="flex-1 p-6 bg-base-200 overflow-y-auto">
-            <div className="container mx-auto max-w-2xl space-y-6">
-                <div className="flex items-center justify-between">
+        <div className="flex-1 min-h-0 bg-linear-to-b from-base-200 via-base-200/70 to-base-300/30 overflow-y-auto">
+            <div className="container mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">
+                <div className="flex items-center">
                     <Link
                         to={backTo || (order?.isPreOrder ? '/admin/orders/pre-orders' : '/admin/orders/invoices')}
-                        className="btn btn-ghost btn-sm gap-1"
+                        className="btn btn-ghost btn-sm gap-2 rounded-full"
                     >
-                        ← Quay lại
+                        <ArrowLeft className="size-4 shrink-0" aria-hidden />
+                        Quay lại
                     </Link>
                 </div>
 
                 {loading ? (
-                    <div className="flex justify-center py-12">
+                    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-base-200 bg-base-100/80 py-20 shadow-sm">
                         <span className="loading loading-spinner loading-lg text-primary" />
+                        <p className="text-sm text-base-content/60">Đang tải chi tiết đơn…</p>
                     </div>
                 ) : !order ? (
-                    <div className="text-center py-12 text-base-content/60">
+                    <div className="rounded-2xl border border-base-200 bg-base-100 py-16 text-center text-base-content/60 shadow-sm">
                         Không tìm thấy đơn hàng
                     </div>
                 ) : (
                     <>
-                        <h1 className="text-2xl font-bold">
-                            Đơn hàng {order.code}
-                            {order.isPreOrder && (
-                                <span className="ml-2 badge badge-ghost">Đặt trước</span>
-                            )}
-                        </h1>
+                        <header className="rounded-2xl border border-base-200/80 bg-base-100 p-5 shadow-md shadow-base-300/20 sm:p-6">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 space-y-1">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-primary/80">
+                                        Chi tiết đơn hàng
+                                    </p>
+                                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-base-content font-mono">
+                                        {order.code}
+                                    </h1>
+                                </div>
+                                <div className="flex flex-wrap gap-2 justify-end">
+                                    {order.isPreOrder && <span className="badge badge-outline border-amber-300/80">Đặt trước</span>}
+                                    {order.isLegacyImport && (
+                                        <span className="badge badge-warning badge-outline">Chứng từ cũ</span>
+                                    )}
+                                    <span className="badge badge-ghost whitespace-nowrap">
+                                        {order.channel === 'online' ? 'Bán online' : 'Tại quầy'}
+                                    </span>
+                                </div>
+                            </div>
+                        </header>
 
                         {order.isPreOrder && (canEditPreOrder || canDeletePreOrder) && (
-                            <div className="bg-base-100 rounded-lg border border-base-300 p-4 space-y-3">
+                            <div className="rounded-2xl border border-base-200 bg-base-100 p-4 shadow-sm space-y-3 sm:p-5">
                                 <p className="text-sm font-medium text-base-content/80">Thao tác đơn đặt hàng</p>
                                 <div className="flex flex-wrap gap-2">
                                     {canEditPreOrder && !preOrderEditOpen && (
@@ -623,43 +766,62 @@ export default function AdminOrderDetailPage() {
                             </div>
                         )}
 
-                        <div className="bg-base-100 rounded-lg border border-base-300 p-4 space-y-3">
-                            <div className="flex justify-between">
-                                <span className="text-base-content/70">Khách hàng</span>
-                                <span>{formatCustomer(order)}</span>
+                        <section className="rounded-2xl border border-base-200/90 bg-base-100 shadow-md shadow-base-300/15 overflow-hidden">
+                            <div className="border-b border-base-200/80 bg-linear-to-r from-primary/8 via-base-100 to-secondary/5 px-4 py-3 sm:px-5">
+                                <h2 className="text-sm font-semibold text-base-content flex items-center gap-2">
+                                    <Layers className="size-4 text-primary shrink-0" aria-hidden />
+                                    Thông tin đơn
+                                </h2>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-base-content/70">Chi nhánh</span>
-                                <span>{order.location?.name || '—'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-base-content/70">Nhân viên bán</span>
-                                <span>{formatSeller(order)}</span>
-                            </div>
+                            <div className="p-4 sm:p-5">
+                            <DetailMetaRow icon={User} label="Khách hàng">
+                                {formatCustomer(order)}
+                            </DetailMetaRow>
+                            <DetailMetaRow icon={Building2} label="Chi nhánh">
+                                {order.location?.name || '—'}
+                            </DetailMetaRow>
+                            <DetailMetaRow icon={UserCircle} label="Nhân viên bán">
+                                {formatSeller(order)}
+                            </DetailMetaRow>
                             {order.channel === 'online' && (
-                                <p className="text-xs text-base-content/60 bg-base-200/80 rounded-lg px-3 py-2">
-                                    Bán: sau khi <strong>đã thanh toán</strong>, bạn chuyển trạng thái từ &quot;Chờ xử lý&quot; → &quot;Đã
-                                    xác nhận / chờ xuất kho&quot;. Kho: bước 1 <strong>xác nhận chuẩn bị</strong> → bước 2
-                                    quét từng dòng tại màn <strong>Xuất kho nhanh</strong> → bước 3 <strong>đã xuất kho</strong>{' '}
-                                    (trừ tồn).
+                                <p className="text-xs text-base-content/70 bg-base-200/50 rounded-xl px-3 py-2.5 mb-2 leading-relaxed border border-base-200/60">
+                                    Bán online: sau khi <strong>đã thanh toán</strong>, chuyển &quot;Chờ xử lý&quot; → &quot;Đã xác nhận / chờ
+                                    xuất kho&quot;. Kho: <strong>chuẩn bị</strong> → quét <strong>Xuất kho nhanh</strong> →{' '}
+                                    <strong>đã xuất kho</strong>.
                                 </p>
                             )}
-                            <div className="flex justify-between">
-                                <span className="text-base-content/70">Trạng thái</span>
-                                <select
-                                    className="select select-bordered select-sm"
-                                    value={order.status && STATUS_LABELS[order.status] ? order.status : 'pending'}
-                                    onChange={(e) => handleUpdate('status', e.target.value)}
-                                    disabled={updating}
-                                >
-                                    {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                                        <option key={v} value={v}>{l}</option>
-                                    ))}
-                                </select>
+                            <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-b border-base-200/70">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45 shrink-0">
+                                    Trạng thái
+                                </span>
+                                {order.status === 'completed' ? (
+                                    <span
+                                        className="badge badge-success badge-lg whitespace-normal text-left max-w-[min(100%,14rem)]"
+                                        title="Chỉ nhân viên kho (quét xuất) hoặc hoàn tất đúng luồng tại quầy mới đặt trạng thái này"
+                                    >
+                                        {STATUS_LABELS.completed}
+                                    </span>
+                                ) : (
+                                    <select
+                                        className="select select-bordered select-sm max-w-[min(100%,14rem)]"
+                                        value={order.status && STATUS_LABELS[order.status] ? order.status : 'pending'}
+                                        onChange={(e) => handleUpdate('status', e.target.value)}
+                                        disabled={updating}
+                                    >
+                                        {STATUS_MANUAL_SELECT_KEYS.map((v) => (
+                                            <option key={v} value={v}>
+                                                {STATUS_LABELS[v]}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
-                            <div className="flex justify-between items-center gap-2">
-                                <span className="text-base-content/70">Thanh toán</span>
-                                <div className="flex items-center gap-1">
+                            <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-b border-base-200/70">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45 flex items-center gap-2 shrink-0">
+                                    <Banknote className="size-3.5 opacity-80" aria-hidden />
+                                    Thanh toán
+                                </span>
+                                <div className="flex flex-wrap items-center justify-end gap-1">
                                     <select
                                         className="select select-bordered select-sm"
                                         value={order.paymentStatus || 'pending'}
@@ -683,24 +845,46 @@ export default function AdminOrderDetailPage() {
                                     )}
                                 </div>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-base-content/70">Địa chỉ giao hàng</span>
-                                <span>{order.shippingAddress || '—'}</span>
-                            </div>
+                            <DetailMetaRow icon={Truck} label="Địa chỉ giao hàng">
+                                {order.shippingAddress || '—'}
+                            </DetailMetaRow>
                             {order.shippingPhone && (
-                                <div className="flex justify-between">
-                                    <span className="text-base-content/70">SĐT nhận hàng</span>
-                                    <span>{order.shippingPhone}</span>
+                                <DetailMetaRow label="SĐT nhận hàng">{order.shippingPhone}</DetailMetaRow>
+                            )}
+                            <DetailMetaRow icon={FileText} label="Ghi chú">
+                                {order.note?.trim() ? order.note : '—'}
+                            </DetailMetaRow>
+                            {!order.isPreOrder && canManageInvoice && (
+                                <div className="pt-3 mt-2 border-t border-base-200 space-y-2">
+                                    <p className="text-sm font-medium text-base-content/80">Thao tác hóa đơn</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-primary btn-outline"
+                                            disabled={updating}
+                                            onClick={() => {
+                                                setInvoiceNoteDraft(order.note || '');
+                                                setInvoiceNoteOpen(true);
+                                            }}
+                                        >
+                                            Sửa ghi chú
+                                        </button>
+                                        {order.status !== 'cancelled' && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-error btn-outline"
+                                                disabled={updating}
+                                                onClick={handleCancelInvoice}
+                                            >
+                                                Hủy đơn
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             )}
-                            {order.note && (
-                                <div className="flex justify-between">
-                                    <span className="text-base-content/70">Ghi chú</span>
-                                    <span>{order.note}</span>
-                                </div>
-                            )}
-                            {/* Ẩn thông tin "Kho (online)" để UI báo cáo gọn và đồng bộ. */}
-                            {canConfirmWarehouse &&
+                            {/* Đặt trước: không hiện khối xuất kho tại đây (dùng màn Quét xuất). Hóa đơn tại quầy: giữ hướng dẫn nhanh. */}
+                            {!order.isPreOrder &&
+                                canConfirmWarehouse &&
                                 order.warehouseReservationActive === true &&
                                 order.paymentStatus === 'paid' &&
                                 order.status === 'confirmed' && (
@@ -842,94 +1026,205 @@ export default function AdminOrderDetailPage() {
                                         )}
                                     </div>
                                 )}
-                        </div>
+                            </div>
+                        </section>
 
-                        <div className="bg-base-100 rounded-lg border border-base-300 overflow-hidden">
-                            <div className="px-4 py-3 font-semibold bg-base-200 border-b flex items-center justify-between gap-3">
-                                <h2>Chi tiết sản phẩm</h2>
-                                <span className="text-xs text-base-content/60">
+                        <section className="rounded-2xl border border-base-200/90 bg-base-100 shadow-md shadow-base-300/15 overflow-hidden">
+                            <div className="border-b border-base-200/80 bg-linear-to-r from-secondary/10 via-base-100 to-primary/5 px-4 py-3 sm:px-5 flex items-center justify-between gap-3">
+                                <h2 className="text-sm font-semibold text-base-content flex items-center gap-2">
+                                    <Package className="size-4 text-primary shrink-0" aria-hidden />
+                                    Chi tiết sản phẩm
+                                </h2>
+                                <span className="badge badge-ghost badge-sm font-mono">
                                     {Array.isArray(order.items) ? order.items.length : 0} dòng
                                 </span>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="table table-sm w-full">
-                                    <thead className="bg-base-200/60">
-                                        <tr>
-                                            <th>Sản phẩm</th>
-                                            <th className="w-20 text-center">ĐVT</th>
-                                            <th className="text-right">SL</th>
-                                            <th className="text-right">Đơn giá</th>
-                                            <th className="text-right">Thành tiền</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(order.items || []).map((item, idx) => {
-                                            const p = item.product || {};
-                                            const img = p.images?.[0] || p.image || '';
-                                            const qty = Number(item.quantity || 0);
-                                            const price = Number(item.price || 0);
-                                            const lineTotal = qty * price;
-                                            return (
-                                                <tr key={idx}>
-                                                    <td>
-                                                        <div className="flex items-center gap-3 min-w-0">
-                                                            <div className="w-10 h-10 rounded-lg bg-base-200 shrink-0 overflow-hidden flex items-center justify-center">
-                                                                {img ? (
-                                                                    <img src={img} alt="" className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <span className="text-xs text-base-content/40">N/A</span>
-                                                                )}
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <div className="font-medium truncate">{p.name || 'Sản phẩm'}</div>
-                                                                <div className="text-xs text-base-content/60 font-mono truncate">
-                                                                    {p.sku ? `SKU ${p.sku}` : ''}
-                                                                    {p.barcode ? ` · BC ${p.barcode}` : ''}
-                                                                </div>
-                                                            </div>
+                            <div className="p-4 sm:p-5 space-y-4">
+                                {(order.items || []).map((item, idx) => {
+                                    const p = item.product || {};
+                                    const pid = String(p._id ?? item.product ?? '');
+                                    const stock = pid ? branchStockMap[pid] : null;
+                                    const img = p.images?.[0] || p.image || '';
+                                    const qty = Number(item.quantity || 0);
+                                    const price = Number(item.price || 0);
+                                    const net = qty * price;
+                                    const declaredTotal = Number(item.total);
+                                    const vatField = Number(item.vatAmount);
+                                    let vat = 0;
+                                    if (Number.isFinite(vatField) && vatField >= 0) {
+                                        vat = vatField;
+                                    } else if (Number.isFinite(declaredTotal)) {
+                                        vat = Math.max(0, declaredTotal - net);
+                                    }
+                                    const lineGross =
+                                        Number.isFinite(declaredTotal) && declaredTotal > 0
+                                            ? declaredTotal
+                                            : net + vat;
+                                    const vatPct =
+                                        item.vatPercent != null && item.vatPercent !== ''
+                                            ? Number(item.vatPercent)
+                                            : null;
+                                    return (
+                                        <article
+                                            key={idx}
+                                            className="rounded-xl border border-base-200/80 bg-linear-to-br from-base-100 to-base-200/25 p-4 shadow-sm hover:shadow-md hover:border-primary/20 transition-all"
+                                        >
+                                            <div className="flex flex-col sm:flex-row gap-4">
+                                                <div className="shrink-0 mx-auto sm:mx-0">
+                                                    <div className="w-20 h-20 rounded-xl bg-base-200 border border-base-200/80 overflow-hidden flex items-center justify-center">
+                                                        {img ? (
+                                                            <img src={img} alt="" className="w-full h-full object-contain p-1" />
+                                                        ) : (
+                                                            <span className="text-xs text-base-content/35">N/A</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0 flex-1 space-y-2">
+                                                    <div>
+                                                        <h3 className="font-semibold text-base text-base-content leading-snug">
+                                                            {p.name || 'Sản phẩm'}
+                                                        </h3>
+                                                        <p className="text-xs text-base-content/55 font-mono mt-0.5">
+                                                            {[p.sku ? `SKU ${p.sku}` : null, p.barcode ? `MV ${p.barcode}` : null]
+                                                                .filter(Boolean)
+                                                                .join(' · ') || '—'}
+                                                        </p>
+                                                    </div>
+                                                    {(order.location?._id ?? order.location) && (
+                                                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                                            {stock ? (
+                                                                <>
+                                                                    <span className="inline-flex items-center rounded-md bg-base-200/90 px-2 py-0.5 font-medium text-base-content/80 border border-base-300/50">
+                                                                        Tồn: {stock.qty.toLocaleString('vi-VN')}
+                                                                    </span>
+                                                                    <span className="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 font-medium text-amber-900/80 border border-amber-300/40">
+                                                                        Đặt: {stock.reserved.toLocaleString('vi-VN')}
+                                                                    </span>
+                                                                    <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary border border-primary/20">
+                                                                        Bán: {stock.avail.toLocaleString('vi-VN')}
+                                                                    </span>
+                                                                    <span className="text-base-content/40">
+                                                                        · {order.location?.name || 'chi nhánh'} (hiện tại)
+                                                                    </span>
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-base-content/45">
+                                                                    Chưa có dữ liệu tồn theo chi nhánh cho mã này
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                    </td>
-                                                    <td className="text-center text-sm text-base-content/80">
-                                                        {item.unit || 'Cái'}
-                                                    </td>
-                                                    <td className="text-right font-medium">{qty}</td>
-                                                    <td className="text-right">{formatMoney(price)}</td>
-                                                    <td className="text-right font-semibold">{formatMoney(lineTotal)}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                    )}
+                                                    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                                                        <div className="rounded-lg bg-base-200/50 border border-base-200/60 px-2.5 py-2 text-center">
+                                                            <dt className="text-[10px] uppercase text-base-content/50">ĐVT</dt>
+                                                            <dd className="text-sm font-semibold">{item.unit || 'Cái'}</dd>
+                                                        </div>
+                                                        <div className="rounded-lg bg-base-200/50 border border-base-200/60 px-2.5 py-2 text-center">
+                                                            <dt className="text-[10px] uppercase text-base-content/50">SL</dt>
+                                                            <dd className="text-sm font-semibold tabular-nums">{qty}</dd>
+                                                        </div>
+                                                        <div className="rounded-lg bg-base-200/50 border border-base-200/60 px-2.5 py-2 text-center col-span-2 sm:col-span-1">
+                                                            <dt className="text-[10px] uppercase text-base-content/50">Đơn giá</dt>
+                                                            <dd className="text-sm font-semibold tabular-nums">{formatMoney(price)}</dd>
+                                                        </div>
+                                                        <div className="rounded-lg bg-base-200/50 border border-base-200/60 px-2.5 py-2 text-center col-span-2 sm:col-span-1">
+                                                            <dt className="text-[10px] uppercase text-base-content/50">Thuế</dt>
+                                                            <dd className="text-sm font-semibold tabular-nums">
+                                                                {formatMoney(vat)}
+                                                                {Number.isFinite(vatPct) && vatPct >= 0 ? (
+                                                                    <span className="text-base-content/45 font-normal"> ({vatPct}%)</span>
+                                                                ) : null}
+                                                            </dd>
+                                                        </div>
+                                                    </dl>
+                                                    <div className="flex justify-end pt-1 border-t border-base-200/60">
+                                                        <span className="text-xs text-base-content/50 mr-2 self-center">Thành tiền</span>
+                                                        <span className="text-lg font-bold text-primary tabular-nums">
+                                                            {formatMoney(lineGross)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
                             </div>
 
-                            <div className="px-4 py-3 bg-base-200 border-t space-y-1">
+                            <div className="border-t border-base-200/80 bg-linear-to-t from-base-200/40 to-base-100 px-4 py-4 sm:px-5 space-y-2">
                                 <div className="flex justify-between text-sm text-base-content/70">
-                                    <span>Tạm tính</span>
-                                    <span className="font-medium">
-                                        {formatMoney(
-                                            (order.items || []).reduce(
-                                                (s, it) => s + Number(it.quantity || 0) * Number(it.price || 0),
-                                                0
-                                            )
-                                        )}
-                                    </span>
+                                    <span>Tiền hàng (chưa thuế)</span>
+                                    <span className="font-medium tabular-nums">{formatMoney(invoiceTotals.sumNet)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-base-content/70">
+                                    <span>Thuế GTGT</span>
+                                    <span className="font-medium tabular-nums">{formatMoney(invoiceTotals.sumVat)}</span>
                                 </div>
                                 {Number(order.discount || 0) > 0 && (
-                                    <div className="flex justify-between text-sm text-emerald-700">
+                                    <div className="flex justify-between text-sm text-success">
                                         <span>Chiết khấu</span>
-                                        <span className="font-medium">- {formatMoney(order.discount || 0)}</span>
+                                        <span className="font-medium tabular-nums">−{formatMoney(order.discount || 0)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between font-bold text-lg pt-1">
-                                    <span>Tổng tiền</span>
-                                    <span className="text-primary">{formatMoney(order.totalAmount || 0)}</span>
+                                <div className="flex justify-between items-baseline pt-3 mt-1 border-t border-base-300/50">
+                                    <span className="text-base font-bold text-base-content">Tổng thanh toán</span>
+                                    <span className="text-xl font-bold text-primary tabular-nums tracking-tight">
+                                        {formatMoney(order.totalAmount || 0)}
+                                    </span>
                                 </div>
                             </div>
-                        </div>
+                        </section>
                     </>
                 )}
             </div>
+
+            {invoiceNoteOpen && (
+                <dialog className="modal modal-open">
+                    <div className="modal-box max-w-lg">
+                        <h3 className="font-bold text-lg mb-2">Ghi chú hóa đơn</h3>
+                        <textarea
+                            className="textarea textarea-bordered w-full text-sm"
+                            rows={4}
+                            maxLength={2000}
+                            value={invoiceNoteDraft}
+                            onChange={(e) => setInvoiceNoteDraft(e.target.value)}
+                            placeholder="Ghi chú nội bộ / giao hàng…"
+                        />
+                        <p className="text-xs text-base-content/60 mt-1">
+                            {(invoiceNoteDraft || '').length}/2000 ký tự
+                        </p>
+                        <div className="modal-action">
+                            <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={savingInvoiceNote}
+                                onClick={() => setInvoiceNoteOpen(false)}
+                            >
+                                Đóng
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={savingInvoiceNote}
+                                onClick={handleSaveInvoiceNote}
+                            >
+                                {savingInvoiceNote ? (
+                                    <span className="loading loading-spinner loading-sm" />
+                                ) : (
+                                    'Lưu'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                    <form
+                        method="dialog"
+                        className="modal-backdrop"
+                        onClick={() => !savingInvoiceNote && setInvoiceNoteOpen(false)}
+                    >
+                        <button type="button">close</button>
+                    </form>
+                </dialog>
+            )}
 
             {refundQrOpen && refundQrData?.qrUrl && (
                 <dialog className="modal modal-open">

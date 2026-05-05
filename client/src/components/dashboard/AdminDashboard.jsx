@@ -87,6 +87,8 @@ const QuickActions = () => (
         <div className="grid grid-cols-4 gap-2">
             <Link
                 to="/sales"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-base-200 hover:bg-primary/5 hover:border-primary/30 transition-all"
             >
                 <div className="p-2 rounded-lg bg-primary/10 text-primary">

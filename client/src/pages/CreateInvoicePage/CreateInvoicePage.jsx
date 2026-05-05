@@ -4,11 +4,12 @@ import { moneyToVietnameseWords } from '@/lib/moneyToVietnameseWords';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBranchStore } from '@/stores/useBranchStore';
-import { getProducts } from '@/services/productService';
-import { getActiveLocations } from '@/services/locationService';
+import { getProducts, getProductById } from '@/services/productService';
+import { getActiveLocations, getLocations } from '@/services/locationService';
 import { getBankAccountsByLocation } from '@/services/bankAccountService';
 import { getProductStocks } from '@/services/productStockService';
 import {
+    completePosCounterSale,
     createOrderFromItems,
     generateVietQR,
     getOrderById,
@@ -36,11 +37,20 @@ import {
     UserRoundPen,
     UserPlus,
     Printer,
+    MoreVertical,
+    Eye,
 } from 'lucide-react';
 import { ROLE_LABELS } from '@/config/roleConfig';
 import { buildVietQRImageUrl } from '@/lib/vietqrQuickLink';
 import CustomerModal from '@/pages/CustomersPage/CustomerModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { labelBatteryType, formatDimensionsMm, formatWeightKg, formatVoltageV } from '@/utils/productDetailDisplay';
 
 const TAB_TYPES = { INVOICE: 'invoice', ORDER: 'order' };
 const PRODUCT_SEARCH_MODE = { MANUAL: 'manual', SCAN: 'scan' };
@@ -58,6 +68,30 @@ function clampInvoiceVat(n) {
     const x = Number(n);
     if (!Number.isFinite(x)) return 0;
     return Math.min(100, Math.max(0, x));
+}
+
+/** Các dòng thông số kỹ thuật có dữ liệu — tránh danh sách dài toàn "—" trong modal POS. */
+function buildPosProductDetailSpecRows(pd) {
+    if (!pd) return [];
+    const rows = [];
+    const add = (label, val) => {
+        if (val == null) return;
+        const s = typeof val === 'string' ? val.trim() : val;
+        if (s === '' || s === '—') return;
+        rows.push({ label, value: val });
+    };
+    add('Dung lượng', pd.capacity);
+    const bt = labelBatteryType(pd.batteryType, '');
+    if (bt && bt !== '—') rows.push({ label: 'Kiểu ắc quy', value: bt });
+    const dim = formatDimensionsMm(pd, '');
+    if (dim && dim !== '—') rows.push({ label: 'Kích thước', value: dim });
+    const wkg = formatWeightKg(pd.weightKg, '');
+    if (wkg && wkg !== '—') rows.push({ label: 'Trọng lượng', value: wkg });
+    const vv = formatVoltageV(pd.voltageV, '');
+    if (vv && vv !== '—') rows.push({ label: 'Điện áp', value: vv });
+    add('Xuất xứ', pd.originCountry);
+    add('Bảo hành', pd.warrantyText);
+    return rows;
 }
 
 /** Đơn giá chưa thuế × SL — cộng thuế GTGT (làm tròn) — khớp backend */
@@ -93,8 +127,8 @@ function userHasAdminRole(u) {
     return u?.roles?.some((r) => r?.name === 'admin');
 }
 
-/** Chỉ admin hoặc nhân viên bán hàng được chọn làm người bán trên POS */
-const SALES_DROPDOWN_ROLE_NAMES = new Set(['admin', 'seller']);
+/** Admin / quản lý chi nhánh / nhân viên bán hàng đều có thể là người bán trên POS */
+const SALES_DROPDOWN_ROLE_NAMES = new Set(['admin', 'manager', 'seller']);
 
 function userHasSalesDropdownRole(u) {
     if (!u?.roles?.length) return false;
@@ -102,6 +136,18 @@ function userHasSalesDropdownRole(u) {
         const n = typeof r === 'string' ? r : r?.name;
         return n && SALES_DROPDOWN_ROLE_NAMES.has(n);
     });
+}
+
+/** Chuẩn hóa user từ auth store để gộp vào danh sách dropdown (API đôi khi không trả chính mình). */
+function userStubForSellerMerge(u) {
+    if (!u?._id) return null;
+    return {
+        _id: u._id,
+        username: u.username,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        roles: u.roles || [],
+    };
 }
 
 function usersFromGetUsersResponse(res) {
@@ -160,6 +206,8 @@ const emptyVietQRModal = () => ({
 export default function CreateInvoicePage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    /** Mở POS sẵn chế độ đặt trước (ví dụ từ /admin/orders/pre-orders): ?mode=order */
+    const initialPosModeOrder = searchParams.get('mode') === 'order';
     const accessToken = useAuthStore((s) => s.accessToken);
     const user = useAuthStore((s) => s.user);
     const logout = useAuthStore((s) => s.logout);
@@ -171,10 +219,19 @@ export default function CreateInvoicePage() {
     };
     const { hasAnyRole } = useUserRole();
     const { currentLocationId: storeLocationId, setCurrentLocationId } = useBranchStore();
-    const canSelectSeller = hasAnyRole('admin', 'manager');
+    /** Chỉ admin được chọn người bán khác / đổi chi nhánh trên POS */
+    const canSelectSeller = hasAnyRole('admin');
+    const isPosAdmin = hasAnyRole('admin');
     const searchInputRef = useRef(null);
 
-    const [tabs, setTabs] = useState([{ id: 1, type: TAB_TYPES.INVOICE, label: 'Hóa đơn 1', items: [] }]);
+    const [tabs, setTabs] = useState([
+        {
+            id: 1,
+            type: initialPosModeOrder ? TAB_TYPES.ORDER : TAB_TYPES.INVOICE,
+            label: initialPosModeOrder ? 'Đặt hàng 1' : 'Hóa đơn 1',
+            items: [],
+        },
+    ]);
     const [activeTabId, setActiveTabId] = useState(1);
     const [bankAccounts, setBankAccounts] = useState([]);
 
@@ -186,8 +243,13 @@ export default function CreateInvoicePage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [locations, setLocations] = useState([]);
+    /** Admin: đổi mọi chi nhánh active. NV được phân nhiều cơ sở: đổi trong danh sách được phân. */
+    const canChangePosLocation = isPosAdmin || locations.length > 1;
     const [customerPaid, setCustomerPaid] = useState('');
+    /** Tồn bán được theo chi nhánh: quantity − reservedOnlineQty (ObjectId → string). */
     const [stocksByProduct, setStocksByProduct] = useState({});
+    /** Giữ chỗ đơn online chưa xuất kho — hiển thị cạnh tồn trong gợi ý SP. */
+    const [reservedOnlineByProduct, setReservedOnlineByProduct] = useState({});
     const [hoverProductId, setHoverProductId] = useState(null);
     const [form, setForm] = useState({
         locationId: '',
@@ -206,6 +268,8 @@ export default function CreateInvoicePage() {
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [customerModalSubmitting, setCustomerModalSubmitting] = useState(false);
     const [restoreConfirm, setRestoreConfirm] = useState({ show: false, customerId: null, message: '' });
+    /** Modal xem nhanh chi tiết SP (từ menu … trên dòng giỏ POS). */
+    const [posProductDetailModal, setPosProductDetailModal] = useState({ open: false, loading: false, product: null });
     const [vietQRModal, setVietQRModal] = useState(() => emptyVietQRModal());
     /** Đơn CK vừa tạo: chờ thanh toán hoặc đã paid (chờ bấm Hoàn thành). tabId = tab tạo đơn. */
     const [transferSession, setTransferSession] = useState(null);
@@ -214,6 +278,7 @@ export default function CreateInvoicePage() {
     const [selectedBankAccountId, setSelectedBankAccountId] = useState('');
     const [cancelOrderSubmitting, setCancelOrderSubmitting] = useState(false);
     const [checkPaymentSubmitting, setCheckPaymentSubmitting] = useState(false);
+    const [posCompleteSubmitting, setPosCompleteSubmitting] = useState(false);
     const payPollPaidToastRef = useRef(false);
     const [invoiceVatPercent, setInvoiceVatPercent] = useState(10);
     const [invoiceTaxCode, setInvoiceTaxCode] = useState('');
@@ -258,20 +323,31 @@ export default function CreateInvoicePage() {
         cashFooterActive;
     const cartLockedForTransfer = lockPaymentUiForCurrentTransfer;
 
+    const applyStockResponse = useCallback((res) => {
+        const sell = {};
+        const reserved = {};
+        (res?.data?.stocks || []).forEach((s) => {
+            const raw = s.product?._id ?? s.product;
+            const pid = raw != null ? String(raw) : '';
+            if (!pid) return;
+            const q = Number(s.quantity) || 0;
+            const r = Number(s.reservedOnlineQty) || 0;
+            sell[pid] = Math.max(0, q - r);
+            reserved[pid] = r;
+        });
+        setStocksByProduct(sell);
+        setReservedOnlineByProduct(reserved);
+    }, []);
+
     const refreshStocks = useCallback(async () => {
         if (!form.locationId) return;
         try {
             const res = await getProductStocks({ locationId: form.locationId });
-            const map = {};
-            (res?.data?.stocks || []).forEach((s) => {
-                const pid = (s.product?._id ?? s.product)?.toString?.();
-                if (pid) map[pid] = s.quantity ?? 0;
-            });
-            setStocksByProduct(map);
+            applyStockResponse(res);
         } catch {
             /* ignore */
         }
-    }, [form.locationId]);
+    }, [form.locationId, applyStockResponse]);
 
     useEffect(() => {
         if (!accessToken) {
@@ -281,17 +357,43 @@ export default function CreateInvoicePage() {
         const init = async () => {
             setLoading(true);
             try {
-                const [prodRes, locRes] = await Promise.all([getProducts({ page: 1, limit: 200, search: '' }), getActiveLocations()]);
-                const prods = prodRes?.data?.products || prodRes?.products || [];
-                setProducts(prods.filter((p) => !p.isDeleted));
-                const locs = locRes?.data?.locations || [];
-                setLocations(locs);
-                if (locs.length > 0) {
-                    const fromUrl = searchParams.get('locationId');
-                    const fromStore = storeLocationId;
-                    const valid = (id) => locs.some((l) => l._id === id);
-                    const chosen = (fromUrl && valid(fromUrl) && fromUrl) || (fromStore && valid(fromStore) && fromStore) || locs[0]._id;
-                    setForm((f) => ({ ...f, locationId: chosen }));
+                const locPromise = isPosAdmin
+                    ? getActiveLocations()
+                    : getLocations({ isActive: 'true', scope: 'mine' });
+                const [prodSettled, locSettled] = await Promise.allSettled([
+                    getProducts({ page: 1, limit: 200, search: '' }),
+                    locPromise,
+                ]);
+                if (prodSettled.status === 'fulfilled') {
+                    const prodRes = prodSettled.value;
+                    const prods = prodRes?.data?.products || prodRes?.products || [];
+                    setProducts(prods.filter((p) => !p.isDeleted));
+                } else {
+                    console.error(prodSettled.reason);
+                    toast.error('Không tải được danh sách sản phẩm');
+                }
+                if (locSettled.status === 'fulfilled') {
+                    const locRes = locSettled.value;
+                    const locs = locRes?.data?.locations || [];
+                    setLocations(locs);
+                    if (locs.length > 0) {
+                        const fromUrl = searchParams.get('locationId');
+                        const fromStore = storeLocationId === 'all' && !isPosAdmin ? null : storeLocationId;
+                        const valid = (id) => id && locs.some((l) => String(l._id) === String(id));
+                        const chosen =
+                            (fromUrl && valid(fromUrl) && fromUrl) ||
+                            (fromStore && valid(fromStore) && fromStore) ||
+                            locs[0]._id;
+                        setForm((f) => ({ ...f, locationId: chosen }));
+                    } else if (!isPosAdmin) {
+                        toast.warning(
+                            'Không có chi nhánh được phân cho tài khoản. Cần gán chi nhánh trong hồ sơ nhân viên (Employee) để dùng bán hàng.',
+                            { duration: 8000 }
+                        );
+                    }
+                } else {
+                    console.error(locSettled.reason);
+                    toast.error('Không tải được danh sách chi nhánh');
                 }
             } catch (e) {
                 console.error(e);
@@ -301,7 +403,20 @@ export default function CreateInvoicePage() {
             }
         };
         init();
-    }, [accessToken, navigate, searchParams, storeLocationId]);
+    }, [accessToken, navigate, searchParams, isPosAdmin]);
+
+    /** Đổi chi nhánh trên navbar / persist → cập nhật POS (không tải lại toàn trang). */
+    useEffect(() => {
+        if (!locations.length) return;
+        const fromUrl = searchParams.get('locationId');
+        const valid = (id) => id && locations.some((l) => String(l._id) === String(id));
+        const fromStore = storeLocationId === 'all' && !isPosAdmin ? null : storeLocationId;
+        const chosen =
+            (fromUrl && valid(fromUrl) && fromUrl) ||
+            (fromStore && valid(fromStore) && fromStore) ||
+            locations[0]._id;
+        setForm((f) => (f.locationId === chosen ? f : { ...f, locationId: chosen }));
+    }, [locations, storeLocationId, searchParams, isPosAdmin]);
 
     useEffect(() => {
         if (form.locationId) {
@@ -310,24 +425,24 @@ export default function CreateInvoicePage() {
                 .catch(() => setBankAccounts([]));
             getProductStocks({ locationId: form.locationId })
                 .then((res) => {
-                    const map = {};
-                    (res?.data?.stocks || []).forEach((s) => {
-                        const pid = (s.product?._id ?? s.product)?.toString?.();
-                        if (pid) map[pid] = s.quantity ?? 0;
-                    });
-                    setStocksByProduct(map);
+                    applyStockResponse(res);
                 })
-                .catch(() => setStocksByProduct({}));
+                .catch(() => {
+                    setStocksByProduct({});
+                    setReservedOnlineByProduct({});
+                });
         } else {
             setBankAccounts([]);
             setStocksByProduct({});
+            setReservedOnlineByProduct({});
         }
-    }, [form.locationId]);
+    }, [form.locationId, applyStockResponse]);
 
+    /** Đồng bộ chi nhánh POS lên store (navbar / báo cáo dùng chung). */
     useEffect(() => {
-        if (form.locationId && form.locationId !== storeLocationId) {
-            setCurrentLocationId(form.locationId);
-        }
+        if (!form.locationId || form.locationId === 'all') return;
+        if (form.locationId === storeLocationId) return;
+        setCurrentLocationId(form.locationId);
     }, [form.locationId, storeLocationId, setCurrentLocationId]);
 
     const searchProducts = useCallback(
@@ -378,13 +493,14 @@ export default function CreateInvoicePage() {
     }, [user?._id, canSelectSeller]);
 
     useEffect(() => {
+        if (!accessToken) return;
         getMemberPolicies()
             .then((res) => {
                 const list = res?.data?.policies || [];
                 setMemberPolicies(list.sort((a, b) => (a.minTotalSpent ?? 0) - (b.minTotalSpent ?? 0)));
             })
             .catch(() => setMemberPolicies([]));
-    }, []);
+    }, [accessToken]);
 
     useEffect(() => {
         getStoreSettings()
@@ -400,27 +516,32 @@ export default function CreateInvoicePage() {
             .catch(() => {});
     }, []);
 
+    /** Đổi chi nhánh POS → mặc định lại người bán là chính admin (tránh giữ NV thuộc cơ sở khác). */
     useEffect(() => {
-        if (!canSelectSeller || !accessToken) return;
+        if (!canSelectSeller || !form.locationId) return;
+        const u = useAuthStore.getState().user;
+        if (u && userHasSalesDropdownRole(u)) {
+            setSelectedSeller(u);
+        }
+    }, [form.locationId, canSelectSeller]);
+
+    /** Tải trước danh sách người bán theo chi nhánh POS (workLocationId); song song 3 role. */
+    useEffect(() => {
+        if (!canSelectSeller || !accessToken || !form.locationId) return;
         let cancelled = false;
         (async () => {
-            let admins = [];
-            let sellersList = [];
-            try {
-                const adminRes = await getUsers({ role: 'admin', limit: 200, page: 1 });
-                if (!cancelled) admins = usersFromGetUsersResponse(adminRes);
-            } catch {
-                admins = [];
-            }
-            try {
-                const sellerRes = await getUsers({ role: 'seller', limit: 200, page: 1 });
-                if (!cancelled) sellersList = usersFromGetUsersResponse(sellerRes);
-            } catch {
-                sellersList = [];
-            }
+            const params = { limit: 200, page: 1, workLocationId: form.locationId };
+            const settled = await Promise.allSettled([
+                getUsers({ ...params, role: 'admin' }),
+                getUsers({ ...params, role: 'manager' }),
+                getUsers({ ...params, role: 'seller' }),
+            ]);
             if (cancelled) return;
-            // seller trước, admin sau → cùng user thì ưu tiên payload từ API role=admin; mergeUsersById vẫn gộp roles nếu thiếu
-            const merged = mergeUsersById(sellersList, admins);
+            const admins = settled[0].status === 'fulfilled' ? usersFromGetUsersResponse(settled[0].value) : [];
+            const managers = settled[1].status === 'fulfilled' ? usersFromGetUsersResponse(settled[1].value) : [];
+            const sellersList = settled[2].status === 'fulfilled' ? usersFromGetUsersResponse(settled[2].value) : [];
+            const selfStub = userStubForSellerMerge(useAuthStore.getState().user);
+            const merged = mergeUsersById(sellersList, managers, admins, selfStub ? [selfStub] : []);
             merged.sort((a, b) => {
                 const pa = userHasAdminRole(a) ? 0 : 1;
                 const pb = userHasAdminRole(b) ? 0 : 1;
@@ -434,18 +555,18 @@ export default function CreateInvoicePage() {
         return () => {
             cancelled = true;
         };
-    }, [canSelectSeller, accessToken]);
+    }, [canSelectSeller, accessToken, user?._id, form.locationId]);
 
     useEffect(() => {
         const onKeyDown = (e) => {
-            if (e.key === 'F3') {
-                e.preventDefault();
-                searchInputRef.current?.focus();
-            }
+            if (e.key !== 'F3') return;
+            if (lockPaymentUiForCurrentTransfer) return;
+            e.preventDefault();
+            searchInputRef.current?.focus();
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, []);
+    }, [lockPaymentUiForCurrentTransfer]);
 
     useEffect(() => {
         payPollPaidToastRef.current = false;
@@ -550,6 +671,8 @@ export default function CreateInvoicePage() {
             if (existing) {
                 return prev.map((i) => (i.productId === id ? { ...i, quantity: i.quantity + 1 } : i));
             }
+            const img =
+                (product.image && String(product.image).trim()) || product.images?.[0] || '';
             return [
                 ...prev,
                 {
@@ -560,6 +683,7 @@ export default function CreateInvoicePage() {
                     quantity: 1,
                     unit: (product.unit && String(product.unit).trim()) || 'Cái',
                     vatPercent: product.vatPercent != null && !Number.isNaN(Number(product.vatPercent)) ? Number(product.vatPercent) : null,
+                    image: img,
                 },
             ];
         });
@@ -588,38 +712,54 @@ export default function CreateInvoicePage() {
         updateActiveTabItems((prev) => prev.map((i) => (i.productId === productId?.toString?.() ? { ...i, quantity: qty } : i)));
     };
 
+    const closePosProductDetailModal = () => setPosProductDetailModal({ open: false, loading: false, product: null });
+
+    const openPosProductDetailModal = async (productId) => {
+        if (!productId) return;
+        setPosProductDetailModal({ open: true, loading: true, product: null });
+        try {
+            const res = await getProductById(productId);
+            const p = res?.data?.product ?? null;
+            if (!p) {
+                toast.error(res?.message || 'Không tải được chi tiết sản phẩm');
+                closePosProductDetailModal();
+                return;
+            }
+            setPosProductDetailModal({ open: true, loading: false, product: p });
+        } catch {
+            toast.error('Lỗi khi tải chi tiết sản phẩm');
+            closePosProductDetailModal();
+        }
+    };
+
     const totalQty = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
 
     const invoiceTotals = useMemo(() => {
-        const tp = selectedCustomer ? getCustomerPolicy(selectedCustomer.accumulatedAmount, memberPolicies) : null;
+        const spent = Number(selectedCustomer?.accumulatedAmount ?? 0);
+        const tp = selectedCustomer ? getCustomerPolicy(spent, memberPolicies) : null;
         const def = invoiceVatPercent;
         let sumNet = 0;
-        let sumVat = 0;
         let sumGross = 0;
+        let sumVat = 0;
         for (const i of items) {
             const r = effectiveVatForLine(i, def);
-            const { net, vat, gross } = lineGrossFromExVatPos(i.price, i.quantity, r);
+            const { net, gross, vat } = lineGrossFromExVatPos(i.price, i.quantity, r);
             sumNet += net;
-            sumVat += vat;
             sumGross += gross;
+            sumVat += vat;
         }
-        const tierDiscountAmount = tp?.discountPercent
-            ? Math.round((sumNet * (Number(tp.discountPercent) || 0)) / 100)
-            : 0;
-        const discount = selectedCustomer && tp ? tierDiscountAmount : Number(form.discount) || 0;
+        const tierPct = tp ? Number(tp.discountPercent) || 0 : 0;
+        const discount =
+            selectedCustomer && tp && tierPct > 0
+                ? Math.round((sumNet * tierPct) / 100)
+                : Number(form.discount) || 0;
         const total = Math.max(0, sumGross - discount);
         return { subtotal: sumNet, sumVat, grossSubtotal: sumGross, total, discount, tierPolicy: tp };
     }, [items, invoiceVatPercent, selectedCustomer, form.discount, memberPolicies]);
 
     const { subtotal, sumVat, grossSubtotal, total, discount, tierPolicy } = invoiceTotals;
-
-    const vatBreakdown = useMemo(
-        () => ({
-            truocThue: subtotal,
-            tienThue: sumVat,
-            vatLabel: invoiceVatPercent,
-        }),
-        [subtotal, sumVat, invoiceVatPercent],
+    const showTierPercentDiscount = Boolean(
+        selectedCustomer && tierPolicy && (Number(tierPolicy.discountPercent) || 0) > 0,
     );
 
     const transferPreviewQrUrl =
@@ -674,8 +814,25 @@ export default function CreateInvoicePage() {
         }
     };
 
-    const handleTransferComplete = () => {
+    const handleTransferComplete = async () => {
         const tid = transferSession?.tabId ?? cashSession?.tabId;
+        const orderId = transferSession?.orderId ?? cashSession?.orderId;
+        const isPreOrder = Boolean(
+            transferSession?.isPreOrder ?? cashSession?.isPreOrder ?? activeTab?.type === TAB_TYPES.ORDER,
+        );
+
+        if (orderId && !isPreOrder) {
+            setPosCompleteSubmitting(true);
+            try {
+                await completePosCounterSale(orderId);
+            } catch (e) {
+                toast.error(e.response?.data?.message || 'Không hoàn tất xuất kho');
+                return;
+            } finally {
+                setPosCompleteSubmitting(false);
+            }
+        }
+
         if (tid != null) {
             setTabs((prev) => prev.map((t) => (t.id === tid ? { ...t, items: [] } : t)));
         }
@@ -686,7 +843,7 @@ export default function CreateInvoicePage() {
         setTransferSession(null);
         setCashSession(null);
         refreshStocks();
-        toast.success('Đã hoàn thành hóa đơn');
+        toast.success(isPreOrder ? 'Đã đóng phiên (đơn đặt trước giữ nguyên trên hệ thống)' : 'Đã hoàn thành hóa đơn và xuất kho');
     };
 
     const posPrintOrderId = transferSession?.orderId ?? cashSession?.orderId;
@@ -827,7 +984,6 @@ export default function CreateInvoicePage() {
   * { box-sizing: border-box; }
   body { font-family: "Times New Roman", Times, serif; font-size: 11pt; color: #000; margin: 0; }
   h1 { text-align: center; font-size: 14pt; margin: 0 0 8px; font-weight: 700; }
-  .sub { text-align: center; font-size: 10pt; margin-bottom: 10px; }
   .box { width: 100%; border: 1px solid #000; border-collapse: collapse; margin: 6px 0; }
   .box td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
   .box .l { text-align: left; }
@@ -842,7 +998,6 @@ export default function CreateInvoicePage() {
   .ft { text-align: center; margin-top: 16px; font-size: 9pt; }
 </style></head><body>
   <h1>HÓA ĐƠN GIÁ TRỊ GIA TĂNG (BẢN THỂ HIỆN TẠI QUẦY)</h1>
-  <p class="sub">(Đơn giá chưa thuế; thuế suất từng mặt hàng hoặc mặc định ${vatPct}% từ cửa hàng; thành tiền dòng gồm thuế khi áp dụng)</p>
   <table class="box">
     <tr>
       <td class="l" style="width:50%"><strong>Đơn vị bán:</strong> ${locName}<br/>
@@ -952,8 +1107,13 @@ export default function CreateInvoicePage() {
             toast.error('Vui lòng chọn người bán hàng (quản trị viên hoặc nhân viên bán hàng).');
             return;
         }
+        if (activeTab?.type === TAB_TYPES.ORDER && !selectedCustomer?._id) {
+            toast.error('Vui lòng chọn hoặc thêm khách hàng (nhập thông tin khách) trước khi thanh toán.');
+            return;
+        }
         const insufficientStock = items.filter((i) => {
-            const stock = stocksByProduct[i.productId] ?? 0;
+            const sid = String(i.productId ?? '');
+            const stock = stocksByProduct[sid] ?? 0;
             return (Number(i.quantity) || 0) > stock;
         });
         if (insufficientStock.length > 0) {
@@ -995,7 +1155,7 @@ export default function CreateInvoicePage() {
                 note: form.note.trim(),
                 discount,
                 isPreOrder: activeTab?.type === TAB_TYPES.ORDER,
-                customerId: selectedCustomer?._id || undefined,
+                ...(selectedCustomer?._id ? { customerId: selectedCustomer._id } : {}),
             };
             if (canSelectSeller && selectedSeller?._id && selectedSeller._id !== user?._id) {
                 payload.createdBy = selectedSeller._id;
@@ -1014,6 +1174,7 @@ export default function CreateInvoicePage() {
                             orderId: order._id,
                             paymentStatus: payStatus,
                             tabId: activeTabId,
+                            isPreOrder: !!order.isPreOrder,
                             qrDataURL: qrData?.qrDataURL ?? '',
                             checkoutUrl: qrData?.checkoutUrl ?? null,
                             bankAccount: qrData?.bankAccount ?? null,
@@ -1044,6 +1205,7 @@ export default function CreateInvoicePage() {
                             orderId: order._id,
                             paymentStatus: order.paymentStatus || 'pending',
                             tabId: activeTabId,
+                            isPreOrder: !!order.isPreOrder,
                             qrDataURL: '',
                             checkoutUrl: null,
                             bankAccount: null,
@@ -1054,6 +1216,7 @@ export default function CreateInvoicePage() {
                     setCashSession({
                         orderId: order._id,
                         tabId: activeTabId,
+                        isPreOrder: !!order.isPreOrder,
                         orderSnapshot: { code: order.code, totalAmount: order.totalAmount },
                     });
                     await refreshStocks();
@@ -1081,7 +1244,14 @@ export default function CreateInvoicePage() {
         <div className='flex h-full flex-col'>
             {/* Header xanh */}
             <header className='shrink-0 flex items-center gap-4 bg-primary px-4 py-2 text-primary-content'>
-                <div className='relative flex-1 max-w-xl'>
+                <div
+                    className={`relative flex-1 max-w-xl${lockPaymentUiForCurrentTransfer ? ' pointer-events-none opacity-60' : ''}`}
+                    title={
+                        lockPaymentUiForCurrentTransfer
+                            ? 'Đã tạo đơn — không thêm/sửa sản phẩm cho đến khi hoàn thành hóa đơn'
+                            : undefined
+                    }
+                >
                     <div className='flex items-center rounded-lg border-2 border-primary bg-white overflow-hidden'>
                         <Search className='ml-3 size-4 text-base-content/50 shrink-0' />
                         <input
@@ -1172,8 +1342,9 @@ export default function CreateInvoicePage() {
                                     <div className='p-4 text-sm text-base-content/60 text-center'>Không tìm thấy sản phẩm</div>
                                 ) : (
                                     (search.trim() ? searchResults : products.slice(0, 20)).map((p) => {
-                                        const pid = p._id?.toString?.() || p._id;
-                                        const stock = stocksByProduct[pid] ?? null;
+                                        const pid = String(p._id ?? '');
+                                        const sell = form.locationId ? (stocksByProduct[pid] ?? 0) : null;
+                                        const resOnl = form.locationId ? (reservedOnlineByProduct[pid] ?? 0) : null;
                                         const isHover = hoverProductId === pid;
                                         return (
                                             <button
@@ -1200,7 +1371,10 @@ export default function CreateInvoicePage() {
                                                 <div className='flex-1 min-w-0'>
                                                     <div className='font-bold text-base text-base-content truncate'>{p.name}</div>
                                                     <div className='text-sm text-base-content/60'>{p.sku || '—'}</div>
-                                                    <div className='text-xs text-base-content/50'>Tồn: {stock !== null ? stock : '—'} | KH đặt: 0</div>
+                                                    <div className='text-xs text-base-content/50'>
+                                                        Tồn: {sell !== null ? sell.toLocaleString('vi-VN') : '—'} | KH đặt:{' '}
+                                                        {resOnl !== null ? resOnl.toLocaleString('vi-VN') : '—'}
+                                                    </div>
                                                 </div>
                                                 <div className='font-bold text-primary shrink-0'>{(p.price || 0).toLocaleString()}đ</div>
                                             </button>
@@ -1317,19 +1491,21 @@ export default function CreateInvoicePage() {
                                 <tr>
                                     <th className='w-10'>#</th>
                                     <th className='w-10'></th>
+                                    <th className='w-14'>Ảnh</th>
                                     <th className='w-24'>Mã</th>
                                     <th>Tên sản phẩm</th>
                                     <th className='w-20'>ĐVT</th>
                                     <th className='w-32'>Số lượng</th>
                                     <th className='w-28 text-right'>Đơn giá</th>
                                     <th className='w-28 text-right'>Thành tiền</th>
+                                    <th className='w-12'></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={8}
+                                            colSpan={10}
                                             className='text-center text-base-content/50 py-12'
                                         >
                                             Chưa có sản phẩm. Gõ tìm kiếm (F3) hoặc bật quét mã để thêm.
@@ -1337,9 +1513,15 @@ export default function CreateInvoicePage() {
                                     </tr>
                                 ) : (
                                     items.map((item, idx) => {
-                                        const stockAvail = stocksByProduct[item.productId] ?? 0;
+                                        const stockAvail = stocksByProduct[String(item.productId)] ?? 0;
                                         const qty = Number(item.quantity) || 0;
                                         const overStock = qty > stockAvail;
+                                        const catalog = products.find((x) => String(x._id) === String(item.productId));
+                                        const lineImg =
+                                            item.image ||
+                                            catalog?.image ||
+                                            catalog?.images?.[0] ||
+                                            '';
                                         return (
                                             <tr
                                                 key={item.productId}
@@ -1352,9 +1534,25 @@ export default function CreateInvoicePage() {
                                                         className='btn btn-ghost btn-xs btn-square text-error'
                                                         onClick={() => handleRemoveItem(item.productId)}
                                                         aria-label='Xóa'
+                                                        disabled={lockPaymentUiForCurrentTransfer}
                                                     >
                                                         <Trash2 className='size-4' />
                                                     </button>
+                                                </td>
+                                                <td className='align-middle'>
+                                                    <div className='size-11 shrink-0 rounded-md border border-base-200 overflow-hidden bg-base-200'>
+                                                        {lineImg ? (
+                                                            <img
+                                                                src={lineImg}
+                                                                alt=''
+                                                                className='size-full object-cover'
+                                                            />
+                                                        ) : (
+                                                            <div className='size-full flex items-center justify-center text-[10px] text-base-content/35'>
+                                                                —
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className='font-mono text-sm'>{item.sku || '—'}</td>
                                                 <td>{item.name}</td>
@@ -1363,13 +1561,15 @@ export default function CreateInvoicePage() {
                                                     <div
                                                         className={`inline-flex h-7 w-full max-w-36 items-stretch overflow-hidden rounded-md border border-base-300 bg-base-100 shadow-sm ${
                                                             overStock ? 'ring-1 ring-error/70 ring-offset-1 ring-offset-base-100' : ''
-                                                        }`}
+                                                        }${lockPaymentUiForCurrentTransfer ? ' pointer-events-none opacity-60' : ''}`}
                                                         title={
-                                                            overStock
-                                                                ? `Tồn kho: ${stockAvail}, đang nhập: ${qty}`
-                                                                : stockAvail === 0
-                                                                  ? 'Hết hàng'
-                                                                  : `Tồn kho: ${stockAvail}`
+                                                            lockPaymentUiForCurrentTransfer
+                                                                ? 'Đã tạo đơn — không đổi số lượng'
+                                                                : overStock
+                                                                  ? `Tồn kho: ${stockAvail}, đang nhập: ${qty}`
+                                                                  : stockAvail === 0
+                                                                    ? 'Hết hàng'
+                                                                    : `Tồn kho: ${stockAvail}`
                                                         }
                                                     >
                                                         <button
@@ -1377,6 +1577,7 @@ export default function CreateInvoicePage() {
                                                             className='flex w-7 shrink-0 items-center justify-center border-0 bg-base-200/50 text-base-content transition-colors hover:bg-base-200 active:bg-base-300 border-r border-base-300'
                                                             onClick={() => handleUpdateQty(item.productId, qty - 1)}
                                                             aria-label={qty <= 1 ? 'Xóa khỏi đơn' : 'Giảm 1'}
+                                                            disabled={lockPaymentUiForCurrentTransfer}
                                                         >
                                                             <Minus className='size-3.5' strokeWidth={2.5} />
                                                         </button>
@@ -1385,9 +1586,11 @@ export default function CreateInvoicePage() {
                                                             min={1}
                                                             inputMode='numeric'
                                                             aria-invalid={overStock}
+                                                            readOnly={lockPaymentUiForCurrentTransfer}
+                                                            disabled={lockPaymentUiForCurrentTransfer}
                                                             className={`h-7 min-h-7 min-w-9 flex-1 border-0 bg-base-100 px-0.5 text-center text-sm font-semibold tabular-nums leading-none text-base-content placeholder:text-base-content/40 focus:border-0 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
                                                                 overStock ? 'text-error' : ''
-                                                            }`}
+                                                            }${lockPaymentUiForCurrentTransfer ? ' cursor-not-allowed' : ''}`}
                                                             value={item.quantity}
                                                             onFocus={(e) => e.target.select()}
                                                             onChange={(e) =>
@@ -1402,6 +1605,7 @@ export default function CreateInvoicePage() {
                                                             className='flex w-7 shrink-0 items-center justify-center border-0 bg-base-200/50 text-base-content transition-colors hover:bg-base-200 active:bg-base-300 border-l border-base-300'
                                                             onClick={() => handleUpdateQty(item.productId, qty + 1)}
                                                             aria-label='Tăng 1'
+                                                            disabled={lockPaymentUiForCurrentTransfer}
                                                         >
                                                             <Plus className='size-3.5' strokeWidth={2.5} />
                                                         </button>
@@ -1411,6 +1615,32 @@ export default function CreateInvoicePage() {
                                                 <td className='text-right font-medium text-primary'>
                                                     {((item.price || 0) * (item.quantity || 1)).toLocaleString()}đ
                                                 </td>
+                                                <td className='align-middle text-center w-12'>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <button
+                                                                type='button'
+                                                                className='btn btn-ghost btn-xs btn-square text-base-content/70'
+                                                                aria-label='Thao tác dòng sản phẩm'
+                                                                disabled={lockPaymentUiForCurrentTransfer}
+                                                            >
+                                                                <MoreVertical className='size-4' />
+                                                            </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                            align='end'
+                                                            className='bg-base-100 text-base-content border-base-300 min-w-40'
+                                                        >
+                                                            <DropdownMenuItem
+                                                                className='cursor-pointer gap-2'
+                                                                onSelect={() => openPosProductDetailModal(item.productId)}
+                                                            >
+                                                                <Eye className='size-4' />
+                                                                Xem chi tiết
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </td>
                                             </tr>
                                         );
                                     })
@@ -1418,7 +1648,9 @@ export default function CreateInvoicePage() {
                             </tbody>
                         </table>
                     </div>
-                    <div className='shrink-0 p-3 border-t border-base-200'>
+                    <div
+                        className={`shrink-0 p-3 border-t border-base-200${lockPaymentUiForCurrentTransfer ? ' pointer-events-none opacity-60' : ''}`}
+                    >
                         <div className='flex items-center gap-2'>
                             <Pencil className='size-4 text-base-content/50' />
                             <input
@@ -1426,6 +1658,8 @@ export default function CreateInvoicePage() {
                                 className='input input-ghost input-sm flex-1'
                                 placeholder='Ghi chú đơn hàng'
                                 value={form.note}
+                                readOnly={lockPaymentUiForCurrentTransfer}
+                                disabled={lockPaymentUiForCurrentTransfer}
                                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                             />
                         </div>
@@ -1467,16 +1701,16 @@ export default function CreateInvoicePage() {
                                     </label>
                                     <ul
                                         tabIndex={0}
-                                        className='dropdown-content menu bg-base-100 rounded-box z-50 w-full p-2 shadow-lg border border-base-300 mt-1 max-h-60 overflow-y-auto'
+                                        className='dropdown-content menu bg-base-100 rounded-box z-50 w-full min-w-0 max-w-full p-2 shadow-lg border border-base-300 mt-1 max-h-60 overflow-y-auto overflow-x-hidden'
                                     >
-                                        <li className='menu-title px-2 py-1'>
+                                        <li className='menu-title px-2 py-1 min-w-0 w-full'>
                                             <input
                                                 type='text'
                                                 name='pos-seller-search'
                                                 autoComplete='off'
                                                 autoCorrect='off'
                                                 placeholder='Tìm người bán'
-                                                className='input input-sm input-bordered w-full'
+                                                className='input input-sm input-bordered w-full min-w-0'
                                                 value={sellerSearch}
                                                 onChange={(e) => setSellerSearch(e.target.value)}
                                                 onClick={(e) => e.stopPropagation()}
@@ -1501,20 +1735,20 @@ export default function CreateInvoicePage() {
                                                 );
                                             })
                                             .map((s) => (
-                                                <li key={s._id}>
+                                                <li key={s._id} className='w-full min-w-0 max-w-full'>
                                                     <button
                                                         type='button'
                                                         onClick={() => {
                                                             setSelectedSeller(s);
                                                             setSellerSearch('');
                                                         }}
-                                                        className={`${selectedSeller?._id === s._id ? 'active' : ''} flex flex-wrap items-center gap-2 justify-between`}
+                                                        className={`${selectedSeller?._id === s._id ? 'active' : ''} w-full max-w-full min-w-0 flex flex-col items-stretch gap-1 text-left h-auto py-2 px-3 rounded-lg whitespace-normal`}
                                                     >
-                                                        <span className='text-left'>
+                                                        <span className='min-w-0 wrap-break-word font-medium leading-snug'>
                                                             {[s.firstName, s.lastName].filter(Boolean).join(' ') || s.username}
                                                         </span>
                                                         {getUserRoleLabels(s) ? (
-                                                            <span className='badge badge-sm badge-ghost whitespace-normal'>
+                                                            <span className='badge badge-sm badge-ghost w-fit max-w-full shrink-0 whitespace-normal text-left'>
                                                                 {getUserRoleLabels(s)}
                                                             </span>
                                                         ) : null}
@@ -1551,7 +1785,7 @@ export default function CreateInvoicePage() {
                                         className='input input-bordered input-sm w-full bg-base-100'
                                         value={
                                             selectedCustomer
-                                                ? `${selectedCustomer.name}${selectedCustomer.phone ? ` (${selectedCustomer.phone})` : ''} · ${getCustomerTier(selectedCustomer.accumulatedAmount, memberPolicies) || 'Chưa có hạng'}`
+                                                ? `${selectedCustomer.name}${selectedCustomer.phone ? ` (${selectedCustomer.phone})` : ''} · ${getCustomerTier(Number(selectedCustomer.accumulatedAmount ?? 0), memberPolicies) || 'Chưa có hạng'}`
                                                 : customerSearch
                                         }
                                         onChange={(e) => {
@@ -1568,7 +1802,7 @@ export default function CreateInvoicePage() {
                                                 <div className='p-3 text-sm text-base-content/60'>{customerSearch.trim() ? 'Không tìm thấy' : 'Gõ tên hoặc SĐT để tìm'}</div>
                                             ) : (
                                                 customerSearchResults.map((c) => {
-                                                    const tier = getCustomerTier(c.accumulatedAmount, memberPolicies) || 'Chưa có hạng';
+                                                    const tier = getCustomerTier(Number(c.accumulatedAmount ?? 0), memberPolicies) || 'Chưa có hạng';
                                                     return (
                                                         <button
                                                             key={c._id}
@@ -1605,7 +1839,7 @@ export default function CreateInvoicePage() {
                                         setSelectedCustomer(null);
                                         setCustomerSearch('');
                                     }}
-                                    title='Chọn Khách vãng lai'
+                                    title='Bỏ chọn khách (cần chọn khách khác để thanh toán)'
                                 >
                                     <X className='size-4' />
                                 </button>
@@ -1648,7 +1882,6 @@ export default function CreateInvoicePage() {
                                     submitting={customerModalSubmitting}
                                 />
                             )}
-                            <p className='text-xs text-base-content/50 mt-1'>Để trống = Khách vãng lai</p>
                         </div>
                         <div className='text-right text-sm text-base-content/60'>{new Date().toLocaleString('vi-VN')}</div>
 
@@ -1662,30 +1895,23 @@ export default function CreateInvoicePage() {
                                     {totalQty} · {(subtotal || 0).toLocaleString()}đ
                                 </span>
                             </div>
-                            <div className='flex justify-between text-xs text-base-content/70'>
-                                <span>Cộng tạm (gồm thuế)</span>
-                                <span>{(grossSubtotal || 0).toLocaleString()}đ</span>
+                            <div className='flex justify-between text-sm text-base-content/80'>
+                                <span>Thuế GTGT</span>
+                                <span>{(sumVat || 0).toLocaleString()}đ</span>
                             </div>
-                            <div className='rounded-md bg-base-100/80 px-2 py-1.5 space-y-0.5 text-xs text-base-content/80 border border-base-200'>
-                                <p className='font-medium text-base-content/90'>
-                                    Đơn giá sản phẩm: chưa thuế; mặc định thuế cửa hàng {invoiceVatPercent}% nếu mặt hàng không đặt riêng
-                                </p>
-                                <div className='flex justify-between gap-2'>
-                                    <span>Tổng tiền hàng (trước thuế)</span>
-                                    <span>{Math.round(vatBreakdown.truocThue).toLocaleString('vi-VN')}đ</span>
-                                </div>
-                                <div className='flex justify-between gap-2'>
-                                    <span>Thuế GTGT (tổng)</span>
-                                    <span>{Math.round(vatBreakdown.tienThue).toLocaleString('vi-VN')}đ</span>
-                                </div>
+                            <div className='flex justify-between text-xs text-base-content/70'>
+                                <span>Tạm tính (gồm thuế)</span>
+                                <span>{(grossSubtotal || 0).toLocaleString()}đ</span>
                             </div>
                             <div className='flex justify-between items-center text-sm gap-2'>
                                 <span>
-                                    {selectedCustomer && tierPolicy
+                                    {showTierPercentDiscount
                                         ? `Chiết khấu hạng · ${tierPolicy.name} (${tierPolicy.discountPercent ?? 0}%)`
-                                        : 'Giảm giá (nhập tay)'}
+                                        : selectedCustomer && tierPolicy
+                                          ? `Hạng · ${tierPolicy.name} (0% — nhập giảm giá thủ công)`
+                                          : 'Giảm giá (nhập tay)'}
                                 </span>
-                                {selectedCustomer && tierPolicy ? (
+                                {showTierPercentDiscount ? (
                                     <span className='font-medium text-primary'>{(discount || 0).toLocaleString()}đ</span>
                                 ) : (
                                     <input
@@ -1857,10 +2083,6 @@ export default function CreateInvoicePage() {
                                                     alt='VietQR xem trước'
                                                     className='mx-auto w-40 h-40 object-contain rounded border border-base-200 bg-white'
                                                 />
-                                                <p className='text-[11px] text-base-content/50 mt-2'>
-                                                    Sau «Thanh toán», mã QR thật (PayOS nếu bật) hiển thị ở đây và đồng bộ
-                                                    trạng thái tự động.
-                                                </p>
                                             </div>
                                         )
                                     )}
@@ -1897,7 +2119,14 @@ export default function CreateInvoicePage() {
                         <select
                             className='select select-bordered select-sm w-full mb-2'
                             value={form.locationId}
-                            disabled={pendingTransferHoldsLocation}
+                            disabled={pendingTransferHoldsLocation || !canChangePosLocation}
+                            title={
+                                !canChangePosLocation
+                                    ? isPosAdmin
+                                      ? 'Không có chi nhánh khác để chọn.'
+                                      : 'Tài khoản của bạn chỉ được phân tại một chi nhánh. Liên hệ quản trị nếu cần thêm cơ sở.'
+                                    : undefined
+                            }
                             onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
                         >
                             <option value=''>-- Chi nhánh --</option>
@@ -1914,21 +2143,22 @@ export default function CreateInvoicePage() {
                             <div className='space-y-2'>
                                 {cashFooterActive ? (
                                     <>
-                                        <div className='flex gap-2'>
+                                        <div className='flex flex-col gap-2'>
                                             <button
                                                 type='button'
-                                                className='btn btn-outline btn-lg flex-1 gap-1'
+                                                className='btn btn-outline btn-lg w-full min-h-12 gap-2 whitespace-nowrap inline-flex items-center justify-center'
                                                 onClick={handlePrintTransferInvoice}
                                             >
-                                                <Printer className='size-5 shrink-0' />
-                                                In hóa đơn
+                                                <Printer className='size-5 shrink-0' aria-hidden />
+                                                <span>In hóa đơn</span>
                                             </button>
                                             <button
                                                 type='button'
-                                                className='btn btn-success btn-lg flex-1'
+                                                className='btn btn-success btn-lg w-full min-h-12 whitespace-nowrap'
+                                                disabled={posCompleteSubmitting}
                                                 onClick={handleTransferComplete}
                                             >
-                                                Hoàn thành hóa đơn
+                                                {posCompleteSubmitting ? 'Đang hoàn tất...' : 'Hoàn thành hóa đơn'}
                                             </button>
                                         </div>
                                         <p className='text-[11px] text-center text-base-content/55'>
@@ -1939,21 +2169,22 @@ export default function CreateInvoicePage() {
                                 ) : (
                                     <>
                                         {transferSession?.paymentStatus === 'paid' ? (
-                                            <div className='flex gap-2'>
+                                            <div className='flex flex-col gap-2'>
                                                 <button
                                                     type='button'
-                                                    className='btn btn-outline btn-lg flex-1 gap-1'
+                                                    className='btn btn-outline btn-lg w-full min-h-12 gap-2 whitespace-nowrap inline-flex items-center justify-center'
                                                     onClick={handlePrintTransferInvoice}
                                                 >
-                                                    <Printer className='size-5 shrink-0' />
-                                                    In hóa đơn
+                                                    <Printer className='size-5 shrink-0' aria-hidden />
+                                                    <span>In hóa đơn</span>
                                                 </button>
                                                 <button
                                                     type='button'
-                                                    className='btn btn-success btn-lg flex-1'
+                                                    className='btn btn-success btn-lg w-full min-h-12 whitespace-nowrap'
+                                                    disabled={posCompleteSubmitting}
                                                     onClick={handleTransferComplete}
                                                 >
-                                                    Hoàn thành hóa đơn
+                                                    {posCompleteSubmitting ? 'Đang hoàn tất...' : 'Hoàn thành hóa đơn'}
                                                 </button>
                                             </div>
                                         ) : (
@@ -2004,6 +2235,217 @@ export default function CreateInvoicePage() {
                 </aside>
             </div>
 
+            {posProductDetailModal.open && (
+                <dialog className='modal modal-open'>
+                    <div className='modal-box max-w-xl max-h-[min(90vh,720px)] overflow-y-auto p-0 sm:p-0 shadow-xl border border-base-200'>
+                        {posProductDetailModal.loading ? (
+                            <div className='flex justify-center py-20 px-6'>
+                                <span className='loading loading-spinner loading-lg text-primary' />
+                            </div>
+                        ) : posProductDetailModal.product ? (
+                            (() => {
+                                const pd = posProductDetailModal.product;
+                                const mainImg = pd.images?.[0] || pd.image;
+                                const refLabel = (x) => {
+                                    if (!x) return null;
+                                    if (typeof x === 'object' && x !== null && x.name != null) return String(x.name);
+                                    return null;
+                                };
+                                const pid = pd._id != null ? String(pd._id) : '';
+                                const hasLoc = Boolean(form.locationId);
+                                const avail = hasLoc ? (stocksByProduct[pid] ?? 0) : null;
+                                const reserved = hasLoc ? (reservedOnlineByProduct[pid] ?? 0) : null;
+                                const physical =
+                                    avail != null && reserved != null ? Math.max(0, Number(avail) + Number(reserved)) : null;
+                                const specRows = buildPosProductDetailSpecRows(pd);
+                                const cat = refLabel(pd.category);
+                                const brand = refLabel(pd.brand);
+                                const usage = refLabel(pd.usageDevice);
+
+                                return (
+                                    <div>
+                                        <div className='relative overflow-hidden bg-linear-to-br from-primary/15 via-base-100 to-secondary/10 px-5 pt-5 pb-4 border-b border-base-200'>
+                                            <button
+                                                type='button'
+                                                className='btn btn-sm btn-circle btn-ghost absolute right-3 top-3 z-10'
+                                                aria-label='Đóng'
+                                                onClick={closePosProductDetailModal}
+                                            >
+                                                <X className='w-4 h-4' />
+                                            </button>
+                                            <div className='flex flex-col sm:flex-row gap-4 pr-10'>
+                                                <div className='shrink-0 mx-auto sm:mx-0'>
+                                                    {mainImg ? (
+                                                        <div className='w-[140px] h-[140px] rounded-2xl border border-base-200 bg-white shadow-sm overflow-hidden'>
+                                                            <img
+                                                                src={mainImg}
+                                                                alt=''
+                                                                className='w-full h-full object-contain p-2'
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className='w-[140px] h-[140px] rounded-2xl border border-dashed border-base-300 bg-base-200/50 flex items-center justify-center text-xs text-base-content/40'>
+                                                            Chưa có ảnh
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className='min-w-0 flex-1 text-center sm:text-left space-y-2'>
+                                                    <p className='text-[11px] font-semibold uppercase tracking-wide text-primary/80'>
+                                                        Chi tiết sản phẩm
+                                                    </p>
+                                                    <h3 className='font-bold text-xl text-base-content leading-snug'>
+                                                        {pd.name || '—'}
+                                                    </h3>
+                                                    <div className='flex flex-wrap justify-center sm:justify-start gap-1.5'>
+                                                        {cat ? (
+                                                            <span className='badge badge-sm badge-outline border-base-300'>
+                                                                {cat}
+                                                            </span>
+                                                        ) : null}
+                                                        {brand ? (
+                                                            <span className='badge badge-sm badge-ghost'>{brand}</span>
+                                                        ) : null}
+                                                    </div>
+                                                    <p className='text-2xl font-bold text-primary tabular-nums'>
+                                                        {(Number(pd.price) || 0).toLocaleString('vi-VN')}
+                                                        <span className='text-base font-semibold ml-0.5'>đ</span>
+                                                    </p>
+                                                    <p className='text-xs text-base-content/55 font-mono'>
+                                                        SKU {pd.sku || '—'}
+                                                        {pd.barcode ? (
+                                                            <span className='text-base-content/40'> · MV {pd.barcode}</span>
+                                                        ) : null}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className='px-5 pt-4 space-y-4 pb-2'>
+                                            <div>
+                                                <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2'>
+                                                    Tồn tại chi nhánh
+                                                </p>
+                                                {!hasLoc ? (
+                                                    <p className='text-sm text-base-content/60 rounded-xl bg-base-200/60 px-3 py-3 border border-base-200'>
+                                                        Chọn chi nhánh trên POS để xem tồn kho và số lượng đặt giữ.
+                                                    </p>
+                                                ) : (
+                                                    <div className='grid grid-cols-2 gap-3'>
+                                                        <div className='rounded-xl bg-base-100 border border-base-200 p-3 shadow-sm'>
+                                                            <p className='text-[11px] font-medium text-base-content/55 uppercase'>
+                                                                Tồn kho
+                                                            </p>
+                                                            <p className='text-2xl font-bold tabular-nums text-base-content mt-0.5'>
+                                                                {physical != null ? physical.toLocaleString('vi-VN') : '—'}
+                                                            </p>
+                                                            <p className='text-[11px] text-base-content/45 mt-1 leading-snug'>
+                                                                SL trong kho
+                                                                {currentLocation?.name ? (
+                                                                    <span className='block truncate' title={currentLocation.name}>
+                                                                        · {currentLocation.name}
+                                                                    </span>
+                                                                ) : null}
+                                                            </p>
+                                                        </div>
+                                                        <div className='rounded-xl bg-base-100 border border-amber-200/60 p-3 shadow-sm bg-amber-50/40 dark:bg-amber-950/20'>
+                                                            <p className='text-[11px] font-medium text-amber-900/70 dark:text-amber-200/80 uppercase'>
+                                                                Đặt giữ
+                                                            </p>
+                                                            <p className='text-2xl font-bold tabular-nums text-amber-900 dark:text-amber-100 mt-0.5'>
+                                                                {(reserved ?? 0).toLocaleString('vi-VN')}
+                                                            </p>
+                                                            <p className='text-[11px] text-base-content/50 mt-1 leading-snug'>
+                                                                Giữ cho đơn online chưa xuất kho
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {hasLoc ? (
+                                                    <p className='text-xs text-base-content/50 mt-2'>
+                                                        Có thể bán:{' '}
+                                                        <span className='font-semibold text-base-content tabular-nums'>
+                                                            {(avail ?? 0).toLocaleString('vi-VN')}
+                                                        </span>{' '}
+                                                        {pd.unit || 'Cái'} (tồn − đặt giữ)
+                                                    </p>
+                                                ) : null}
+                                            </div>
+
+                                            <div className='rounded-xl border border-base-200 bg-base-200/25 p-3'>
+                                                <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2'>
+                                                    Thông tin chung
+                                                </p>
+                                                <dl className='grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm'>
+                                                    <div className='flex justify-between gap-2 sm:block sm:space-y-0.5'>
+                                                        <dt className='text-base-content/55'>ĐVT</dt>
+                                                        <dd className='font-medium text-right sm:text-left'>
+                                                            {pd.unit || 'Cái'}
+                                                        </dd>
+                                                    </div>
+                                                    <div className='flex justify-between gap-2 sm:block sm:space-y-0.5'>
+                                                        <dt className='text-base-content/55'>Thiết bị</dt>
+                                                        <dd className='font-medium text-right sm:text-left truncate'>
+                                                            {usage || '—'}
+                                                        </dd>
+                                                    </div>
+                                                </dl>
+                                            </div>
+
+                                            {specRows.length > 0 ? (
+                                                <div className='rounded-xl border border-base-200 bg-base-100 p-3'>
+                                                    <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2'>
+                                                        Thông số kỹ thuật
+                                                    </p>
+                                                    <dl className='grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm'>
+                                                        {specRows.map(({ label, value }) => (
+                                                            <div
+                                                                key={label}
+                                                                className='flex flex-col gap-0.5 border-b border-base-200/80 sm:border-0 pb-2 sm:pb-0 last:border-0 last:pb-0'
+                                                            >
+                                                                <dt className='text-[11px] uppercase text-base-content/50'>
+                                                                    {label}
+                                                                </dt>
+                                                                <dd className='font-medium text-base-content'>{value}</dd>
+                                                            </div>
+                                                        ))}
+                                                    </dl>
+                                                </div>
+                                            ) : null}
+
+                                            {pd.notes ? (
+                                                <div className='rounded-xl border border-base-200 bg-base-200/20 p-3'>
+                                                    <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-1'>
+                                                        Ghi chú
+                                                    </p>
+                                                    <p className='text-sm whitespace-pre-wrap text-base-content/80 leading-relaxed'>
+                                                        {pd.notes}
+                                                    </p>
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        <div className='sticky bottom-0 flex justify-end gap-2 px-5 py-3 bg-base-100/95 backdrop-blur border-t border-base-200'>
+                                            <button
+                                                type='button'
+                                                className='btn btn-primary'
+                                                onClick={closePosProductDetailModal}
+                                            >
+                                                Đóng
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })()
+                        ) : null}
+                    </div>
+                    <form method='dialog' className='modal-backdrop'>
+                        <button type='button' onClick={closePosProductDetailModal}>
+                            đóng
+                        </button>
+                    </form>
+                </dialog>
+            )}
+
             {vietQRModal.show && (
                 <dialog className='modal modal-open' open>
                     <div className='modal-box max-w-md'>
@@ -2050,35 +2492,6 @@ export default function CreateInvoicePage() {
                             >
                                 Thanh toán qua PayOS
                             </a>
-                        )}
-                        {vietQRModal.orderId && (
-                            <button
-                                type='button'
-                                className='btn btn-outline btn-sm w-full'
-                                onClick={async () => {
-                                    try {
-                                        const res = await syncPaymentStatus(vietQRModal.orderId);
-                                        const ord = res?.data?.order;
-                                        if (ord?.paymentStatus) {
-                                            const oid = vietQRModal.orderId;
-                                            const ps = ord.paymentStatus;
-                                            setVietQRModal((m) => ({ ...m, paymentStatus: ps }));
-                                            setTransferSession((s) =>
-                                                s && String(s.orderId) === String(oid) ? { ...s, paymentStatus: ps } : s,
-                                            );
-                                            if (ps === 'paid') {
-                                                toast.success('Đã nhận thanh toán chuyển khoản');
-                                            } else {
-                                                toast.info('Chưa có xác nhận thanh toán (PayOS / ngân hàng).');
-                                            }
-                                        }
-                                    } catch (e) {
-                                        toast.error(e.response?.data?.message || 'Không kiểm tra được trạng thái');
-                                    }
-                                }}
-                            >
-                                Kiểm tra thanh toán ngay
-                            </button>
                         )}
                         <div className='modal-action'>
                             <button

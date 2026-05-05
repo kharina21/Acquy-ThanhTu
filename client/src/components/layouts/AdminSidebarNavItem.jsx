@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
  * Reusable sidebar nav item với icon + label.
  * Hỗ trợ tooltip khi sidebar thu gọn (is-drawer-close).
  */
-export default function AdminSidebarNavItem({ to, icon: Icon, label, ariaLabel, activePaths = [] }) {
+export default function AdminSidebarNavItem({ to, icon: Icon, label, ariaLabel, activePaths = [], openInNewTab = false }) {
     const pathname = useLocation().pathname;
     const isActive =
         activePaths.length > 0
@@ -21,6 +21,8 @@ export default function AdminSidebarNavItem({ to, icon: Icon, label, ariaLabel, 
         <li>
             <Link
                 to={to}
+                target={openInNewTab ? '_blank' : undefined}
+                rel={openInNewTab ? 'noopener noreferrer' : undefined}
                 className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-close:justify-center',
                     'hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50',

@@ -168,10 +168,6 @@ export default function WarehouseStockLinesReportPage({ variant }) {
                         <Icon className="w-8 h-8 text-primary" />
                         <div>
                             <h1 className="text-2xl font-bold text-base-content">{v.pageTitle}</h1>
-                            <p className="text-sm text-base-content/60 max-w-2xl">
-                                Phiếu đã xác nhận theo kỳ; mỗi dòng là một dòng hàng. Không có cột đơn vị tính. Cột mã đơn
-                                hàng: nhập hàng dùng mã phiếu nhập; xuất kho ưu tiên mã đơn bán nếu xuất theo đơn.
-                            </p>
                         </div>
                     </div>
                 </div>

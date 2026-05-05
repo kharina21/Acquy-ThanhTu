@@ -15,10 +15,10 @@ export default function AdminSidebar() {
     });
 
     return (
-            <div className="drawer-side is-drawer-close:overflow-visible h-full">
-                <label htmlFor={DRAWER_ID} aria-label="close sidebar" className="drawer-overlay" />
-                <div className="flex h-full flex-col items-start bg-gradient-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300">
-                <ul className="w-full grow text-white space-y-1 px-2 py-4">
+        <div className="drawer-side is-drawer-close:overflow-visible h-full min-h-0">
+            <label htmlFor={DRAWER_ID} aria-label="close sidebar" className="drawer-overlay" />
+            <div className="flex h-full min-h-0 min-w-0 flex-col items-stretch bg-linear-to-b from-primary to-secondary is-drawer-close:w-14 is-drawer-open:w-64 transition-all duration-300">
+                <ul className="w-full flex-1 min-h-0 overflow-y-auto text-white space-y-1 px-2 py-4">
                     {visibleItems.map((item) =>
                         item.subItems ? (
                             <AdminSidebarNavDropdown
@@ -37,8 +37,9 @@ export default function AdminSidebar() {
                                 label={item.label}
                                 ariaLabel={item.ariaLabel}
                                 activePaths={item.activePaths}
+                                openInNewTab={item.openInNewTab}
                             />
-                        )
+                        ),
                     )}
                 </ul>
             </div>

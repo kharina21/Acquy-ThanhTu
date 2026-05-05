@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCartStore } from '@/stores/useCartStore';
@@ -10,8 +10,17 @@ import { getOrderById, generateVietQR, updateOrderByCustomer, cancelOrderByCusto
 import { getProvinces } from '@/services/addressService';
 import { ShippingAddressBookDialog } from '@/components/checkout/ShippingAddressBookDialog';
 import { toast } from 'sonner';
-import { MapPin, XCircle } from 'lucide-react';
+import { CreditCard, MapPin, PackageX, RefreshCw, XCircle } from 'lucide-react';
 import CancelOrderModal from '@/components/common/CancelOrderModal';
+import { PageState } from '@/components/ui/page-state';
+import { SurfaceCard } from '@/components/ui/surface-card';
+
+/** Đơn cần hiển thị khu vực thanh toán (chuyển khoản / PayOS). */
+function shouldLoadPaymentQr(ord) {
+    if (!ord || ord.paymentStatus !== 'pending' || ord.status === 'cancelled') return false;
+    if (ord.channel === 'online') return true;
+    return ord.paymentMethod === 'transfer' || ord.paymentMethod === 'vietqr';
+}
 
 export default function OrderDetailPage() {
     const { id } = useParams();
@@ -21,6 +30,9 @@ export default function OrderDetailPage() {
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
     const [vietQRData, setVietQRData] = useState(null);
+    const [paymentQrError, setPaymentQrError] = useState(null);
+    const [syncingPayment, setSyncingPayment] = useState(false);
+    const [loadingPaymentQr, setLoadingPaymentQr] = useState(false);
     const [provinces, setProvinces] = useState([]);
     const [addressBookOpen, setAddressBookOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
@@ -32,6 +44,45 @@ export default function OrderDetailPage() {
 
     const canEdit = order && order.status !== 'cancelled' && order.paymentStatus === 'pending';
     const canCancel = order && order.status !== 'cancelled' && order.status === 'pending';
+    const showPaymentSection = order && shouldLoadPaymentQr(order);
+
+    const fetchPaymentQrForOrder = useCallback(
+        async (ord, isCancelled) => {
+            if (!id || !shouldLoadPaymentQr(ord)) {
+                if (!isCancelled?.()) {
+                    setVietQRData(null);
+                    setPaymentQrError(null);
+                }
+                return;
+            }
+            if (!isCancelled?.()) {
+                setLoadingPaymentQr(true);
+                setPaymentQrError(null);
+            }
+            try {
+                const qrRes = await generateVietQR(id);
+                if (isCancelled?.()) return;
+                const qrData = qrRes?.data;
+                const next = {
+                    qrDataURL: qrData?.qrDataURL,
+                    bankAccount: qrData?.bankAccount,
+                    checkoutUrl: qrData?.checkoutUrl,
+                };
+                setVietQRData(next);
+                if (!next.checkoutUrl && !next.qrDataURL) {
+                    setPaymentQrError('Máy chủ không trả về mã thanh toán. Vui lòng thử lại sau.');
+                }
+            } catch (err) {
+                if (!isCancelled?.()) {
+                    setVietQRData(null);
+                    setPaymentQrError(err?.response?.data?.message || 'Không tải được thông tin thanh toán.');
+                }
+            } finally {
+                if (!isCancelled?.()) setLoadingPaymentQr(false);
+            }
+        },
+        [id]
+    );
 
     /**
      * Không xóa ?payment=success trước khi sync xong: effect trước đây clear query ngay
@@ -80,17 +131,12 @@ export default function OrderDetailPage() {
                     }
                 }
 
-                if (ord && ord.paymentStatus === 'pending' && (ord.paymentMethod === 'transfer' || ord.paymentMethod === 'vietqr')) {
-                    try {
-                        const qrRes = await generateVietQR(id);
-                        if (cancelled) return;
-                        const qrData = qrRes?.data;
-                        setVietQRData({ qrDataURL: qrData?.qrDataURL, bankAccount: qrData?.bankAccount, checkoutUrl: qrData?.checkoutUrl });
-                    } catch {
-                        if (!cancelled) setVietQRData(null);
-                    }
+                if (ord && shouldLoadPaymentQr(ord)) {
+                    if (cancelled) return;
+                    await fetchPaymentQrForOrder(ord, () => cancelled);
                 } else if (!cancelled) {
                     setVietQRData(null);
+                    setPaymentQrError(null);
                 }
             } catch (err) {
                 if (!cancelled) toast.error(err.response?.data?.message || 'Không tìm thấy đơn hàng');
@@ -103,7 +149,7 @@ export default function OrderDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [id, accessToken, paymentReturn, setSearchParams]);
+    }, [id, accessToken, paymentReturn, setSearchParams, fetchPaymentQrForOrder]);
 
     useEffect(() => {
         if (!accessToken || !order || !canEdit) return;
@@ -163,6 +209,27 @@ export default function OrderDetailPage() {
         }
     };
 
+    const handleCheckBankTransferPaid = async () => {
+        if (!id) return;
+        setSyncingPayment(true);
+        try {
+            const res = await syncPaymentStatus(id);
+            const ord = res?.data?.order;
+            if (ord) setOrder(ord);
+            if (ord?.paymentStatus === 'paid') {
+                toast.success('Đã ghi nhận thanh toán.');
+            } else {
+                toast.info(
+                    'Chưa thấy thanh toán. Nếu bạn đã chuyển khoản, vui lòng đợi vài phút rồi nhấn lại hoặc kiểm tra đúng nội dung chuyển khoản (mã đơn).'
+                );
+            }
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Không kiểm tra được trạng thái thanh toán.');
+        } finally {
+            setSyncingPayment(false);
+        }
+    };
+
     const handleBuyAgain = async () => {
         if (!order?.items?.length) return;
         setBuyAgainLoading(true);
@@ -192,7 +259,7 @@ export default function OrderDetailPage() {
     };
 
     return (
-        <div className='min-h-screen bg-white flex flex-col'>
+        <div className='min-h-screen bg-base-200/40 flex flex-col'>
             <Header
                 user={user}
                 onLogout={handleLogout}
@@ -200,20 +267,24 @@ export default function OrderDetailPage() {
 
             <main className='flex-1 container mx-auto px-4 py-8'>
                 {loading ? (
-                    <div className='flex justify-center py-12'>
-                        <span className='loading loading-spinner loading-lg text-primary' />
-                    </div>
+                    <PageState variant='loading' title='Đang tải đơn hàng...' />
                 ) : !order ? (
-                    <div className='text-center py-12'>
-                        <p className='text-gray-600 mb-4'>Không tìm thấy đơn hàng</p>
+                    <PageState
+                        variant='empty'
+                        icon={PackageX}
+                        title='Không tìm thấy đơn hàng'
+                        description='Đơn có thể đã bị xóa hoặc liên kết không còn hợp lệ.'
+                    >
                         <Link to='/orders'>
-                            <Button variant='outline'>Quay lại danh sách đơn</Button>
+                            <Button variant='outline' className='rounded-xl'>
+                                Quay lại danh sách đơn
+                            </Button>
                         </Link>
-                    </div>
+                    </PageState>
                 ) : (
                     <div className='max-w-2xl mx-auto space-y-6'>
                         <div className='flex items-center justify-between'>
-                            <h1 className='text-2xl font-bold text-gray-800'>Đơn hàng {order.code}</h1>
+                            <h1 className='text-2xl font-bold text-base-content'>Đơn hàng {order.code}</h1>
                             <Link to='/orders'>
                                 <Button variant='outline' size='sm' className='btn-outline btn-sm'>
                                     Danh sách đơn
@@ -221,7 +292,7 @@ export default function OrderDetailPage() {
                             </Link>
                         </div>
 
-                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4'>
+                        <SurfaceCard className='p-6 space-y-4'>
                             <div className='flex flex-wrap gap-3 items-start justify-between'>
                                 <div className='flex flex-wrap gap-3'>
                                     <div>
@@ -348,10 +419,10 @@ export default function OrderDetailPage() {
                                     </div>
                                 ) : null}
                             </div>
-                        </div>
+                        </SurfaceCard>
 
-                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden'>
-                            <div className='px-6 py-4 font-semibold text-gray-800 bg-gray-50/80 flex items-center justify-between gap-3'>
+                        <SurfaceCard className='overflow-hidden p-0'>
+                            <div className='px-6 py-4 font-semibold text-base-content bg-base-200/50 border-b border-base-200 flex items-center justify-between gap-3'>
                                 <h2>Chi tiết sản phẩm</h2>
                                 {canEdit && (
                                     <Link to='/cart'>
@@ -359,15 +430,15 @@ export default function OrderDetailPage() {
                                     </Link>
                                 )}
                             </div>
-                            <div className='divide-y divide-gray-100'>
+                            <div className='divide-y divide-base-200'>
                                 {order.items?.map((item, idx) => {
                                     const img = item.product?.images?.[0] || item.product?.image;
                                     return (
                                         <div
                                             key={idx}
-                                            className='flex gap-4 items-center px-6 py-4 hover:bg-gray-50/50 transition-colors'
+                                            className='flex gap-4 items-center px-6 py-4 hover:bg-base-200/40 transition-colors'
                                         >
-                                            <div className='w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center'>
+                                            <div className='w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-base-200/80 border border-base-200/80 flex items-center justify-center'>
                                                 {img ? (
                                                     <img
                                                         src={img}
@@ -375,55 +446,179 @@ export default function OrderDetailPage() {
                                                         className='w-full h-full object-contain'
                                                     />
                                                 ) : (
-                                                    <span className='text-gray-400 text-xs'>N/A</span>
+                                                    <span className='text-base-content/40 text-xs'>N/A</span>
                                                 )}
                                             </div>
                                             <div className='flex-1 min-w-0'>
-                                                <p className='font-medium text-gray-800'>{item.product?.name || 'Sản phẩm'}</p>
-                                                <p className='text-sm text-gray-500 mt-0.5'>
+                                                <p className='font-medium text-base-content'>{item.product?.name || 'Sản phẩm'}</p>
+                                                <p className='text-sm text-base-content/55 mt-0.5'>
                                                     {item.quantity} x {(item.price || 0).toLocaleString()}đ
+                                                    {Number(item.vatPercent) > 0 ? (
+                                                        <span className='text-base-content/45'> · VAT {item.vatPercent}%</span>
+                                                    ) : null}
                                                 </p>
                                             </div>
-                                            <p className='font-semibold text-gray-800 shrink-0'>{(item.quantity * (item.price || 0))?.toLocaleString()}đ</p>
+                                            <p className='font-semibold text-base-content shrink-0'>
+                                                {(() => {
+                                                    const net = (item.quantity || 0) * (item.price || 0);
+                                                    const gross =
+                                                        item.total != null && item.total !== ''
+                                                            ? Number(item.total)
+                                                            : net;
+                                                    return (Number.isFinite(gross) ? gross : net).toLocaleString();
+                                                })()}
+                                                đ
+                                            </p>
                                         </div>
                                     );
                                 })}
                             </div>
-                            <div className='px-6 py-4 bg-gray-50/80 space-y-2'>
+                            <div className='px-6 py-4 bg-base-200/45 border-t border-base-200 space-y-2'>
                                 {(() => {
-                                    const subtotal = order.items?.reduce((s, i) => s + (i.quantity || 0) * (i.price || 0), 0) ?? 0;
+                                    const items = order.items || [];
+                                    const netSubtotal = items.reduce((s, i) => s + (i.quantity || 0) * (i.price || 0), 0);
+                                    let vatTotal = items.reduce((s, i) => s + (Number(i.vatAmount) || 0), 0);
+                                    if (vatTotal <= 0) {
+                                        vatTotal = items.reduce((s, i) => {
+                                            const net = (i.quantity || 0) * (i.price || 0);
+                                            const gross =
+                                                i.total != null && i.total !== '' ? Number(i.total) : net;
+                                            return s + (Number.isFinite(gross) ? Math.max(0, gross - net) : 0);
+                                        }, 0);
+                                    }
+                                    const grossBeforeDiscount = netSubtotal + vatTotal;
                                     const discount = order.discount ?? 0;
                                     return (
                                         <>
-                                            <div className='flex justify-between text-sm text-gray-600'>
-                                                <span>Tạm tính</span>
-                                                <span>{subtotal.toLocaleString()}đ</span>
+                                            <div className='flex justify-between text-sm text-base-content/70'>
+                                                <span>Tiền hàng (chưa thuế)</span>
+                                                <span>{netSubtotal.toLocaleString()}đ</span>
                                             </div>
+                                            {vatTotal > 0 && (
+                                                <div className='flex justify-between text-sm text-base-content/70'>
+                                                    <span>Thuế GTGT</span>
+                                                    <span>{vatTotal.toLocaleString()}đ</span>
+                                                </div>
+                                            )}
+                                            {vatTotal > 0 && (
+                                                <div className='flex justify-between text-xs text-base-content/55 border-b border-base-200/80 pb-2'>
+                                                    <span>Tạm tính (gồm thuế)</span>
+                                                    <span>{grossBeforeDiscount.toLocaleString()}đ</span>
+                                                </div>
+                                            )}
                                             {discount > 0 && (
-                                                <div className='flex justify-between text-sm text-emerald-600'>
+                                                <div className='flex justify-between text-sm text-emerald-600 pt-1'>
                                                     <span>Chiết khấu</span>
                                                     <span>-{discount.toLocaleString()}đ</span>
                                                 </div>
                                             )}
                                             <div className='flex justify-between font-bold text-lg pt-2'>
-                                                <span className='text-gray-700'>Tổng cộng</span>
-                                                <span className='text-blue-600'>{order.totalAmount?.toLocaleString()}đ</span>
+                                                <span className='text-base-content'>Tổng cộng</span>
+                                                <span className='text-primary'>{order.totalAmount?.toLocaleString()}đ</span>
                                             </div>
                                         </>
                                     );
                                 })()}
                             </div>
-                        </div>
+                        </SurfaceCard>
 
-                        {vietQRData?.checkoutUrl && order.paymentStatus === 'pending' && order.status !== 'cancelled' && (
-                            <div className='bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6'>
-                                <h2 className='font-semibold text-gray-800 mb-4'>Thanh toán chuyển khoản</h2>
-                                <Button asChild size='lg' className='w-full'>
-                                    <a href={vietQRData.checkoutUrl} target='_blank' rel='noopener noreferrer'>
-                                        Thanh toán qua PayOS
-                                    </a>
-                                </Button>
-                            </div>
+                        {showPaymentSection && (
+                            <SurfaceCard className='p-6 bg-gradient-to-br from-primary/8 via-base-100 to-base-100 border-primary/20 space-y-4'>
+                                <div className='flex items-start gap-3'>
+                                    <CreditCard className='w-5 h-5 text-primary shrink-0 mt-0.5' />
+                                    <div>
+                                        <h2 className='font-semibold text-base-content'>Thanh toán đơn hàng</h2>
+                                        <p className='text-sm text-base-content/60 mt-1'>
+                                            Đơn đang chờ thanh toán. Hoàn tất để cửa hàng xử lý đơn.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {loadingPaymentQr ? (
+                                    <p className='text-sm text-base-content/55'>Đang tải thông tin thanh toán...</p>
+                                ) : vietQRData?.checkoutUrl ? (
+                                    <>
+                                        <p className='text-sm text-base-content/60'>Hoàn tất qua PayOS — đơn sẽ được cập nhật tự động.</p>
+                                        <Button asChild size='lg' className='w-full rounded-xl'>
+                                            <a href={vietQRData.checkoutUrl} target='_blank' rel='noopener noreferrer'>
+                                                Thanh toán qua PayOS
+                                            </a>
+                                        </Button>
+                                    </>
+                                ) : vietQRData?.qrDataURL ? (
+                                    <>
+                                        <p className='text-sm text-base-content/60'>
+                                            Quét mã QR hoặc chuyển khoản theo thông tin bên dưới. Nội dung chuyển khoản ghi đúng{' '}
+                                            <span className='font-mono font-medium text-base-content'>{order.code}</span>.
+                                        </p>
+                                        <div className='flex justify-center rounded-xl border border-base-200 bg-base-100 p-4'>
+                                            <img src={vietQRData.qrDataURL} alt='Mã QR chuyển khoản' className='max-w-[220px] w-full h-auto' />
+                                        </div>
+                                        {vietQRData.bankAccount && (
+                                            <ul className='text-sm text-base-content/80 space-y-1 rounded-xl border border-base-200 bg-base-100/80 p-4'>
+                                                {vietQRData.bankAccount.bankName ? (
+                                                    <li>
+                                                        <span className='text-base-content/50'>Ngân hàng:</span>{' '}
+                                                        {vietQRData.bankAccount.bankName}
+                                                    </li>
+                                                ) : null}
+                                                {vietQRData.bankAccount.bankAccount ? (
+                                                    <li>
+                                                        <span className='text-base-content/50'>Số TK:</span>{' '}
+                                                        <span className='font-mono'>{vietQRData.bankAccount.bankAccount}</span>
+                                                    </li>
+                                                ) : null}
+                                                {vietQRData.bankAccount.userBankName ? (
+                                                    <li>
+                                                        <span className='text-base-content/50'>Chủ TK:</span> {vietQRData.bankAccount.userBankName}
+                                                    </li>
+                                                ) : null}
+                                                <li>
+                                                    <span className='text-base-content/50'>Số tiền:</span>{' '}
+                                                    <span className='font-semibold text-base-content'>
+                                                        {(order.totalAmount ?? 0).toLocaleString('vi-VN')}đ
+                                                    </span>
+                                                </li>
+                                            </ul>
+                                        )}
+                                        <div className='flex flex-col sm:flex-row gap-2'>
+                                            <Button
+                                                type='button'
+                                                variant='outline'
+                                                className='rounded-xl'
+                                                disabled={syncingPayment}
+                                                onClick={handleCheckBankTransferPaid}
+                                            >
+                                                {syncingPayment ? 'Đang kiểm tra...' : 'Đã chuyển khoản — kiểm tra trạng thái'}
+                                            </Button>
+                                            <Button
+                                                type='button'
+                                                variant='outline'
+                                                className='rounded-xl'
+                                                disabled={loadingPaymentQr}
+                                                onClick={() => fetchPaymentQrForOrder(order)}
+                                            >
+                                                <RefreshCw className='w-4 h-4 mr-2' />
+                                                Tải lại mã QR
+                                            </Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className='text-sm text-error/90'>{paymentQrError || 'Chưa có thông tin thanh toán.'}</p>
+                                        <Button
+                                            type='button'
+                                            variant='outline'
+                                            className='rounded-xl'
+                                            disabled={loadingPaymentQr}
+                                            onClick={() => fetchPaymentQrForOrder(order)}
+                                        >
+                                            <RefreshCw className='w-4 h-4 mr-2' />
+                                            Thử lại
+                                        </Button>
+                                    </>
+                                )}
+                            </SurfaceCard>
                         )}
 
                         <div className='flex flex-wrap gap-2'>

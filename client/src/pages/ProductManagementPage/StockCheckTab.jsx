@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { ClipboardList, Plus, Eye, CheckCircle, X, Search } from 'lucide-react';
+import { ClipboardList, Plus, Eye, CheckCircle, X, Search, Printer, Trash2, Save, RotateCcw } from 'lucide-react';
 import {
     getNextStockCheckCode,
     getStockChecks,
@@ -7,10 +7,13 @@ import {
     createStockCheck,
     updateStockCheck,
     confirmStockCheck,
+    reopenStockCheck,
+    deleteStockCheck,
 } from '@/services/stockCheckService';
 import { getProducts, getProductOptions } from '@/services/productService';
 import { getLocations } from '@/services/locationService';
 import { useBranchStore } from '@/stores/useBranchStore';
+import { useUserRole } from '@/hooks/useUserRole';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { toast } from 'sonner';
 
@@ -24,6 +27,27 @@ const formatDate = (d) => {
     const date = new Date(d);
     return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 };
+
+/** Ngày trên phiếu (YYYY-MM-DD) hoặc suy ra từ ngày tạo bản ghi cũ */
+const ymdFromStockCheck = (sc) => {
+    if (sc?.documentDate && /^\d{4}-\d{2}-\d{2}$/.test(sc.documentDate)) return sc.documentDate;
+    if (!sc?.createdAt) return '';
+    const dt = new Date(sc.createdAt);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
+
+const formatYmdVi = (ymd) => {
+    if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '—';
+    const [y, m, d] = ymd.split('-');
+    return `${d}/${m}/${y}`;
+};
+
+const htmlEscape = (s) =>
+    String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 
 const StockCheckTab = () => {
     const [list, setList] = useState([]);
@@ -40,6 +64,8 @@ const StockCheckTab = () => {
     const [createLocationId, setCreateLocationId] = useState('');
     const [locations, setLocations] = useState([]);
     const [createNote, setCreateNote] = useState('');
+    /** Ngày trên phiếu (YYYY-MM-DD), mặc định hôm nay — đổi ngày sẽ gợi ý lại mã KK-… */
+    const [createDocumentDate, setCreateDocumentDate] = useState('');
     const [createRows, setCreateRows] = useState([]);
     const [productsForPick, setProductsForPick] = useState([]);
     const [showPickProduct, setShowPickProduct] = useState(false);
@@ -50,12 +76,22 @@ const StockCheckTab = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
     /** Chỉnh số đếm trong modal chi tiết (nháp): key = _id dòng item */
     const [detailCountDraft, setDetailCountDraft] = useState({});
+    /** Ghi chú tình trạng hàng (nháp): key = _id dòng item */
+    const [detailConditionDraft, setDetailConditionDraft] = useState({});
     const [savingDetailCounts, setSavingDetailCounts] = useState(false);
+    const [reopenSubmitting, setReopenSubmitting] = useState(false);
+    /** Ghi chú toàn phiếu khi nháp (đồng bộ khi lưu) */
+    const [detailNoteDraft, setDetailNoteDraft] = useState('');
+    const [detailDocumentDateDraft, setDetailDocumentDateDraft] = useState('');
 
-    // Ngày hôm nay (YYYY-MM-DD) dùng để giới hạn "Từ ngày"
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // Ngày hôm nay (YYYY-MM-DD, giờ địa phương) — lọc & ngày phiếu tối đa
+    const todayStr = (() => {
+        const t = new Date();
+        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    })();
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
+    const { hasAnyRole } = useUserRole();
 
     const fetchList = async (overridePage, overrideFilters) => {
         setLoading(true);
@@ -95,18 +131,32 @@ const StockCheckTab = () => {
     };
 
     const openCreateModal = async () => {
-        const code = await getNextStockCheckCode();
+        const d = todayStr;
+        setCreateDocumentDate(d);
+        const code = await getNextStockCheckCode(d);
         setCreateCode(code || '');
-        setCreateLocationId(currentLocationId || '');
         setCreateNote('');
         setCreateRows([]);
         try {
-            const res = await getLocations();
+            const res = await getLocations(hasAnyRole('admin') ? {} : { scope: 'mine' });
+            let locs = [];
             if (res.success && res.data?.locations) {
-                setLocations(res.data.locations.filter((l) => l.isActive !== false));
+                locs = res.data.locations.filter((l) => l.isActive !== false);
             }
+            setLocations(locs);
+            const preferred =
+                currentLocationId &&
+                currentLocationId !== 'all' &&
+                locs.some((l) => String(l._id) === String(currentLocationId))
+                    ? String(currentLocationId)
+                    : locs[0]?._id
+                      ? String(locs[0]._id)
+                      : '';
+            setCreateLocationId(preferred);
         } catch (e) {
             console.error(e);
+            setLocations([]);
+            setCreateLocationId('');
         }
         setShowCreateModal(true);
     };
@@ -116,7 +166,16 @@ const StockCheckTab = () => {
         setCreateCode('');
         setCreateLocationId('');
         setCreateNote('');
+        setCreateDocumentDate('');
         setCreateRows([]);
+    };
+
+    const onCreateDocumentDateChange = async (e) => {
+        const v = e.target.value;
+        setCreateDocumentDate(v);
+        if (!v) return;
+        const code = await getNextStockCheckCode(v);
+        if (code) setCreateCode(code);
     };
 
     const loadProductsForPick = async () => {
@@ -146,6 +205,7 @@ const StockCheckTab = () => {
                 quantityBefore: physical,
                 /** null = chưa nhập số đếm (lưu nháp sẽ mặc định = tồn sổ; nhập sau trong chi tiết phiếu) */
                 quantityCounted: null,
+                conditionNote: '',
             },
         ]);
         setShowPickProduct(false);
@@ -163,6 +223,12 @@ const StockCheckTab = () => {
             return sku.includes(needle) || name.includes(needle) || bc.includes(needle);
         });
     }, [productsForPick, pickSearch, createRows]);
+
+    const updateRowConditionNote = (productId, value) => {
+        setCreateRows((prev) =>
+            prev.map((r) => (r.product._id === productId ? { ...r, conditionNote: value } : r))
+        );
+    };
 
     const updateRowCounted = (productId, value) => {
         if (value === '') {
@@ -193,6 +259,14 @@ const StockCheckTab = () => {
             toast.error('Vui lòng chọn chi nhánh kiểm kho');
             return;
         }
+        if (!createDocumentDate) {
+            toast.error('Vui lòng chọn ngày phiếu');
+            return;
+        }
+        if (createDocumentDate > todayStr) {
+            toast.error('Ngày phiếu không được sau hôm nay');
+            return;
+        }
         if (createRows.length === 0) {
             toast.error('Vui lòng thêm ít nhất một sản phẩm');
             return;
@@ -203,11 +277,14 @@ const StockCheckTab = () => {
                 code: createCode.trim(),
                 locationId: createLocationId,
                 note: createNote.trim(),
+                documentDate: createDocumentDate,
                 items: createRows.map((r) => {
                     const base = { productId: r.product._id };
                     if (r.quantityCounted !== null && r.quantityCounted !== undefined) {
-                        return { ...base, quantityCounted: r.quantityCounted };
+                        base.quantityCounted = r.quantityCounted;
                     }
+                    const note = r.conditionNote != null ? String(r.conditionNote).trim() : '';
+                    if (note) base.conditionNote = note;
                     return base;
                 }),
             });
@@ -222,16 +299,27 @@ const StockCheckTab = () => {
         }
     };
 
+    const syncDetailDraftsFromStockCheck = (sc) => {
+        const draft = {};
+        const condDraft = {};
+        (sc.items || []).forEach((row) => {
+            if (row._id) {
+                draft[row._id] = row.quantityCounted ?? 0;
+                condDraft[row._id] = row.conditionNote ?? '';
+            }
+        });
+        setDetailCountDraft(draft);
+        setDetailConditionDraft(condDraft);
+        setDetailNoteDraft(sc.note?.trim() ? sc.note : '');
+        setDetailDocumentDateDraft(ymdFromStockCheck(sc));
+    };
+
     const openDetail = async (id) => {
         const res = await getStockCheckById(id);
         if (res.success && res.data?.stockCheck) {
             const sc = res.data.stockCheck;
             setDetailStockCheck(sc);
-            const draft = {};
-            (sc.items || []).forEach((it) => {
-                if (it._id) draft[it._id] = it.quantityCounted ?? 0;
-            });
-            setDetailCountDraft(draft);
+            syncDetailDraftsFromStockCheck(sc);
             setShowDetailModal(true);
         } else {
             toast.error('Không tải được chi tiết phiếu');
@@ -240,24 +328,37 @@ const StockCheckTab = () => {
 
     const handleSaveDetailCounts = async () => {
         if (!detailStockCheck?._id || detailStockCheck.status !== 'draft') return;
+        if (!detailDocumentDateDraft) {
+            toast.error('Vui lòng chọn ngày phiếu');
+            return;
+        }
+        if (detailDocumentDateDraft > todayStr) {
+            toast.error('Ngày phiếu không được sau hôm nay');
+            return;
+        }
         setSavingDetailCounts(true);
         try {
             const items = (detailStockCheck.items || []).map((it) => {
                 const pid = it.product?._id || it.product;
-                const raw = detailCountDraft[it._id];
+                const lineId = it._id;
+                const raw = detailCountDraft[lineId];
                 const counted = raw === '' || raw === undefined ? it.quantityCounted ?? 0 : Math.max(0, Number(raw) || 0);
-                return { productId: pid, quantityCounted: counted };
+                const cond =
+                    detailConditionDraft[lineId] !== undefined
+                        ? String(detailConditionDraft[lineId])
+                        : (it.conditionNote ?? '');
+                return { productId: pid, quantityCounted: counted, conditionNote: cond.trim() };
             });
-            const res = await updateStockCheck(detailStockCheck._id, { items });
+            const res = await updateStockCheck(detailStockCheck._id, {
+                items,
+                note: detailNoteDraft.trim(),
+                documentDate: detailDocumentDateDraft,
+            });
             if (res.success && res.data?.stockCheck) {
-                setDetailStockCheck(res.data.stockCheck);
                 const sc = res.data.stockCheck;
-                const draft = {};
-                (sc.items || []).forEach((row) => {
-                    if (row._id) draft[row._id] = row.quantityCounted ?? 0;
-                });
-                setDetailCountDraft(draft);
-                toast.success('Đã lưu số đếm thực tế');
+                setDetailStockCheck(sc);
+                syncDetailDraftsFromStockCheck(sc);
+                toast.success('Đã lưu số đếm và tình trạng');
                 fetchList();
             }
         } catch (err) {
@@ -265,6 +366,170 @@ const StockCheckTab = () => {
         } finally {
             setSavingDetailCounts(false);
         }
+    };
+
+    const handlePrintStockCheck = () => {
+        if (!detailStockCheck) return;
+        const sc = detailStockCheck;
+        const branchLabel = sc.location ? `${sc.location.code} - ${sc.location.name}` : '—';
+        const creator = sc.createdBy
+            ? `${sc.createdBy.firstName || ''} ${sc.createdBy.lastName || ''}`.trim() || sc.createdBy.username
+            : '—';
+        const statusLabel = sc.status === 'confirmed' ? 'Đã xác nhận' : 'Nháp';
+        const slipYmd =
+            sc.status === 'draft' && detailDocumentDateDraft
+                ? detailDocumentDateDraft
+                : ymdFromStockCheck(sc);
+
+        const rowsHtml = (sc.items || [])
+            .map((it) => {
+                const lineId = it._id;
+                const raw =
+                    lineId !== undefined && detailCountDraft[lineId] !== undefined
+                        ? detailCountDraft[lineId]
+                        : it.quantityCounted;
+                const counted =
+                    raw === '' || raw === undefined ? it.quantityCounted : Math.max(0, Number(raw) || 0);
+                const cond =
+                    lineId !== undefined && detailConditionDraft[lineId] !== undefined
+                        ? detailConditionDraft[lineId]
+                        : (it.conditionNote ?? '');
+                const change = counted - (it.quantityBefore ?? 0);
+                const lineVal = change * (it.unitPrice ?? 0);
+                const sku = it.product?.sku ?? '—';
+                const name = it.product?.name ?? '—';
+                return `<tr>
+                    <td>${htmlEscape(sku)}</td>
+                    <td>${htmlEscape(name)}</td>
+                    <td class="wrap">${htmlEscape(cond)}</td>
+                    <td class="num">${it.quantityBefore ?? 0}</td>
+                    <td class="num">${counted}</td>
+                    <td class="num">${change > 0 ? '+' : ''}${change}</td>
+                    <td class="num">${formatVND(it.unitPrice)}</td>
+                    <td class="num">${formatVND(lineVal)}</td>
+                </tr>`;
+            })
+            .join('');
+
+        const totalVal = (sc.items || []).reduce((s, it) => {
+            const lineId = it._id;
+            const raw =
+                lineId !== undefined && detailCountDraft[lineId] !== undefined
+                    ? detailCountDraft[lineId]
+                    : it.quantityCounted;
+            const counted =
+                raw === '' || raw === undefined ? it.quantityCounted : Math.max(0, Number(raw) || 0);
+            return s + (counted - (it.quantityBefore ?? 0)) * (it.unitPrice ?? 0);
+        }, 0);
+
+        const docTitle = `Phiếu kiểm kho ${sc.code}`;
+        const body = `
+            <h1>${htmlEscape(docTitle)}</h1>
+            <div class="meta">
+                <div><strong>Ngày phiếu:</strong> ${htmlEscape(formatYmdVi(slipYmd))}</div>
+                <div><strong>Chi nhánh:</strong> ${htmlEscape(branchLabel)}</div>
+                <div><strong>Người tạo:</strong> ${htmlEscape(creator)} — ${htmlEscape(formatDate(sc.createdAt))}</div>
+                <div><strong>Trạng thái:</strong> ${htmlEscape(statusLabel)}</div>
+                ${sc.note?.trim() ? `<div><strong>Ghi chú:</strong> ${htmlEscape(sc.note)}</div>` : ''}
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã hàng</th>
+                        <th>Tên sản phẩm</th>
+                        <th>Tình trạng</th>
+                        <th class="num">Tồn hệ thống</th>
+                        <th class="num">Tồn thực tế</th>
+                        <th class="num">Chênh lệch</th>
+                        <th class="num">Đơn giá</th>
+                        <th class="num">Giá trị chênh lệch</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+            <p class="total">Tổng giá trị chênh lệch (ước tính): ${htmlEscape(formatVND(totalVal))}</p>
+        `;
+
+        const html = `<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"/><title>${htmlEscape(docTitle)}</title>
+            <style>
+                body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; color: #111; font-size: 12px; }
+                h1 { font-size: 18px; margin: 0 0 12px; }
+                .meta { margin-bottom: 14px; line-height: 1.55; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th, td { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+                th { background: #dbeafe; font-weight: 600; }
+                td.wrap { white-space: pre-wrap; word-break: break-word; max-width: 200px; }
+                .num { text-align: right; font-variant-numeric: tabular-nums; }
+                .total { margin-top: 14px; text-align: right; font-weight: 700; font-size: 13px; }
+                @media print { body { padding: 8px; } }
+            </style></head><body>${body}</body></html>`;
+
+        const win = window.open('', '_blank');
+        if (!win) {
+            toast.error('Trình duyệt chặn cửa sổ in. Cho phép popup và thử lại.');
+            return;
+        }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+            try {
+                win.print();
+            } finally {
+                win.close();
+            }
+        }, 300);
+    };
+
+    const handleReopenDetail = () => {
+        if (!detailStockCheck?._id || detailStockCheck.status !== 'confirmed') return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Hủy xác nhận phiếu kiểm kho',
+            message: `Tồn kho tại chi nhánh sẽ khôi phục về số sổ trước khi xác nhận phiếu ${detailStockCheck.code}. Phiếu chuyển về nháp để chỉnh sửa hoặc xóa.`,
+            onConfirm: async () => {
+                setReopenSubmitting(true);
+                try {
+                    const res = await reopenStockCheck(detailStockCheck._id);
+                    if (res.success && res.data?.stockCheck) {
+                        const sc = res.data.stockCheck;
+                        setDetailStockCheck(sc);
+                        syncDetailDraftsFromStockCheck(sc);
+                        toast.success(res.message || 'Đã hủy xác nhận');
+                        fetchList();
+                    }
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || 'Không hủy xác nhận được');
+                } finally {
+                    setReopenSubmitting(false);
+                }
+            },
+        });
+    };
+
+    const handleDeleteDetail = () => {
+        if (!detailStockCheck?._id) return;
+        const isConfirmed = detailStockCheck.status === 'confirmed';
+        setConfirmModal({
+            isOpen: true,
+            title: 'Xóa phiếu kiểm kho',
+            message: isConfirmed
+                ? `Phiếu đã xác nhận: hệ thống sẽ khôi phục tồn kho về số sổ trước kiểm, rồi xóa vĩnh viễn phiếu ${detailStockCheck.code}.`
+                : `Xóa vĩnh viễn phiếu ${detailStockCheck.code}? Thao tác này không hoàn tác.`,
+            onConfirm: async () => {
+                try {
+                    await deleteStockCheck(detailStockCheck._id);
+                    toast.success('Đã xóa phiếu kiểm kho');
+                    setShowDetailModal(false);
+                    setDetailStockCheck(null);
+                    setDetailNoteDraft('');
+                    setDetailDocumentDateDraft('');
+                    fetchList();
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || 'Không xóa được phiếu');
+                }
+            },
+        });
     };
 
     const handleConfirm = (sc) => {
@@ -278,6 +543,8 @@ const StockCheckTab = () => {
                     toast.success('Đã xác nhận phiếu và cập nhật tồn kho');
                     setShowDetailModal(false);
                     setDetailStockCheck(null);
+                    setDetailNoteDraft('');
+                    setDetailDocumentDateDraft('');
                     fetchList();
                 } catch (err) {
                     toast.error(err?.response?.data?.message || 'Xác nhận thất bại');
@@ -316,7 +583,10 @@ const StockCheckTab = () => {
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-end gap-3">
                     <div>
-                        <label className="label py-0"><span className="label-text text-sm">Từ ngày</span></label>
+                        <label className="label py-0 flex flex-col gap-0.5 items-start">
+                            <span className="label-text text-sm">Từ ngày</span>
+                            <span className="text-[11px] text-base-content/50 font-normal">Theo ngày phiếu</span>
+                        </label>
                         <input
                             type="date"
                             className="input input-bordered input-sm w-full"
@@ -525,7 +795,7 @@ const StockCheckTab = () => {
                                     <th className="font-medium text-neutral text-xs">Mã phiếu</th>
                                     <th className="font-medium text-neutral text-xs">Chi nhánh</th>
                                     <th className="font-medium text-neutral text-xs">Người tạo</th>
-                                    <th className="font-medium text-neutral text-xs">Ngày tạo</th>
+                                    <th className="font-medium text-neutral text-xs">Ngày phiếu</th>
                                     <th className="font-medium text-neutral text-xs">Trạng thái</th>
                                     <th className="font-medium text-neutral text-xs"></th>
                                 </tr>
@@ -542,7 +812,7 @@ const StockCheckTab = () => {
                                                 ? `${sc.createdBy.firstName || ''} ${sc.createdBy.lastName || ''}`.trim() || sc.createdBy.username
                                                 : '—'}
                                         </td>
-                                        <td>{formatDate(sc.createdAt)}</td>
+                                        <td>{formatYmdVi(ymdFromStockCheck(sc))}</td>
                                         <td>
                                             <span
                                                 className={`badge badge-sm ${sc.status === 'confirmed' ? 'badge-success' : 'badge-warning'}`}
@@ -597,13 +867,32 @@ const StockCheckTab = () => {
             {/* Modal tạo phiếu kiểm kho */}
             {showCreateModal && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true">
-                    <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <div className="modal-box w-[min(1200px,calc(100vw-1.5rem))] max-w-none max-h-[90vh] overflow-y-auto">
                         <h3 className="font-bold text-lg mb-2">Tạo phiếu kiểm kho</h3>
                         <p className="text-sm text-base-content/60 mb-4">
-                            Có thể lưu nháp chỉ với danh sách hàng; số đếm thực tế nhập sau trong màn chi tiết phiếu.
+                            Chọn ngày trên phiếu (có thể là ngày cũ); mã KK-… tự theo ngày đó. Có thể lưu nháp chỉ với danh sách
+                            hàng; số đếm thực tế nhập sau trong chi tiết phiếu.
                         </p>
                         <form onSubmit={handleCreateSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label">
+                                        <span className="label-text font-semibold">
+                                            Ngày phiếu <span className="text-error">*</span>
+                                        </span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="input input-bordered w-full"
+                                        max={todayStr}
+                                        value={createDocumentDate}
+                                        onChange={onCreateDocumentDateChange}
+                                        required
+                                    />
+                                    <p className="text-xs text-base-content/60 mt-1">
+                                        Mặc định hôm nay — đổi để nhập chứng từ ngày trước.
+                                    </p>
+                                </div>
                                 <div>
                                     <label className="label"><span className="label-text font-semibold">Mã phiếu</span></label>
                                     <input
@@ -613,8 +902,9 @@ const StockCheckTab = () => {
                                         onChange={(e) => setCreateCode(e.target.value)}
                                         placeholder="KK-YYYYMMDD-001"
                                     />
+                                    <p className="text-xs text-base-content/60 mt-1">Gợi ý theo ngày phiếu; có thể sửa tay.</p>
                                 </div>
-                                <div>
+                                <div className="col-span-2">
                                     <label className="label"><span className="label-text font-semibold">Chi nhánh <span className="text-error">*</span></span></label>
                                     <select
                                         className="select select-bordered w-full"
@@ -657,6 +947,7 @@ const StockCheckTab = () => {
                                             <tr>
                                                 <th>Mã hàng</th>
                                                 <th>Tên sản phẩm</th>
+                                                <th className="min-w-[140px] max-w-[240px]">Tình trạng</th>
                                                 <th className="text-right">Tồn hệ thống (sổ sách)</th>
                                                 <th className="text-right">Tồn thực tế (đếm)</th>
                                                 <th className="text-right">Chênh lệch</th>
@@ -673,6 +964,16 @@ const StockCheckTab = () => {
                                                     <tr key={r.product._id}>
                                                         <td className="font-medium">{r.product.sku}</td>
                                                         <td>{r.product.name}</td>
+                                                        <td>
+                                                            <textarea
+                                                                className="textarea textarea-bordered textarea-sm w-full min-h-9 py-1.5 text-sm leading-snug max-w-[260px]"
+                                                                rows={2}
+                                                                placeholder="VD: vỏ, date, ẩm…"
+                                                                maxLength={1000}
+                                                                value={r.conditionNote ?? ''}
+                                                                onChange={(e) => updateRowConditionNote(r.product._id, e.target.value)}
+                                                            />
+                                                        </td>
                                                         <td className="text-right">{r.quantityBefore}</td>
                                                         <td className="text-right">
                                                             <input
@@ -740,7 +1041,7 @@ const StockCheckTab = () => {
             {/* Modal chọn sản phẩm */}
             {showPickProduct && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true">
-                    <div className="modal-box max-w-5xl w-[min(1100px,96vw)] max-h-[88vh] p-0 overflow-hidden">
+                    <div className="modal-box w-[min(1200px,calc(100vw-1.5rem))] max-w-none max-h-[88vh] p-0 overflow-hidden">
                         <div className="px-6 pt-6 pb-4 border-b border-base-200 bg-base-100 sticky top-0 z-10">
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -848,8 +1149,8 @@ const StockCheckTab = () => {
             {/* Modal chi tiết phiếu kiểm kho */}
             {showDetailModal && detailStockCheck && (
                 <dialog className="modal modal-open" role="dialog" aria-modal="true">
-                    <div className="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-start mb-4">
+                    <div className="modal-box w-[min(1440px,calc(100vw-1.5rem))] max-w-none max-h-[92vh] overflow-y-auto">
+                        <div className="flex justify-between items-start mb-4 gap-2">
                             <div>
                                 <h3 className="font-bold text-lg">Phiếu kiểm kho: {detailStockCheck.code}</h3>
                                 <p className="text-sm text-base-content/60 mt-1">
@@ -862,17 +1163,135 @@ const StockCheckTab = () => {
                                     {detailStockCheck.status === 'confirmed' ? 'Đã xác nhận' : 'Nháp'}
                                 </span>
                             </div>
-                            <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowDetailModal(false); setDetailStockCheck(null); }}>
-                                <X className="w-5 h-5" />
-                            </button>
+                            <div className="flex items-center flex-wrap justify-end gap-1 shrink-0">
+                                {detailStockCheck.status === 'draft' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-primary btn-outline gap-1"
+                                            disabled={savingDetailCounts}
+                                            onClick={handleSaveDetailCounts}
+                                            title="Lưu ghi chú, số đếm và tình trạng từng dòng"
+                                        >
+                                            {savingDetailCounts ? (
+                                                <span className="loading loading-spinner loading-xs" />
+                                            ) : (
+                                                <Save className="w-4 h-4" />
+                                            )}
+                                            Lưu thay đổi
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline btn-error gap-1"
+                                            onClick={handleDeleteDetail}
+                                            title="Xóa phiếu nháp"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            Xóa phiếu
+                                        </button>
+                                    </>
+                                )}
+                                {detailStockCheck.status === 'confirmed' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline btn-warning gap-1"
+                                            disabled={reopenSubmitting}
+                                            onClick={handleReopenDetail}
+                                            title="Khôi phục tồn kho về số sổ trước khi xác nhận; phiếu chuyển về nháp để sửa"
+                                        >
+                                            {reopenSubmitting ? (
+                                                <span className="loading loading-spinner loading-xs" />
+                                            ) : (
+                                                <RotateCcw className="w-4 h-4" />
+                                            )}
+                                            Hủy xác nhận
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline btn-error gap-1"
+                                            disabled={reopenSubmitting}
+                                            onClick={handleDeleteDetail}
+                                            title="Hoàn tác tồn kho rồi xóa vĩnh viễn phiếu"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            Xóa phiếu
+                                        </button>
+                                    </>
+                                )}
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline gap-1"
+                                    onClick={handlePrintStockCheck}
+                                    title="In phiếu kiểm kho"
+                                >
+                                    <Printer className="w-4 h-4" />
+                                    In phiếu
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm btn-circle"
+                                    onClick={() => {
+                                        setShowDetailModal(false);
+                                        setDetailStockCheck(null);
+                                        setDetailNoteDraft('');
+                                        setDetailDocumentDateDraft('');
+                                    }}
+                                    aria-label="Đóng"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
-                        {detailStockCheck.note ? <p className="text-sm mb-4">Ghi chú: {detailStockCheck.note}</p> : null}
+                        {detailStockCheck.status === 'confirmed' && (
+                            <p className="text-sm text-base-content/60 mb-3 leading-relaxed">
+                                <strong>Hủy xác nhận</strong> đưa phiếu về nháp và đặt lại tồn kho theo cột Tồn hệ thống (sổ) trên phiếu (số trước lần xác nhận).{' '}
+                                <strong>Xóa phiếu</strong> khi đã xác nhận cũng hoàn tác tồn tương tự rồi xóa bản ghi.
+                            </p>
+                        )}
+                        <div className="mb-4">
+                            <label className="label py-0">
+                                <span className="label-text font-semibold">Ngày phiếu</span>
+                            </label>
+                            {detailStockCheck.status === 'draft' ? (
+                                <input
+                                    type="date"
+                                    className="input input-bordered input-sm w-full max-w-xs"
+                                    max={todayStr}
+                                    value={detailDocumentDateDraft}
+                                    onChange={(e) => setDetailDocumentDateDraft(e.target.value)}
+                                />
+                            ) : (
+                                <p className="text-sm">{formatYmdVi(ymdFromStockCheck(detailStockCheck))}</p>
+                            )}
+                            <p className="text-xs text-base-content/50 mt-1">
+                                Ngày ghi trên chứng từ (khác với thời điểm nhập hệ thống bên trên).
+                            </p>
+                        </div>
+                        <div className="mb-4">
+                            <label className="label py-0">
+                                <span className="label-text font-semibold">Ghi chú phiếu</span>
+                            </label>
+                            {detailStockCheck.status === 'draft' ? (
+                                <textarea
+                                    className="textarea textarea-bordered w-full min-h-16 text-sm"
+                                    placeholder="Ghi chú chung cho phiếu (tùy chọn)…"
+                                    value={detailNoteDraft}
+                                    onChange={(e) => setDetailNoteDraft(e.target.value)}
+                                />
+                            ) : (
+                                <p className="text-sm text-base-content/90 whitespace-pre-wrap">
+                                    {detailStockCheck.note?.trim() ? detailStockCheck.note : '—'}
+                                </p>
+                            )}
+                        </div>
                         <div className="overflow-x-auto border border-base-300 rounded-lg">
                             <table className="table table-sm">
                                 <thead className='bg-blue-100 sticky top-0 z-20'>
                                     <tr>
                                         <th>Mã hàng</th>
                                         <th>Tên sản phẩm</th>
+                                        <th className="min-w-[140px] max-w-[240px]">Tình trạng</th>
                                         <th className="text-right">Tồn hệ thống (sổ)</th>
                                         <th className="text-right">Tồn thực tế (đếm)</th>
                                         <th className="text-right">Chênh lệch</th>
@@ -895,6 +1314,31 @@ const StockCheckTab = () => {
                                             <tr key={lineId || it.product?._id || it.product}>
                                                 <td className="font-medium">{it.product?.sku ?? '—'}</td>
                                                 <td>{it.product?.name ?? '—'}</td>
+                                                <td className="align-top min-w-[140px] max-w-[260px]">
+                                                    {isDraft && lineId ? (
+                                                        <textarea
+                                                            className="textarea textarea-bordered textarea-sm w-full min-h-10 py-1.5 text-sm leading-snug"
+                                                            rows={2}
+                                                            placeholder="Ghi chú tình trạng hàng…"
+                                                            maxLength={1000}
+                                                            value={
+                                                                detailConditionDraft[lineId] !== undefined
+                                                                    ? detailConditionDraft[lineId]
+                                                                    : (it.conditionNote ?? '')
+                                                            }
+                                                            onChange={(e) =>
+                                                                setDetailConditionDraft((d) => ({
+                                                                    ...d,
+                                                                    [lineId]: e.target.value,
+                                                                }))
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <span className="text-sm text-base-content/85 whitespace-pre-wrap wrap-break-word">
+                                                            {it.conditionNote?.trim() ? it.conditionNote : '—'}
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="text-right">{it.quantityBefore}</td>
                                                 <td className="text-right">
                                                     {isDraft && lineId ? (
@@ -964,7 +1408,7 @@ const StockCheckTab = () => {
                                     {savingDetailCounts ? (
                                         <span className="loading loading-spinner loading-sm" />
                                     ) : null}
-                                    Lưu số đếm thực tế
+                                    Lưu số đếm và tình trạng
                                 </button>
                                 <button
                                     type="button"
@@ -978,7 +1422,17 @@ const StockCheckTab = () => {
                         )}
                     </div>
                     <form method="dialog" className="modal-backdrop">
-                        <button type="button" onClick={() => { setShowDetailModal(false); setDetailStockCheck(null); }}>Đóng</button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowDetailModal(false);
+                                setDetailStockCheck(null);
+                                setDetailNoteDraft('');
+                                setDetailDocumentDateDraft('');
+                            }}
+                        >
+                            Đóng
+                        </button>
                     </form>
                 </dialog>
             )}

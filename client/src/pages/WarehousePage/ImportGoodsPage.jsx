@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Package, Search, CheckCircle, X, Plus, Pencil, Trash2, RotateCcw, ChevronDown, ChevronUp, ChevronRight, Printer, Wand2 } from 'lucide-react';
+import { Package, Search, CheckCircle, X, Plus, Pencil, Trash2, RotateCcw, ChevronDown, ChevronUp, ChevronRight, Printer } from 'lucide-react';
 import {
     getNextStockInCode,
     getStockIns,
@@ -8,7 +8,6 @@ import {
     updateStockIn,
     deleteStockIn,
     confirmStockIn,
-    generateStockInSerials as requestGenerateStockInSerials,
 } from '@/services/stockInService';
 import { getNextStockReturnCode, createStockReturn } from '@/services/stockReturnService';
 import { getProducts } from '@/services/productService';
@@ -16,6 +15,7 @@ import { getLocations } from '@/services/locationService';
 import { createSupplier, updateSupplier, getNextSupplierCode, getSuppliers } from '@/services/supplierService';
 import { useBranchStore } from '@/stores/useBranchStore';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
+import ModalPortal from '@/components/common/ModalPortal';
 import SupplierSelect from '@/components/common/SupplierSelect';
 import SupplierModal from './SupplierModal';
 import { toast } from 'sonner';
@@ -38,46 +38,15 @@ const formatDate = (d) => {
     return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 };
 
-const parseSerialText = (raw) => {
-    const t = String(raw || '').trim();
-    if (!t) return [];
-    /** Một dòng dán từ Excel/CSV: tách theo dấu phẩy hoặc chấm phẩy */
-    let parts;
-    if (!/[\r\n]/.test(t) && /[;,]/.test(t)) {
-        parts = t
-            .split(/[,;]/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-    } else {
-        parts = t
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-    }
-    const seen = new Set();
-    const out = [];
-    for (const s of parts) {
-        if (seen.has(s)) continue;
-        seen.add(s);
-        out.push(s);
-    }
-    return out;
-};
-
-/** 0 seri = không theo dõi từng cái; nếu có thì bắt buộc n === quantity */
-const validateItemSerialsVsQty = (quantity, serials) => {
-    const n = Array.isArray(serials) ? serials.length : 0;
-    const q = Math.max(1, Number(quantity) || 0);
-    if (n === 0) return { ok: true };
-    if (n === q) return { ok: true };
-    if (n > q) {
-        return { ok: false, message: `Có ${n} seri/IMEI nhưng số lượng chỉ ${q} — xóa bớt hoặc tăng số lượng dòng hàng.` };
-    }
-    return { ok: false, message: `Cần đúng ${q} seri/IMEI (hiện ${n}) — bổ sung, sinh tự động, hoặc xóa hết nếu không cần.` };
-};
+const htmlEscape = (s) =>
+    String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 
 /** HTML in tem nhập hàng — cùng layout/CSS với in tem ở chi tiết sản phẩm (70×22mm, 2 ô). */
-const buildStockInPrintHtml = ({ product, serials }) => {
+const buildStockInPrintHtml = ({ product, quantity }) => {
     const name = product?.name || '';
     const sku = product?.sku || '';
     const raw = (product?.barcode || product?.sku || '').toString().trim();
@@ -91,21 +60,16 @@ const buildStockInPrintHtml = ({ product, serials }) => {
     const barcodeDataUrl = createBarcodeDataUrl(barcodeValue);
     const priceStr = product?.price != null && !Number.isNaN(Number(product.price)) ? formatVND(product.price) : '';
 
-    const cellInners = serials.map((serial) => {
-        const serialLine = String(serial || '').trim();
-        if (!serialLine) {
-            throw new Error('Seri/IMEI không được để trống');
-        }
-        return buildLabelCellInnerHtml({
-            name,
-            capacity: product?.capacity,
-            sku,
-            barcodeValue,
-            barcodeDataUrl,
-            priceStr,
-            serialLine,
-        });
+    const qty = Math.max(1, Math.min(500, Number(quantity) || 1));
+    const cellInner = buildLabelCellInnerHtml({
+        name,
+        capacity: product?.capacity,
+        sku,
+        barcodeValue,
+        barcodeDataUrl,
+        priceStr,
     });
+    const cellInners = Array.from({ length: qty }, () => cellInner);
     const sheetsHtml = buildSheetsFromCellInnerHtmls(cellInners);
     return buildProductBarcodePrintDocumentHtml(`Tem nhập hàng - ${sku}`, sheetsHtml);
 };
@@ -143,27 +107,8 @@ const ImportGoodsPage = () => {
     const [returnNote, setReturnNote] = useState('');
     const [returnRows, setReturnRows] = useState([]);
     const [returnSubmitting, setReturnSubmitting] = useState(false);
-    const [returnSerialModalOpen, setReturnSerialModalOpen] = useState(false);
-    const [returnSerialModalPid, setReturnSerialModalPid] = useState(null);
-    const [returnSerialModalSku, setReturnSerialModalSku] = useState('');
-    const [returnSerialModalName, setReturnSerialModalName] = useState('');
-    const [returnSerialModalQty, setReturnSerialModalQty] = useState(0);
-    const [returnSerialModalText, setReturnSerialModalText] = useState('');
 
     const currentLocationId = useBranchStore((s) => s.currentLocationId);
-
-    const [serialModalOpen, setSerialModalOpen] = useState(false);
-    /** 'create' = phiếu đang tạo/sửa trong modal; 'detail' = xem phiếu đã lưu (nhập seri tạm để in, không ghi DB) */
-    const [serialModalSource, setSerialModalSource] = useState('create');
-    const [serialModalDetailItemKey, setSerialModalDetailItemKey] = useState(null);
-    const [serialModalProductId, setSerialModalProductId] = useState(null);
-    const [serialModalSku, setSerialModalSku] = useState('');
-    const [serialModalName, setSerialModalName] = useState('');
-    const [serialModalQuantity, setSerialModalQuantity] = useState(1);
-    const [serialModalText, setSerialModalText] = useState('');
-    const [serialAutoLoading, setSerialAutoLoading] = useState(false);
-    /** Seri nhập thêm khi xem chi tiết phiếu (key = _id dòng hàng hoặc fallback index) */
-    const [detailSerialOverrides, setDetailSerialOverrides] = useState({});
 
     const printFrameRef = useRef(null);
     const [printSrcDoc, setPrintSrcDoc] = useState('');
@@ -212,10 +157,6 @@ const ImportGoodsPage = () => {
         };
         loadSuppliers();
     }, [supplierRefreshKey]);
-
-    useEffect(() => {
-        setDetailSerialOverrides({});
-    }, [expandedId]);
 
     const handleCreateSupplier = async () => {
         setEditingSupplier(null);
@@ -318,7 +259,6 @@ const ImportGoodsPage = () => {
                 product: it.product || { _id: it.product },
                 quantity: it.quantity || 1,
                 unitPrice: it.unitPrice || 0,
-                serials: Array.isArray(it.serials) ? it.serials : [],
             })),
         );
         setProductSearch('');
@@ -375,7 +315,7 @@ const ImportGoodsPage = () => {
         }
         setCreateRows((prev) => [
             ...prev,
-            { product, quantity: 1, unitPrice: product.costPrice || product.price || 0, serials: [] },
+            { product, quantity: 1, unitPrice: product.costPrice || product.price || 0 },
         ]);
         setProductSearch('');
         setProductSearchResults([]);
@@ -388,9 +328,7 @@ const ImportGoodsPage = () => {
                 if (r.product._id !== productId) return r;
                 if (field === 'quantity') {
                     const nextQty = Math.max(1, parseInt(value, 10) || 0);
-                    const serials = Array.isArray(r.serials) ? r.serials : [];
-                    const nextSerials = serials.length > nextQty ? serials.slice(0, nextQty) : serials;
-                    return { ...r, quantity: nextQty, serials: nextSerials };
+                    return { ...r, quantity: nextQty };
                 }
                 const updated = { ...r, [field]: parseFloat(value) || 0 };
                 return updated;
@@ -416,13 +354,6 @@ const ImportGoodsPage = () => {
             toast.error('Vui lòng thêm ít nhất một sản phẩm');
             return;
         }
-        for (const r of createRows) {
-            const check = validateItemSerialsVsQty(r.quantity, r.serials);
-            if (!check.ok) {
-                toast.error(`${r.product?.sku || 'Dòng hàng'}: ${check.message}`);
-                return;
-            }
-        }
         setSubmitting(true);
         try {
             const payload = {
@@ -433,7 +364,6 @@ const ImportGoodsPage = () => {
                     product: r.product?._id || r.product,
                     quantity: r.quantity,
                     unitPrice: r.unitPrice,
-                    serials: Array.isArray(r.serials) ? r.serials : [],
                 })),
             };
             if (editingStockInId) {
@@ -460,6 +390,88 @@ const ImportGoodsPage = () => {
         }
     };
 
+    const handlePrintStockInTable = () => {
+        if (!expandedDetail) return;
+        const si = expandedDetail;
+        const supplierLabel = si.supplier ? `${si.supplier.code} - ${si.supplier.name}` : '—';
+        const branchLabel = si.location ? `${si.location.code} - ${si.location.name}` : '—';
+        const creator = si.createdBy
+            ? `${si.createdBy.firstName || ''} ${si.createdBy.lastName || ''}`.trim() || si.createdBy.username
+            : '—';
+        const statusLabel = si.status === 'confirmed' ? 'Đã xác nhận' : 'Nháp';
+
+        const rowsHtml = (si.items || [])
+            .map((it) => {
+                const sku = it.product?.sku ?? '—';
+                const name = it.product?.name ?? '—';
+                const qty = it.quantity ?? 0;
+                const unit = it.unitPrice ?? 0;
+                const lineTotal = it.totalPrice != null ? it.totalPrice : qty * unit;
+                return `<tr>
+                    <td>${htmlEscape(sku)}</td>
+                    <td>${htmlEscape(name)}</td>
+                    <td class="num">${htmlEscape(String(qty))}</td>
+                    <td class="num">${htmlEscape(formatVND(unit))}</td>
+                    <td class="num">${htmlEscape(formatVND(lineTotal))}</td>
+                </tr>`;
+            })
+            .join('');
+
+        const docTitle = `Phiếu nhập hàng ${si.code}`;
+        const body = `
+            <h1>${htmlEscape(docTitle)}</h1>
+            <div class="meta">
+                <div><strong>Nhà cung cấp:</strong> ${htmlEscape(supplierLabel)}</div>
+                <div><strong>Chi nhánh:</strong> ${htmlEscape(branchLabel)}</div>
+                <div><strong>Người tạo:</strong> ${htmlEscape(creator)} — ${htmlEscape(formatDate(si.createdAt))}</div>
+                <div><strong>Trạng thái:</strong> ${htmlEscape(statusLabel)}</div>
+                ${si.note?.trim() ? `<div><strong>Ghi chú:</strong> ${htmlEscape(si.note)}</div>` : ''}
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã hàng</th>
+                        <th>Tên sản phẩm</th>
+                        <th class="num">Số lượng</th>
+                        <th class="num">Đơn giá</th>
+                        <th class="num">Thành tiền</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+            <p class="total">Tổng cộng: ${htmlEscape(formatVND(si.totalAmount))}</p>
+        `;
+
+        const html = `<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"/><title>${htmlEscape(docTitle)}</title>
+            <style>
+                body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; color: #111; font-size: 12px; }
+                h1 { font-size: 18px; margin: 0 0 12px; }
+                .meta { margin-bottom: 14px; line-height: 1.55; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th, td { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+                th { background: #dbeafe; font-weight: 600; }
+                .num { text-align: right; font-variant-numeric: tabular-nums; }
+                .total { margin-top: 14px; text-align: right; font-weight: 700; font-size: 13px; }
+                @media print { body { padding: 8px; } }
+            </style></head><body>${body}</body></html>`;
+
+        const win = window.open('', '_blank');
+        if (!win) {
+            toast.error('Trình duyệt chặn cửa sổ in. Cho phép popup và thử lại.');
+            return;
+        }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+            try {
+                win.print();
+            } finally {
+                win.close();
+            }
+        }, 300);
+    };
+
     const toggleExpand = async (si) => {
         const id = si._id;
         if (expandedId === id) {
@@ -484,15 +496,6 @@ const ImportGoodsPage = () => {
             title: 'Xác nhận phiếu nhập hàng',
             message: `Xác nhận phiếu ${si.code} sẽ cộng tồn kho theo số lượng nhập. Bạn có chắc?`,
             onConfirm: async () => {
-                const lines = Array.isArray(si?.items) ? si.items : [];
-                for (const it of lines) {
-                    const v = validateItemSerialsVsQty(it.quantity, it.serials);
-                    if (!v.ok) {
-                        const sku = it.product?.sku || it.product?._id || '—';
-                        toast.error(`${sku}: ${v.message}`);
-                        return;
-                    }
-                }
                 try {
                     await confirmStockIn(si._id);
                     toast.success('Đã xác nhận phiếu và cập nhật tồn kho');
@@ -587,46 +590,11 @@ const ImportGoodsPage = () => {
                 if ((r.product?._id || r.product) !== productId) return r;
                 if (field === 'quantity') {
                     const v = Math.max(0, Math.min(r.maxQuantity, parseInt(value, 10) || 0));
-                    const serials = Array.isArray(r.serials) ? r.serials : [];
-                    const nextSerials = serials.length > v ? serials.slice(0, v) : serials;
-                    return { ...r, quantity: v, serials: nextSerials };
+                    return { ...r, quantity: v };
                 }
                 return { ...r, [field]: value };
             }),
         );
-    };
-
-    const openReturnSerialModal = (row) => {
-        const pid = row.product?._id || row.product;
-        if (!pid) return;
-        setReturnSerialModalPid(pid);
-        setReturnSerialModalSku(row.product?.sku || '');
-        setReturnSerialModalName(row.product?.name || '');
-        setReturnSerialModalQty(Number(row.quantity || 0));
-        setReturnSerialModalText((Array.isArray(row.serials) ? row.serials : []).join('\n'));
-        setReturnSerialModalOpen(true);
-    };
-
-    const closeReturnSerialModal = () => {
-        setReturnSerialModalOpen(false);
-        setReturnSerialModalPid(null);
-        setReturnSerialModalText('');
-    };
-
-    const saveReturnSerialModal = () => {
-        const pid = returnSerialModalPid;
-        if (!pid) return;
-        const serials = parseSerialText(returnSerialModalText);
-        setReturnRows((prev) =>
-            prev.map((r) => {
-                const rid = r.product?._id || r.product;
-                if (String(rid) !== String(pid)) return r;
-                return { ...r, serials };
-            }),
-        );
-        setReturnSerialModalOpen(false);
-        setReturnSerialModalPid(null);
-        toast.success(`Đã lưu ${serials.length} seri/IMEI cho dòng trả`);
     };
 
     const handleReturnSubmit = async (e) => {
@@ -635,11 +603,8 @@ const ImportGoodsPage = () => {
         const merged = {};
         for (const r of withQty) {
             const pid = r.product?._id || r.product;
-            if (!merged[pid]) merged[pid] = { product: pid, quantity: 0, reason: r.reason || '', serials: [] };
+            if (!merged[pid]) merged[pid] = { product: pid, quantity: 0, reason: r.reason || '' };
             merged[pid].quantity += r.quantity;
-            if (Array.isArray(r.serials) && r.serials.length) {
-                merged[pid].serials.push(...r.serials);
-            }
         }
         const items = Object.values(merged);
         if (items.length === 0) {
@@ -670,189 +635,19 @@ const ImportGoodsPage = () => {
 
     const totalAmount = createRows.reduce((s, r) => s + r.quantity * (r.unitPrice || 0), 0);
 
-    const openSerialModal = (row) => {
-        const pid = row.product?._id;
-        if (!pid) return;
-        setSerialModalSource('create');
-        setSerialModalDetailItemKey(null);
-        setSerialModalProductId(pid);
-        setSerialModalSku(row.product?.sku || '');
-        setSerialModalName(row.product?.name || '');
-        setSerialModalQuantity(row.quantity || 1);
-        setSerialModalText((Array.isArray(row.serials) ? row.serials : []).join('\n'));
-        setSerialModalOpen(true);
-    };
-
-    const getDetailItemKey = (it, rowIdx) =>
-        String(it?._id || (expandedDetail?._id != null ? `${expandedDetail._id}-${rowIdx}` : `row-${rowIdx}`));
-
-    const getSerialsForDetailItem = (it, rowIdx) => {
-        const key = getDetailItemKey(it, rowIdx);
-        const fromOverride = detailSerialOverrides[key];
-        if (Array.isArray(fromOverride) && fromOverride.length) return fromOverride;
-        return Array.isArray(it?.serials) ? it.serials : [];
-    };
-
-    const openSerialModalForDetailItem = (it, rowIdx) => {
-        const pid = it.product?._id;
-        if (!pid) {
-            toast.error('Không xác định được sản phẩm');
-            return;
-        }
-        const key = getDetailItemKey(it, rowIdx);
-        setSerialModalSource('detail');
-        setSerialModalDetailItemKey(key);
-        setSerialModalProductId(pid);
-        setSerialModalSku(it.product?.sku || '');
-        setSerialModalName(it.product?.name || '');
-        setSerialModalQuantity(it.quantity || 1);
-        const existing = getSerialsForDetailItem(it, rowIdx);
-        setSerialModalText(existing.join('\n'));
-        setSerialModalOpen(true);
-    };
-
-    const saveSerialModal = () => {
-        const pid = serialModalProductId;
-        if (!pid) return;
-        const serials = parseSerialText(serialModalText);
-        if (serialModalSource === 'create') {
-            const v = validateItemSerialsVsQty(serialModalQuantity, serials);
-            if (!v.ok) {
-                toast.error(v.message);
-                return;
-            }
-        }
-        if (serialModalSource === 'detail' && serialModalDetailItemKey) {
-            setDetailSerialOverrides((prev) => ({ ...prev, [serialModalDetailItemKey]: serials }));
-            setSerialModalOpen(false);
-            setSerialModalProductId(null);
-            setSerialModalDetailItemKey(null);
-            setSerialModalSource('create');
-            toast.success(`Đã lưu ${serials.length} seri/IMEI (chỉ trên trình duyệt — dùng để in tem)`);
-            return;
-        }
-        setCreateRows((prev) =>
-            prev.map((r) => (r.product?._id === pid ? { ...r, serials } : r)),
-        );
-        setSerialModalOpen(false);
-        setSerialModalProductId(null);
-        setSerialModalDetailItemKey(null);
-        setSerialModalSource('create');
-        toast.success(`Đã lưu ${serials.length} seri/IMEI`);
-    };
-
-    const closeSerialModal = () => {
-        setSerialModalOpen(false);
-        setSerialModalProductId(null);
-        setSerialModalDetailItemKey(null);
-        setSerialModalSource('create');
-    };
-
-    const getExcludeSerialsForCreateGenerate = (productId) => {
-        const ex = [];
-        for (const r of createRows) {
-            if (r.product._id === productId) continue;
-            for (const s of r.serials || []) {
-                const v = String(s || '').trim();
-                if (v) ex.push(v);
-            }
-        }
-        return ex;
-    };
-
-    const getExcludeSerialsForDetailGenerate = (currentKey) => {
-        const ex = [];
-        if (!expandedDetail?.items?.length) return ex;
-        expandedDetail.items.forEach((it, idx) => {
-            const key = getDetailItemKey(it, idx);
-            if (key === currentKey) return;
-            for (const s of getSerialsForDetailItem(it, idx)) {
-                const v = String(s || '').trim();
-                if (v) ex.push(v);
-            }
-        });
-        return ex;
-    };
-
-    const runAutoSerialsApi = async (quantity, excludeSerials) => {
-        const res = await requestGenerateStockInSerials({ quantity, excludeSerials });
-        if (!res?.success || !Array.isArray(res.data?.serials)) {
-            throw new Error(res?.message || 'Không sinh được seri');
-        }
-        return res.data.serials;
-    };
-
-    const handleAutoSerialsInModal = async () => {
-        const qty = Math.max(1, Number(serialModalQuantity) || 1);
-        setSerialAutoLoading(true);
-        try {
-            let exclude = [];
-            if (serialModalSource === 'detail' && serialModalDetailItemKey) {
-                exclude = getExcludeSerialsForDetailGenerate(serialModalDetailItemKey);
-            } else if (serialModalProductId) {
-                exclude = getExcludeSerialsForCreateGenerate(serialModalProductId);
-            }
-            const serials = await runAutoSerialsApi(qty, exclude);
-            setSerialModalText(serials.join('\n'));
-            toast.success(`Đã sinh ${serials.length} mã seri (không trùng phiếu khác / SKU)`);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || e?.message || 'Sinh seri thất bại');
-        } finally {
-            setSerialAutoLoading(false);
-        }
-    };
-
-    const handleAutoSerialsForCreateRow = async (row) => {
-        const qty = Math.max(1, Number(row.quantity) || 1);
-        setSerialAutoLoading(true);
-        try {
-            const exclude = getExcludeSerialsForCreateGenerate(row.product._id);
-            const serials = await runAutoSerialsApi(qty, exclude);
-            setCreateRows((prev) =>
-                prev.map((r) => (r.product._id === row.product._id ? { ...r, serials } : r)),
-            );
-            toast.success(`Đã sinh ${serials.length} seri — ${row.product.sku}`);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || e?.message || 'Sinh seri thất bại');
-        } finally {
-            setSerialAutoLoading(false);
-        }
-    };
-
-    const handleAutoSerialsForDetailItem = async (it, rowIdx) => {
-        const key = getDetailItemKey(it, rowIdx);
-        const qty = Math.max(1, Number(it.quantity) || 1);
-        setSerialAutoLoading(true);
-        try {
-            const exclude = getExcludeSerialsForDetailGenerate(key);
-            const serials = await runAutoSerialsApi(qty, exclude);
-            setDetailSerialOverrides((prev) => ({ ...prev, [key]: serials }));
-            toast.success(`Đã sinh ${serials.length} seri (chỉ trên trình duyệt — lưu phiếu cần nhập khi chỉnh sửa nháp)`);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || e?.message || 'Sinh seri thất bại');
-        } finally {
-            setSerialAutoLoading(false);
-        }
-    };
-
     const printLabelsForRow = (row) => {
         const qty = Number(row.quantity || 0);
-        const serials = Array.isArray(row.serials) ? row.serials : [];
         const raw = (row.product?.barcode || row.product?.sku || '').toString().trim();
         if (!raw) {
             toast.error('Sản phẩm thiếu mã vạch hoặc mã hàng để in tem');
             return;
         }
-        if (!serials.length) {
-            toast.error('Vui lòng nhập seri/IMEI trước khi in tem');
-            return;
-        }
-        if (qty > 0 && serials.length !== qty) {
-            toast.error(`Số seri/IMEI (${serials.length}) phải đúng bằng số lượng (${qty})`);
+        if (qty < 1) {
+            toast.error('Số lượng phải ≥ 1 để in tem');
             return;
         }
         try {
-            const html = buildStockInPrintHtml({ product: row.product, serials });
+            const html = buildStockInPrintHtml({ product: row.product, quantity: qty });
             setPrintSrcDoc(stampPrintHtml(html));
         } catch (e) {
             toast.error(
@@ -865,30 +660,23 @@ const ImportGoodsPage = () => {
             return;
         }
         setTimeout(() => {
-            // srcDoc update triggers onLoad
             printFrameRef.current?.contentWindow?.focus?.();
         }, 0);
     };
 
-    const printLabelsForStockInItem = (it, rowIdx) => {
+    const printLabelsForStockInItem = (it) => {
         const qty = Number(it?.quantity || 0);
-        const serials = getSerialsForDetailItem(it, rowIdx);
         const raw = (it?.product?.barcode || it?.product?.sku || '').toString().trim();
         if (!raw) {
             toast.error('Sản phẩm thiếu mã vạch hoặc mã hàng để in tem');
             return;
         }
-        if (!serials.length) {
-            openSerialModalForDetailItem(it, rowIdx);
-            toast.info('Nhập seri/IMEI rồi bấm Lưu, sau đó bấm In lại');
-            return;
-        }
-        if (qty > 0 && serials.length !== qty) {
-            toast.error(`Số seri/IMEI (${serials.length}) phải đúng bằng số lượng (${qty})`);
+        if (qty < 1) {
+            toast.error('Số lượng phải ≥ 1 để in tem');
             return;
         }
         try {
-            const html = buildStockInPrintHtml({ product: it.product, serials });
+            const html = buildStockInPrintHtml({ product: it.product, quantity: qty });
             setPrintSrcDoc(stampPrintHtml(html));
         } catch (e) {
             toast.error(
@@ -902,58 +690,116 @@ const ImportGoodsPage = () => {
     };
 
     return (
-        <div className='flex-1 p-6 bg-base-200 overflow-y-auto'>
+        <div className='min-h-full p-6 bg-base-200'>
             <div className='container mx-auto'>
                 <h1 className='text-2xl font-bold text-base-content mb-6'>Nhập hàng</h1>
 
                 <div className='space-y-4'>
-                    <div className='flex flex-wrap items-center justify-between gap-4'>
-                        <button
-                            onClick={openCreateModal}
-                            className='btn btn-primary gap-2'
-                        >
-                            <Plus className='w-5 h-5' />
-                            Tạo phiếu nhập hàng
-                        </button>
-                        <div className='flex flex-wrap gap-2'>
-                            <input
-                                type='text'
-                                className='input input-bordered input-sm w-36'
-                                placeholder='Mã phiếu'
-                                value={filters.code}
-                                onChange={(e) => setFilters((f) => ({ ...f, code: e.target.value }))}
-                            />
-                            <select
-                                className='select select-bordered select-sm w-44'
-                                value={filters.supplierId}
-                                onChange={(e) => setFilters((f) => ({ ...f, supplierId: e.target.value }))}
+                    <div className='flex flex-wrap items-end justify-between gap-4'>
+                        <div className='flex flex-col gap-0.5'>
+                            <span
+                                className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 block'
+                                aria-hidden
                             >
-                                <option value=''>Tất cả nhà cung cấp</option>
-                                {suppliers.map((s) => (
-                                    <option key={s._id} value={s._id}>{s.code} - {s.name}</option>
-                                ))}
-                            </select>
-                            <input
-                                type='date'
-                                className='input input-bordered input-sm w-40'
-                                value={filters.fromDate}
-                                onChange={(e) => setFilters((f) => ({ ...f, fromDate: e.target.value }))}
-                            />
-                            <input
-                                type='date'
-                                className='input input-bordered input-sm w-40'
-                                value={filters.toDate}
-                                onChange={(e) => setFilters((f) => ({ ...f, toDate: e.target.value }))}
-                            />
-                            <select
-                                className='select select-bordered select-sm w-36'
-                                value={filters.status}
-                                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                                &nbsp;
+                            </span>
+                            <button
+                                onClick={openCreateModal}
+                                className='btn btn-primary gap-2'
+                                type='button'
                             >
-                                <option value=''>Tất cả</option>
-                                <option value='draft'>Nháp</option>
-                                <option value='confirmed'>Đã xác nhận</option>
-                            </select>
+                                <Plus className='w-5 h-5' />
+                                Tạo phiếu nhập hàng
+                            </button>
+                        </div>
+                        <div className='flex flex-wrap items-end gap-2'>
+                            <div className='flex flex-col gap-0.5'>
+                                <label className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 leading-none flex items-end'>
+                                    Mã phiếu
+                                </label>
+                                <input
+                                    type='text'
+                                    className='input input-bordered input-sm w-36'
+                                    placeholder='Mã phiếu'
+                                    value={filters.code}
+                                    onChange={(e) => setFilters((f) => ({ ...f, code: e.target.value }))}
+                                />
+                            </div>
+                            <div className='flex flex-col gap-0.5'>
+                                <label className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 leading-none flex items-end'>
+                                    Nhà cung cấp
+                                </label>
+                                <select
+                                    className='select select-bordered select-sm w-44'
+                                    value={filters.supplierId}
+                                    onChange={(e) => setFilters((f) => ({ ...f, supplierId: e.target.value }))}
+                                >
+                                    <option value=''>Tất cả nhà cung cấp</option>
+                                    {suppliers.map((s) => (
+                                        <option key={s._id} value={s._id}>{s.code} - {s.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className='flex flex-col gap-0.5'>
+                                <label className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 leading-none flex items-end'>
+                                    Từ ngày
+                                </label>
+                                <input
+                                    type='date'
+                                    className='input input-bordered input-sm w-40'
+                                    value={filters.fromDate}
+                                    title='Từ ngày'
+                                    onChange={(e) => {
+                                        const fromDate = e.target.value;
+                                        setFilters((f) => {
+                                            const next = { ...f, fromDate };
+                                            if (!fromDate) {
+                                                next.toDate = '';
+                                            } else if (f.toDate && f.toDate < fromDate) {
+                                                next.toDate = fromDate;
+                                            }
+                                            return next;
+                                        });
+                                    }}
+                                />
+                            </div>
+                            <div className='flex flex-col gap-0.5'>
+                                <label className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 leading-none flex items-end'>
+                                    Đến ngày
+                                </label>
+                                <input
+                                    type='date'
+                                    className='input input-bordered input-sm w-40 disabled:opacity-60'
+                                    value={filters.toDate}
+                                    title={
+                                        filters.fromDate
+                                            ? 'Đến ngày (không nhỏ hơn từ ngày)'
+                                            : 'Chọn từ ngày trước'
+                                    }
+                                    disabled={!filters.fromDate}
+                                    min={filters.fromDate || undefined}
+                                    onChange={(e) => {
+                                        const toDate = e.target.value;
+                                        if (!filters.fromDate) return;
+                                        if (toDate && toDate < filters.fromDate) return;
+                                        setFilters((f) => ({ ...f, toDate }));
+                                    }}
+                                />
+                            </div>
+                            <div className='flex flex-col gap-0.5'>
+                                <label className='text-[10px] uppercase tracking-wide text-base-content/50 h-3.5 shrink-0 leading-none flex items-end'>
+                                    Trạng thái
+                                </label>
+                                <select
+                                    className='select select-bordered select-sm w-36'
+                                    value={filters.status}
+                                    onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                                >
+                                    <option value=''>Tất cả</option>
+                                    <option value='draft'>Nháp</option>
+                                    <option value='confirmed'>Đã xác nhận</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -1060,45 +906,43 @@ const ImportGoodsPage = () => {
                                                                                         </tr>
                                                                                     </thead>
                                                                                     <tbody>
-                                                                                        {expandedDetail.items?.map((it, idx) => {
-                                                                                            const serialCount = getSerialsForDetailItem(it, idx).length;
-                                                                                            return (
-                                                                                                <tr key={idx}>
-                                                                                                    <td>{it.product?.sku || '—'}</td>
-                                                                                                    <td>{it.product?.name || '—'}</td>
-                                                                                                    <td className='text-right'>{it.quantity}</td>
-                                                                                                    <td className='text-right'>{formatVND(it.unitPrice)}</td>
-                                                                                                    <td className='text-right'>{formatVND(it.totalPrice)}</td>
-                                                                                                    <td className='text-center'>
-                                                                                                        <div className='flex flex-wrap items-center justify-center gap-1'>
-                                                                                                            <button
-                                                                                                                type='button'
-                                                                                                                className='btn btn-outline btn-xs gap-1'
-                                                                                                                onClick={() => handleAutoSerialsForDetailItem(it, idx)}
-                                                                                                                disabled={serialAutoLoading}
-                                                                                                                title='Sinh tự động seri (in tem; phiếu đã xác nhận chỉ lưu tạm trên trình duyệt)'
-                                                                                                            >
-                                                                                                                <Wand2 className='w-3.5 h-3.5' />
-                                                                                                                Tự động
-                                                                                                            </button>
-                                                                                                            <button
-                                                                                                                type='button'
-                                                                                                                className='btn btn-primary btn-xs gap-1'
-                                                                                                                onClick={() => printLabelsForStockInItem(it, idx)}
-                                                                                                                title='In tem phiếu (mỗi seri/IMEI 1 tem). Chưa có seri trên phiếu thì bấm để nhập tạm.'
-                                                                                                            >
-                                                                                                                <Printer className='w-3.5 h-3.5' />
-                                                                                                                In{serialCount ? ` (${serialCount})` : ''}
-                                                                                                            </button>
-                                                                                                        </div>
-                                                                                                    </td>
-                                                                                                </tr>
-                                                                                            );
-                                                                                        })}
+                                                                                        {expandedDetail.items?.map((it, idx) => (
+                                                                                            <tr key={idx}>
+                                                                                                <td>{it.product?.sku || '—'}</td>
+                                                                                                <td>{it.product?.name || '—'}</td>
+                                                                                                <td className='text-right'>{it.quantity}</td>
+                                                                                                <td className='text-right'>{formatVND(it.unitPrice)}</td>
+                                                                                                <td className='text-right'>{formatVND(it.totalPrice)}</td>
+                                                                                                <td className='text-center'>
+                                                                                                    <button
+                                                                                                        type='button'
+                                                                                                        className='btn btn-primary btn-xs gap-1'
+                                                                                                        onClick={() => printLabelsForStockInItem(it)}
+                                                                                                        title='In tem theo số lượng dòng (layout 70×22mm)'
+                                                                                                    >
+                                                                                                        <Printer className='w-3.5 h-3.5' />
+                                                                                                        In
+                                                                                                    </button>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        ))}
                                                                                     </tbody>
                                                                                 </table>
                                                                             </div>
-                                                                            <p className='font-bold'>Tổng: {formatVND(expandedDetail.totalAmount)}</p>
+                                                                            <div className='flex flex-wrap justify-between items-center gap-2 mt-2'>
+                                                                                <button
+                                                                                    type='button'
+                                                                                    className='btn btn-outline btn-sm gap-2'
+                                                                                    onClick={handlePrintStockInTable}
+                                                                                    title='In bảng chi tiết phiếu nhập'
+                                                                                >
+                                                                                    <Printer className='w-4 h-4' />
+                                                                                    In phiếu nhập
+                                                                                </button>
+                                                                                <p className='font-bold'>
+                                                                                    Tổng: {formatVND(expandedDetail.totalAmount)}
+                                                                                </p>
+                                                                            </div>
                                                                             {expandedDetail.status === 'draft' && (
                                                                                 <div className='flex gap-2'>
                                                                                     <button
@@ -1186,25 +1030,27 @@ const ImportGoodsPage = () => {
 
                 {/* Modal tạo phiếu nhập */}
                 {showCreateModal && (
+                    <ModalPortal>
                     <dialog
                         className='modal modal-open'
+                        data-theme='light'
                         role='dialog'
                         aria-modal='true'
                     >
-                        <div className='modal-box flex flex-col max-w-7xl h-[90vh] max-h-[90vh] p-0'>
-                            <div className='px-6 pt-6 pb-4 shrink-0'>
-                                <h3 className='font-bold text-lg'>{editingStockInId ? 'Chỉnh sửa phiếu nhập hàng' : 'Tạo phiếu nhập hàng'}</h3>
+                        <div className='modal-box flex flex-col max-w-7xl h-[90vh] max-h-[90vh] p-0 bg-white text-base-content border border-base-200 shadow-2xl'>
+                            <div className='px-6 pt-6 pb-4 shrink-0 bg-white'>
+                                <h3 className='font-bold text-lg text-base-content'>{editingStockInId ? 'Chỉnh sửa phiếu nhập hàng' : 'Tạo phiếu nhập hàng'}</h3>
                             </div>
                             <form
                                 onSubmit={handleCreateSubmit}
                                 onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                                 className='flex flex-col flex-1 min-h-0'
                             >
-                                <div className='flex-1 overflow-y-auto px-6 space-y-4'>
+                                <div className='flex-1 overflow-y-auto px-6 space-y-4 bg-white'>
                                     <div className='grid grid-cols-2 gap-4'>
                                         <div>
                                             <label className='label'>
-                                                <span className='label-text font-semibold'>Mã phiếu</span>
+                                                <span className='label-text font-semibold text-base-content'>Mã phiếu</span>
                                             </label>
                                             <input
                                                 type='text'
@@ -1267,8 +1113,7 @@ const ImportGoodsPage = () => {
                                             <span className='label-text font-semibold'>Sản phẩm nhập</span>
                                         </label>
                                         <p className='text-xs text-base-content/60 -mt-1 mb-2'>
-                                            Mỗi dòng hàng = 1 SKU; số lượng N thì nhập đủ N seri/IMEI (hoặc để trống nếu
-                                            không theo dõi) ở cột Tem → Seri/IMEI.
+                                            Mỗi dòng hàng = 1 SKU. Cột Tem: in nhãn mã vạch theo số lượng dòng.
                                         </p>
                                         <div
                                             className='relative mb-4'
@@ -1352,7 +1197,6 @@ const ImportGoodsPage = () => {
                                                 <tbody>
                                                     {createRows.map((r) => {
                                                         const imgUrl = r.product.images?.[0] || r.product.image || '';
-                                                        const serialCount = Array.isArray(r.serials) ? r.serials.length : 0;
                                                         return (
                                                             <tr key={r.product._id}>
                                                                 <td className='w-12'>
@@ -1409,35 +1253,15 @@ const ImportGoodsPage = () => {
                                                                 </td>
                                                                 <td className='text-right font-medium'> {formatVND(r.quantity * (r.unitPrice || 0))}</td>
                                                                 <td className='text-center'>
-                                                                    <div className='flex flex-wrap items-center justify-center gap-1'>
-                                                                        <button
-                                                                            type='button'
-                                                                            className='btn btn-outline btn-xs gap-1'
-                                                                            onClick={() => handleAutoSerialsForCreateRow(r)}
-                                                                            disabled={serialAutoLoading}
-                                                                            title='Sinh tự động đúng số lượng dòng — không trùng seri phiếu khác / SKU'
-                                                                        >
-                                                                            <Wand2 className='w-3.5 h-3.5' />
-                                                                            Tự động
-                                                                        </button>
-                                                                        <button
-                                                                            type='button'
-                                                                            className='btn btn-outline btn-xs'
-                                                                            onClick={() => openSerialModal(r)}
-                                                                            title='Nhập seri/IMEI'
-                                                                        >
-                                                                            Seri/IMEI {serialCount ? `(${serialCount})` : ''}
-                                                                        </button>
-                                                                        <button
-                                                                            type='button'
-                                                                            className='btn btn-primary btn-xs gap-1'
-                                                                            onClick={() => printLabelsForRow(r)}
-                                                                            title='In tem phiếu (mỗi seri/IMEI 1 tem)'
-                                                                        >
-                                                                            <Printer className='w-3.5 h-3.5' />
-                                                                            In
-                                                                        </button>
-                                                                    </div>
+                                                                    <button
+                                                                        type='button'
+                                                                        className='btn btn-primary btn-xs gap-1'
+                                                                        onClick={() => printLabelsForRow(r)}
+                                                                        title='In tem theo số lượng dòng (70×22mm)'
+                                                                    >
+                                                                        <Printer className='w-3.5 h-3.5' />
+                                                                        In
+                                                                    </button>
                                                                 </td>
                                                                 <td>
                                                                     <button
@@ -1460,7 +1284,7 @@ const ImportGoodsPage = () => {
                                         {createRows.length > 0 && <p className='text-right font-bold mt-2'>Tổng: {formatVND(totalAmount)}</p>}
                                     </div>
                                 </div>
-                                <div className='modal-action mt-auto shrink-0 px-6 py-4 border-t border-base-200 bg-base-100'>
+                                <div className='modal-action mt-auto shrink-0 px-6 py-4 border-t border-base-200 bg-white'>
                                     <button
                                         type='button'
                                         className='btn btn-ghost'
@@ -1499,82 +1323,7 @@ const ImportGoodsPage = () => {
                             </button>
                         </form>
                     </dialog>
-                )}
-
-                {/* Modal nhập seri/IMEI cho từng sản phẩm trong phiếu */}
-                {serialModalOpen && (
-                    <dialog className='modal modal-open' role='dialog' aria-modal='true'>
-                        <div className='modal-box max-w-3xl'>
-                            <h3 className='font-bold text-lg'>Seri/IMEI — {serialModalSku}</h3>
-                            <p className='text-sm text-base-content/60 mt-1'>
-                                {serialModalName || '—'} · Số lượng: <span className='font-medium'>{serialModalQuantity}</span>
-                            </p>
-                            {serialModalSource === 'detail' && (
-                                <p className='text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2'>
-                                    Phiếu đã lưu: seri nhập ở đây chỉ dùng để <strong>in tem</strong> trên trình duyệt này, không cập nhật lại dữ liệu phiếu trên server.
-                                </p>
-                            )}
-                            <div className='mt-4 space-y-2'>
-                                <p className='text-sm text-base-content/70'>
-                                    {serialModalSource === 'create' ? (
-                                        <>
-                                            Số mã hợp lệ (sau bỏ trùng) phải bằng số lượng dòng hàng ({serialModalQuantity}) hoặc
-                                            0. Mỗi seri một dòng; dán 1 cột từ Excel, hoặc 1 dòng tách bằng dấu phẩy/chấm
-                                            phẩy. In tem: layout <strong>chi tiết sản phẩm</strong> (70×22mm) — 1 mã/1
-                                            tem.
-                                        </>
-                                    ) : (
-                                        <>
-                                            Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong> (có thể tách bằng dấu phẩy 1
-                                            dòng). In tem cùng layout <strong>chi tiết sản phẩm</strong> (mã vạch CODE128
-                                            từ mã vạch/mã hàng, thêm từng dòng seri trên mỗi tem).
-                                        </>
-                                    )}
-                                </p>
-                                <textarea
-                                    className='textarea textarea-bordered w-full min-h-56 font-mono text-sm'
-                                    value={serialModalText}
-                                    onChange={(e) => setSerialModalText(e.target.value)}
-                                    placeholder={'VD:\n356789012345678\n356789012345679\n...'}
-                                />
-                                <p className='text-xs text-base-content/55'>
-                                    Đã nhập: <strong>{parseSerialText(serialModalText).length}</strong> mã
-                                    {serialModalSource === 'create' && (
-                                        <>
-                                            {' '}
-                                            / cần <strong>{serialModalQuantity}</strong> nếu nhập (hoặc 0 nếu không theo
-                                            dõi)
-                                        </>
-                                    )}{' '}
-                                    (bỏ trùng, kể cả khi dán CSV)
-                                </p>
-                            </div>
-                            <div className='modal-action flex-wrap gap-2'>
-                                <button type='button' className='btn btn-ghost' onClick={closeSerialModal}>
-                                    Hủy
-                                </button>
-                                <button
-                                    type='button'
-                                    className='btn btn-outline gap-2'
-                                    onClick={handleAutoSerialsInModal}
-                                    disabled={serialAutoLoading}
-                                >
-                                    {serialAutoLoading ? (
-                                        <span className='loading loading-spinner loading-sm' />
-                                    ) : (
-                                        <Wand2 className='w-4 h-4' />
-                                    )}
-                                    Sinh tự động ({serialModalQuantity} mã)
-                                </button>
-                                <button type='button' className='btn btn-primary' onClick={saveSerialModal}>
-                                    Lưu
-                                </button>
-                            </div>
-                        </div>
-                        <form method='dialog' className='modal-backdrop'>
-                            <button type='button' onClick={closeSerialModal}>Đóng</button>
-                        </form>
-                    </dialog>
+                    </ModalPortal>
                 )}
 
                 {/* Iframe in tem (ẩn) */}
@@ -1600,14 +1349,16 @@ const ImportGoodsPage = () => {
 
                 {/* Modal trả hàng */}
                 {showReturnModal && (
+                    <ModalPortal>
                     <dialog
                         className='modal modal-open'
+                        data-theme='light'
                         role='dialog'
                         aria-modal='true'
                     >
-                        <div className='modal-box flex flex-col max-w-4xl max-h-[90vh] p-0'>
-                            <div className='px-6 pt-6 pb-4 shrink-0'>
-                                <h3 className='font-bold text-lg'>Trả hàng — Phiếu nhập: {showReturnModal.code}</h3>
+                        <div className='modal-box flex flex-col max-w-4xl max-h-[90vh] p-0 bg-white text-base-content border border-base-200 shadow-2xl'>
+                            <div className='px-6 pt-6 pb-4 shrink-0 bg-white'>
+                                <h3 className='font-bold text-lg text-base-content'>Trả hàng — Phiếu nhập: {showReturnModal.code}</h3>
                                 <p className='text-sm text-base-content/60 mt-1'>
                                     Nhà cung cấp: {showReturnModal.supplier ? `${showReturnModal.supplier.code} - ${showReturnModal.supplier.name}` : '—'}
                                 </p>
@@ -1616,7 +1367,7 @@ const ImportGoodsPage = () => {
                                 onSubmit={handleReturnSubmit}
                                 className='flex flex-col flex-1 min-h-0'
                             >
-                                <div className='flex-1 overflow-y-auto px-6 space-y-4'>
+                                <div className='flex-1 overflow-y-auto px-6 space-y-4 bg-white'>
                                     <div>
                                         <label className='label'>
                                             <span className='label-text font-semibold'>Mã phiếu trả</span>
@@ -1659,7 +1410,6 @@ const ImportGoodsPage = () => {
                                                         <th>Tên sản phẩm</th>
                                                         <th className='text-right'>Số lượng còn lại</th>
                                                         <th className='text-right'>Số lượng trả</th>
-                                                        <th className='text-center'>Seri/IMEI</th>
                                                         <th>Lý do</th>
                                                     </tr>
                                                 </thead>
@@ -1667,7 +1417,6 @@ const ImportGoodsPage = () => {
                                                     {returnRows.map((r) => {
                                                         const pid = r.product?._id || r.product;
                                                         const product = r.product;
-                                                        const serialCount = Array.isArray(r.serials) ? r.serials.length : 0;
                                                         return (
                                                             <tr key={pid}>
                                                                 <td className='font-medium'>{product?.sku || '—'}</td>
@@ -1703,17 +1452,6 @@ const ImportGoodsPage = () => {
                                                                         </button>
                                                                     </div>
                                                                 </td>
-                                                                <td className='text-center'>
-                                                                    <button
-                                                                        type='button'
-                                                                        className='btn btn-outline btn-xs'
-                                                                        onClick={() => openReturnSerialModal(r)}
-                                                                        disabled={r.quantity <= 0}
-                                                                        title='Nhập seri/IMEI (nếu sản phẩm nhập có seri)'
-                                                                    >
-                                                                        Seri {serialCount ? `(${serialCount})` : ''}
-                                                                    </button>
-                                                                </td>
                                                                 <td>
                                                                     <input
                                                                         type='text'
@@ -1737,7 +1475,7 @@ const ImportGoodsPage = () => {
                                         )}
                                     </div>
                                 </div>
-                                <div className='modal-action mt-auto shrink-0 px-6 py-4 border-t border-base-200 bg-base-100'>
+                                <div className='modal-action mt-auto shrink-0 px-6 py-4 border-t border-base-200 bg-white'>
                                     {returnRows.length === 0 ? (
                                         <button
                                             type='button'
@@ -1786,44 +1524,7 @@ const ImportGoodsPage = () => {
                             </button>
                         </form>
                     </dialog>
-                )}
-
-                {/* Modal nhập seri/IMEI cho dòng trả */}
-                {returnSerialModalOpen && (
-                    <dialog className='modal modal-open' role='dialog' aria-modal='true'>
-                        <div className='modal-box max-w-3xl'>
-                            <h3 className='font-bold text-lg'>Seri/IMEI trả — {returnSerialModalSku}</h3>
-                            <p className='text-sm text-base-content/60 mt-1'>
-                                {returnSerialModalName || '—'} · Số lượng trả: <span className='font-medium'>{returnSerialModalQty}</span>
-                            </p>
-                            <div className='mt-4 space-y-2'>
-                                <p className='text-sm text-base-content/70'>
-                                    Nhập <strong>mỗi seri/IMEI trên 1 dòng</strong>. Nếu phiếu nhập có seri, hệ thống sẽ yêu cầu
-                                    nhập đúng số lượng và không cho trùng/đã trả.
-                                </p>
-                                <textarea
-                                    className='textarea textarea-bordered w-full min-h-56 font-mono text-sm'
-                                    value={returnSerialModalText}
-                                    onChange={(e) => setReturnSerialModalText(e.target.value)}
-                                    placeholder={'VD:\n356789012345678\n356789012345679\n...'}
-                                />
-                                <p className='text-xs text-base-content/55'>
-                                    Đã nhập: <strong>{parseSerialText(returnSerialModalText).length}</strong> dòng (tự loại bỏ dòng trống / trùng).
-                                </p>
-                            </div>
-                            <div className='modal-action'>
-                                <button type='button' className='btn btn-ghost' onClick={closeReturnSerialModal}>
-                                    Hủy
-                                </button>
-                                <button type='button' className='btn btn-primary' onClick={saveReturnSerialModal}>
-                                    Lưu
-                                </button>
-                            </div>
-                        </div>
-                        <form method='dialog' className='modal-backdrop'>
-                            <button type='button' onClick={closeReturnSerialModal}>Đóng</button>
-                        </form>
-                    </dialog>
+                    </ModalPortal>
                 )}
 
                 <ConfirmationModal

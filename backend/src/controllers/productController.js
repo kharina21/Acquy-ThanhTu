@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import ProductStock from '../models/ProductStock.js';
-import StockIn from '../models/StockIn.js';
 import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
 import UsageDevice from '../models/UsageDevice.js';
@@ -100,36 +99,6 @@ export const getAllProducts = async (req, res) => {
                 { sku: { $regex: re, $options: 'i' } },
                 { barcode: { $regex: re, $options: 'i' } },
             ];
-
-            // Search theo seri/IMEI (đã nhập kho) → map về productId từ StockIn.items.serials
-            const digits = String(search).replace(/\D/g, '');
-            if (digits.length >= 5) {
-                // ưu tiên match exact, fallback regex (contains)
-                const serialNeedle = search;
-                const serialRe = esc(serialNeedle);
-                const rows = await StockIn.aggregate([
-                    { $unwind: '$items' },
-                    {
-                        $match: {
-                            'items.serials': {
-                                $elemMatch: {
-                                    $regex: serialRe,
-                                    $options: 'i',
-                                },
-                            },
-                        },
-                    },
-                    { $group: { _id: '$items.product' } },
-                    { $limit: 200 },
-                ]);
-                const productIdsBySerial = rows
-                    .map((r) => r._id)
-                    .filter(Boolean)
-                    .map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
-                if (productIdsBySerial.length) {
-                    query.$or.push({ _id: { $in: productIdsBySerial } });
-                }
-            }
         }
         if (category && mongoose.Types.ObjectId.isValid(category)) {
             query.category = category;

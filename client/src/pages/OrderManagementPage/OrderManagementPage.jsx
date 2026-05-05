@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { getMyOrders, updateOrder } from '@/services/orderService';
 import { toast } from 'sonner';
-import { ShoppingCart, CheckCircle, Banknote, ChevronRight } from 'lucide-react';
+import { ShoppingCart, Banknote, ChevronRight } from 'lucide-react';
 import { OrderStatusBadge, PaymentStatusBadge, STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
+import { FilterToolbar, FilterToolbarField } from '@/components/common/FilterToolbar';
 
 const formatVND = (num) => {
     if (num == null || isNaN(num)) return '0 ₫';
@@ -46,29 +47,13 @@ const OrderManagementPage = () => {
         fetchOrders(1);
     }, [filterStatus, filterPayment]);
 
-    const handleConfirmOrder = async (order) => {
-        if (order.status !== 'pending') return;
-        setUpdatingId(order._id);
-        try {
-            const res = await updateOrder(order._id, { status: 'completed' });
-            if (res.success) {
-                toast.success('Đã xác nhận đơn hàng');
-                fetchOrders(pagination.page);
-            }
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Lỗi khi xác nhận đơn hàng');
-        } finally {
-            setUpdatingId(null);
-        }
-    };
-
     const handleConfirmPayment = async (order) => {
         if (order.paymentStatus === 'paid') return;
         setUpdatingId(order._id);
         try {
-            const res = await updateOrder(order._id, { paymentStatus: 'paid', status: 'completed' });
+            const res = await updateOrder(order._id, { paymentStatus: 'paid' });
             if (res.success) {
-                toast.success('Đã xác nhận thanh toán');
+                toast.success('Đã ghi nhận thanh toán. Trạng thái giao hàng do cửa hàng cập nhật sau khi xuất kho.');
                 fetchOrders(pagination.page);
             }
         } catch (err) {
@@ -111,28 +96,32 @@ const OrderManagementPage = () => {
                 </div>
 
                 <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
-                    <div className="flex flex-wrap gap-4 mb-6">
-                        <select
-                            className="select select-bordered w-48"
-                            value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value)}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                                <option key={k} value={k}>{v.label}</option>
-                            ))}
-                        </select>
-                        <select
-                            className="select select-bordered w-48"
-                            value={filterPayment}
-                            onChange={(e) => setFilterPayment(e.target.value)}
-                        >
-                            <option value="">Tất cả thanh toán</option>
-                            {Object.entries(PAYMENT_STATUS_CONFIG).map(([k, v]) => (
-                                <option key={k} value={k}>{v.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <FilterToolbar className="mb-6">
+                        <FilterToolbarField label="Trạng thái đơn">
+                            <select
+                                className="select select-bordered select-sm w-48 max-w-full"
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                                    <option key={k} value={k}>{v.label}</option>
+                                ))}
+                            </select>
+                        </FilterToolbarField>
+                        <FilterToolbarField label="Thanh toán">
+                            <select
+                                className="select select-bordered select-sm w-48 max-w-full"
+                                value={filterPayment}
+                                onChange={(e) => setFilterPayment(e.target.value)}
+                            >
+                                <option value="">Tất cả thanh toán</option>
+                                {Object.entries(PAYMENT_STATUS_CONFIG).map(([k, v]) => (
+                                    <option key={k} value={k}>{v.label}</option>
+                                ))}
+                            </select>
+                        </FilterToolbarField>
+                    </FilterToolbar>
 
                     {loading ? (
                         <div className="flex justify-center py-12">
@@ -186,21 +175,6 @@ const OrderManagementPage = () => {
                                                 </td>
                                                 <td className="text-right">
                                                     <div className="flex flex-wrap gap-1 justify-end">
-                                                        {order.status === 'pending' && (
-                                                            <button
-                                                                className="btn btn-xs btn-primary gap-1"
-                                                                onClick={() => handleConfirmOrder(order)}
-                                                                disabled={isUpdating}
-                                                                title="Xác nhận đơn hàng"
-                                                            >
-                                                                {isUpdating ? (
-                                                                    <span className="loading loading-spinner loading-xs" />
-                                                                ) : (
-                                                                    <CheckCircle className="w-3.5 h-3.5" />
-                                                                )}
-                                                                Xác nhận
-                                                            </button>
-                                                        )}
                                                         {order.status !== 'cancelled' && order.paymentStatus !== 'paid' && (
                                                             <button
                                                                 className="btn btn-xs btn-success gap-1"

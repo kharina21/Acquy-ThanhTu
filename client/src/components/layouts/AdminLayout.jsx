@@ -33,16 +33,18 @@ export default function AdminLayout({ children }) {
     }, [user, needsBranch, hasAnyRole, fetchLocations]);
 
     return (
-        <div className="drawer lg:drawer-open h-screen overflow-hidden">
+        <div className="drawer lg:drawer-open h-screen min-h-0 overflow-hidden">
             <input id={DRAWER_ID} type="checkbox" className="drawer-toggle" defaultChecked />
-            <div className="drawer-content flex flex-col h-full overflow-hidden">
+            <div className="drawer-content flex flex-col h-full min-h-0 overflow-hidden bg-base-200">
                 {/* Navbar — fixed at top, always visible */}
                 <div className="shrink-0 bg-white border-b border-base-content/10 z-50">
                     <AdminNavbar />
                 </div>
-                {/* Scrollable content area */}
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                    {showCreateBranchFirst ? <CreateBranchFirstPage /> : children}
+                {/* Scrollable content area — nền + min-height tránh khoảng đen phía dưới khi mở modal (portal ra body) */}
+                <div className="flex-1 min-h-0 overflow-y-auto bg-base-200">
+                    <div className="min-h-full">
+                        {showCreateBranchFirst ? <CreateBranchFirstPage /> : children}
+                    </div>
                 </div>
             </div>
             <AdminSidebar />
