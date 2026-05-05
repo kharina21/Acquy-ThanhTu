@@ -1,7 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router';
+import { getClientAppHomeUrl } from '@/lib/utils';
 
 const NotFoundPage = () => {
+    const homeUrl = getClientAppHomeUrl();
     return (
         <div className='flex flex-col items-center justify-center min-h-screen text-center bg-base-200' role="main">
             <img
@@ -15,13 +16,13 @@ const NotFoundPage = () => {
             <p className='text-xl font-semibold mb-6'>
                 Cấm đi lối này bạn ơi! Trang bạn tìm không tồn tại!🚫
             </p>
-            <Link
-                to='/'
+            <a
+                href={homeUrl}
                 className='inline-block px-6 py-3 font-medium text-white transition shadow-md bg-primary rounded-2xl hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
                 aria-label="Quay về trang chủ"
             >
                 Quay về trang chủ
-            </Link>
+            </a>
         </div>
     );
 };

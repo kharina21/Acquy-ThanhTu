@@ -34,6 +34,17 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * URL gốc của SPA trên đúng host hiện tại (dev: localhost, production: domain thật).
+ * Dùng cho link "Về trang chủ" trên trang lỗi; tránh gắn URL tĩnh một môi trường.
+ */
+export function getClientAppHomeUrl() {
+    if (typeof window === 'undefined') return '/';
+    const base = import.meta.env.BASE_URL || '/';
+    const path = base.endsWith('/') ? base : `${base}/`;
+    return `${window.location.origin}${path}`;
+}
+
 
 // Lấy tên hiển thị của người dùng (firstName + lastName hoặc username)
 export const getDisplayName = (user) => {
