@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import EmailVerification from '../models/EmailVerification.js';
+import { resolveFrontendBaseForLinks } from '../utils/publicAppUrl.js';
 
 const escapeHtml = (s) =>
     String(s ?? '')
@@ -554,7 +555,7 @@ export const sendWarrantyClaimStatusUpdateEmail = async ({
 // ─────────────────────────────────────────────────────────────
 
 function orderEmailFrontendBase() {
-    return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    return resolveFrontendBaseForLinks().replace(/\/$/, '');
 }
 
 const ORDER_STATUS_EMAIL_LABELS = {

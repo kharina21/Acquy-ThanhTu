@@ -5,6 +5,7 @@ import Location from '../models/Location.js';
 import { uploadImageFromBuffer } from '../utils/cloudinary.js';
 import { sendBatteryTradeInConfirmationEmail, sendBatteryTradeInStatusUpdateEmail } from '../libs/emailHelper.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
+import { resolveFrontendBaseForLinks } from '../utils/publicAppUrl.js';
 
 /** Admin: luôn được. Các role theo chi nhánh: chỉ khi cơ sở muốn thu cũ thuộc phạm vi được phân. */
 async function assertUserCanAccessTradeInDoc(userId, doc) {
@@ -17,7 +18,7 @@ async function assertUserCanAccessTradeInDoc(userId, doc) {
 }
 
 function getFrontendBaseUrl() {
-    return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    return resolveFrontendBaseForLinks().replace(/\/$/, '');
 }
 
 /** Mã dạng TC-YYYY-8HEX (khó đoán, tra cứu kèm email) */

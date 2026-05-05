@@ -1136,7 +1136,7 @@ export const generateVietQRForOrder = async (req, res) => {
         if (!frontendUrl) {
             return res.status(500).json({
                 message:
-                    'Chưa cấu hình URL công khai (FRONTEND_URL, PUBLIC_APP_URL hoặc RENDER_EXTERNAL_URL trên Render) — cần cho PayOS returnUrl.',
+                    'Chưa cấu hình URL công khai hợp lệ cho PayOS (PUBLIC_APP_URL hoặc RENDER_EXTERNAL_URL; không dùng FRONTEND_URL=localhost trên server).',
             });
         }
         const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;

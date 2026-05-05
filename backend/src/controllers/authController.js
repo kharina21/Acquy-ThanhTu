@@ -10,6 +10,7 @@ import { assignDefaultRole } from '../libs/rbacHelpers.js';
 import { logAuthActivity, getClientIp, getUserAgent } from '../libs/activityLogger.js';
 import { createVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../libs/emailHelper.js';
 import { getLoginDenialReason } from '../libs/loginAccessCheck.js';
+import { resolveFrontendBaseForLinks } from '../utils/publicAppUrl.js';
 
 //jwt
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -558,7 +559,7 @@ export const forgotPassword = async (req, res) => {
 
         // Tạo reset token
         const resetToken = PasswordReset.generateToken();
-        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+        const resetUrl = `${resolveFrontendBaseForLinks()}/reset-password?token=${resetToken}`;
 
         // Lưu reset token vào database
         await PasswordReset.create({
