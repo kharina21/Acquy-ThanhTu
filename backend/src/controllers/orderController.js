@@ -1121,14 +1121,34 @@ export const generateVietQRForOrder = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
 
-        const canViewAll = await canViewAllOrders(userId);
-        if (!canViewAll && order.customer?.toString() !== userId.toString()) {
-            return res.status(403).json({ message: 'Bạn không có quyền tạo mã QR cho đơn này' });
-        }
-
         const locationId = order.location?._id || order.location;
         if (!locationId) {
             return res.status(400).json({ message: 'Đơn hàng không có chi nhánh' });
+        }
+
+        const canViewAll = await canViewAllOrders(userId);
+        const userForRoles = await User.findById(userId).populate('roles', 'name').lean();
+        const roleNames = userForRoles?.roles?.map((r) => r.name) || [];
+
+        // Khách hàng: chỉ xem đơn của mình. Nhân viên bán hàng: chỉ theo chi nhánh được phân.
+        if (!canViewAll && order.customer?.toString() !== userId.toString()) {
+            const { valid: locOk } = await validateLocationForUser(userId, locationId);
+            // Không dùng userHasEquivalentRole ở đây vì test/mocks có thể override hàm này.
+            const sellerLike = roleNames.some((r) => ['seller', 'staff', 'Nhân viên bán hàng'].includes(r));
+            if (!(sellerLike && locOk)) {
+                return res.status(403).json({ message: 'Bạn không có quyền tạo mã QR cho đơn này' });
+            }
+        }
+
+        // Manager/quản lý chi nhánh: vẫn bị giới hạn theo chi nhánh được phân (admin = all)
+        if (canViewAll) {
+            const allowedLocIds = await getManagerAllowedLocationIds(userId);
+            if (allowedLocIds !== null) {
+                const locId = String(locationId || '');
+                if (!allowedLocIds.length || !allowedLocIds.includes(locId)) {
+                    return res.status(403).json({ message: 'Bạn không có quyền tạo mã QR cho đơn này' });
+                }
+            }
         }
 
         const amount = order.totalAmount || 0;
@@ -1141,9 +1161,7 @@ export const generateVietQRForOrder = async (req, res) => {
             });
         }
         const returnUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=success`;
-        console.log('returnUrl', returnUrl);
         const cancelUrl = `${frontendUrl.replace(/\/$/, '')}/orders/${id}?payment=cancelled`;
-        console.log('cancelUrl', cancelUrl);
 
         const payosItems = (order.items || []).map((i) => ({
             name: i.product?.name || 'Sản phẩm',
@@ -1356,9 +1374,27 @@ export const syncPaymentFromPayOS = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
 
+        const locationId = order.location?._id || order.location;
         const canViewAll = await canViewAllOrders(userId);
+        const userForRoles = await User.findById(userId).populate('roles', 'name').lean();
+        const roleNames = userForRoles?.roles?.map((r) => r.name) || [];
+
         if (!canViewAll && order.customer?.toString() !== userId.toString()) {
-            return res.status(403).json({ message: 'Bạn không có quyền đồng bộ đơn này' });
+            const { valid: locOk } = await validateLocationForUser(userId, locationId);
+            const sellerLike = roleNames.some((r) => ['seller', 'staff', 'Nhân viên bán hàng'].includes(r));
+            if (!(sellerLike && locOk)) {
+                return res.status(403).json({ message: 'Bạn không có quyền đồng bộ đơn này' });
+            }
+        }
+
+        if (canViewAll) {
+            const allowedLocIds = await getManagerAllowedLocationIds(userId);
+            if (allowedLocIds !== null) {
+                const locId = String(locationId || '');
+                if (!allowedLocIds.length || !allowedLocIds.includes(locId)) {
+                    return res.status(403).json({ message: 'Bạn không có quyền đồng bộ đơn này' });
+                }
+            }
         }
 
         if (order.paymentStatus === 'paid') {

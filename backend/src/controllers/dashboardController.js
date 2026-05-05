@@ -6,6 +6,8 @@ import Location from '../models/Location.js';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import { getManagerAllowedLocationIds } from '../libs/managerLocationHelper.js';
 
+const DEBUG_DASHBOARD = process.env.DEBUG_DASHBOARD === 'true';
+
 /**
  * Tính khoảng thời gian theo period (week|month) hoặc dateFrom/dateTo
  */
@@ -260,19 +262,20 @@ export const getDashboardChartData = async (req, res) => {
             { name: 'Bán Online', value: revenueOnline, count: onlineAgg[0]?.count || 0 },
         ];
 
-        // Debug log
-        console.log('[Chart Data Debug]', {
-            period,
-            start: start.toISOString(),
-            end: now.toISOString(),
-            daysInRange,
-            dailyRevenueAggCount: dailyRevenueAgg.length,
-            dailyRevenueAgg: dailyRevenueAgg.slice(0, 3),
-            ordersAgg,
-            batteryAgg,
-            onlineAgg,
-            invoiceDistribution,
-        });
+        if (DEBUG_DASHBOARD) {
+            console.log('[Chart Data Debug]', {
+                period,
+                start: start.toISOString(),
+                end: now.toISOString(),
+                daysInRange,
+                dailyRevenueAggCount: dailyRevenueAgg.length,
+                dailyRevenueAgg: dailyRevenueAgg.slice(0, 3),
+                ordersAgg,
+                batteryAgg,
+                onlineAgg,
+                invoiceDistribution,
+            });
+        }
 
         return res.status(200).json({
             success: true,

@@ -3,6 +3,8 @@ import nodemailer from 'nodemailer';
 import EmailVerification from '../models/EmailVerification.js';
 import { resolveFrontendBaseForLinks } from '../utils/publicAppUrl.js';
 
+const DEBUG_EMAIL = process.env.DEBUG_EMAIL === 'true';
+
 const escapeHtml = (s) =>
     String(s ?? '')
         .replace(/&/g, '&amp;')
@@ -17,13 +19,15 @@ export const generateVerificationCode = () => {
 
 
 export const sendVerificationEmail = async (email, code) => {
-    console.log('========================================');
-    console.log('EMAIL VERIFICATION CODE');
-    console.log('========================================');
-    console.log(`To: ${email}`);
-    console.log(`Subject: Mã xác thực email - Thanh Tú Store`);
-    console.log(`Code: ${code}`);
-    console.log('========================================');
+    if (DEBUG_EMAIL) {
+        console.log('========================================');
+        console.log('EMAIL VERIFICATION CODE');
+        console.log('========================================');
+        console.log(`To: ${email}`);
+        console.log(`Subject: Mã xác thực email - Thanh Tú Store`);
+        console.log(`Code: ${code}`);
+        console.log('========================================');
+    }
 
     const smtpPort = Number(process.env.SMTP_PORT) || 465;
     const isSecurePort = smtpPort === 465;
@@ -56,23 +60,25 @@ export const sendVerificationEmail = async (email, code) => {
         `,
     });
 
-    console.log(`✅ Mã xác thực đã gửi thành công đến ${email}`);
+    if (DEBUG_EMAIL) console.log(`✅ Mã xác thực đã gửi thành công đến ${email}`);
 };
 
 
 export const sendPasswordResetEmail = async (email, resetToken, resetUrl) => {
-    // Log ra console để debug
-    console.log('========================================');
-    console.log('PASSWORD RESET EMAIL');
-    console.log('========================================');
-    console.log(`To: ${email}`);
-    console.log(`Subject: Khôi phục mật khẩu - Thanh Tú Store`);
-    console.log(`Reset Token: ${resetToken}`);
-    console.log(`Reset URL: ${resetUrl}`);
-    console.log('========================================');
-    console.log(`Link khôi phục mật khẩu: ${resetUrl}`);
-    console.log('Link này có hiệu lực trong 1 giờ.');
-    console.log('========================================');
+    if (DEBUG_EMAIL) {
+        console.log('========================================');
+        console.log('PASSWORD RESET EMAIL');
+        console.log('========================================');
+        console.log(`To: ${email}`);
+        console.log(`Subject: Khôi phục mật khẩu - Thanh Tú Store`);
+        // Lưu ý: resetToken/resetUrl là dữ liệu nhạy cảm, chỉ log khi bật DEBUG_EMAIL
+        console.log(`Reset Token: ${resetToken}`);
+        console.log(`Reset URL: ${resetUrl}`);
+        console.log('========================================');
+        console.log(`Link khôi phục mật khẩu: ${resetUrl}`);
+        console.log('Link này có hiệu lực trong 1 giờ.');
+        console.log('========================================');
+    }
 
 
     try {
@@ -122,7 +128,7 @@ export const sendPasswordResetEmail = async (email, resetToken, resetUrl) => {
         // Đóng connection sau khi gửi
         transporter.close();
 
-        console.log(`✅ Email đã được gửi thành công đến ${email}`);
+        if (DEBUG_EMAIL) console.log(`✅ Email đã được gửi thành công đến ${email}`);
     } catch (error) {
         console.error('❌ Lỗi khi gửi email:', error.message);
         console.error('Chi tiết lỗi:', error);
@@ -675,7 +681,7 @@ export const sendOrderStatusUpdateEmail = async ({
         });
 
         transporter.close?.();
-        console.log(`✅ Đã gửi email cập nhật đơn ${orderCode} tới ${toEmail}`);
+        if (DEBUG_EMAIL) console.log(`✅ Đã gửi email cập nhật đơn ${orderCode} tới ${toEmail}`);
     } catch (err) {
         console.error('❌ sendOrderStatusUpdateEmail:', err.message);
     }

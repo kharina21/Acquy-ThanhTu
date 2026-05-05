@@ -35,9 +35,13 @@ const {
         testState: state,
         mongooseMock: {
             Types: {
-                ObjectId: {
-                    isValid: vi.fn(() => true) // Bypass check ID format
-                }
+                // giả lập constructor + static isValid
+                // eslint-disable-next-line func-names
+                ObjectId: Object.assign(function (value) {
+                    this.value = value;
+                }, {
+                    isValid: vi.fn(() => true), // Bypass check ID format
+                }),
             }
         },
         managerLocationHelperMock: {

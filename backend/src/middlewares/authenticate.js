@@ -32,7 +32,6 @@ export const authenticate = async (req, res, next) => {
         req.user = user;
         next();
     } catch (error) {
-        console.log(error.message);
         if (error.name === 'JsonWebTokenError') {
             return res.status(401).json({ message: 'Unauthorized: Invalid token' });
         }
