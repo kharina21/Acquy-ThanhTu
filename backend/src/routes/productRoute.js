@@ -18,6 +18,7 @@ import {
 } from '../controllers/productController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { hasRole } from '../middlewares/rbac.js';
+import { createProductValidation, updateProductValidation, handleValidationErrors } from '../validators/productValidator.js';
 
 const router = express.Router();
 
@@ -75,8 +76,8 @@ router.get('/options', getProductOptions);
 router.post('/bulk-update-price', bulkUpdatePrice);
 router.post('/upload-image', uploadImage.array('image', 20), uploadProductImage);
 router.get('/:id', getProductById);
-router.post('/', createProduct);
-router.put('/:id', updateProduct);
+router.post('/', createProductValidation, handleValidationErrors, createProduct);
+router.put('/:id', updateProductValidation, handleValidationErrors, updateProduct);
 router.delete('/:id', deleteProduct);
 
 // Import sản phẩm từ Excel (field name: file)
