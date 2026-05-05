@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getLocations } from '@/services/locationService';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 const STORAGE_KEY = 'branch-store';
 
@@ -13,12 +14,24 @@ export const useBranchStore = create(
             loaded: false,
 
             /**
-             * @param {{ scope?: 'mine'|'all' }} opts - scope=mine: manager chỉ thấy chi nhánh được phân công
+             * @param {{ scope?: 'mine'|'all' }} opts
+             * - Không truyền scope: admin → tất cả chi nhánh; nhân viên (seller, kho, quản lý chi nhánh…) → chỉ chi nhánh được phân (Employee).
+             * - Gọi nhầm fetchLocations() không scope sẽ không còn lộ toàn bộ cơ sở cho NV.
              */
             fetchLocations: async (opts = {}) => {
                 set({ loading: true });
                 try {
-                    const params = opts.scope === 'mine' ? { scope: 'mine' } : {};
+                    const user = useAuthStore.getState().user;
+                    const roleNames = user?.roles?.map((r) => r?.name).filter(Boolean) || [];
+                    const isAdmin = roleNames.includes('admin');
+                    let scope = opts.scope;
+                    if (scope === 'all' && !isAdmin) {
+                        scope = 'mine';
+                    }
+                    if (scope === undefined) {
+                        scope = isAdmin ? 'all' : 'mine';
+                    }
+                    const params = scope === 'mine' ? { scope: 'mine' } : {};
                     const res = await getLocations(params);
                     const list = (res.success && res.data?.locations) ? res.data.locations : [];
                     const activeList = list.filter((l) => l.isActive !== false);

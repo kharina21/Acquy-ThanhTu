@@ -696,6 +696,13 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
         !isAdmin && currentLocationId ? currentLocationId : ''
     );
 
+    useEffect(() => {
+        if (allLocations.length === 1) {
+            const id = allLocations[0]?._id;
+            if (id) setSelectedLocationId(String(id));
+        }
+    }, [allLocations]);
+
     const [form, setForm] = useState(() => {
         const order = orderData?.order || {};
         let name = order.customerName || '';
@@ -873,8 +880,8 @@ function CreateWarrantyFormModal({ onClose, onSuccess, selectedProduct, orderDat
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Chọn cơ sở bảo hành */}
-                    {(isAdmin || allLocations.length > 1) && (
+                    {/* Chọn cơ sở bảo hành — chỉ khi có từ hai cơ sở trở lên; một cơ sở thì gán tự động */}
+                    {allLocations.length > 1 && (
                         <div>
                             <label className="label py-1">
                                 <span className="label-text text-xs font-semibold flex items-center gap-1">
@@ -1186,10 +1193,17 @@ export default function WarrantyManagementPage() {
                                     value={filters.locationId}
                                     onChange={(e) => setFilters((f) => ({ ...f, locationId: e.target.value }))}
                                     className="select select-bordered select-sm w-full"
-                                    disabled={!isAdmin && locations.length <= 1}
+                                    disabled={allLocations.length <= 1}
+                                    title={
+                                        allLocations.length <= 1
+                                            ? 'Chỉ lọc theo cơ sở khi có từ hai chi nhánh trở lên trong phạm vi.'
+                                            : undefined
+                                    }
                                 >
                                     <option value="">
-                                        {!isAdmin && locations.length === 1 ? `${locations[0]?.name || locations[0]?.code || 'Cơ sở của bạn'}` : 'Tất cả cơ sở'}
+                                        {allLocations.length === 1
+                                            ? `${allLocations[0]?.name || allLocations[0]?.code || 'Cơ sở'}`
+                                            : 'Tất cả cơ sở'}
                                     </option>
                                     {allLocations.map((loc) => (
                                         <option key={loc._id} value={loc._id}>

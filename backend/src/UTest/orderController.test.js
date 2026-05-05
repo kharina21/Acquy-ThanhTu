@@ -196,6 +196,7 @@ vi.mock('../models/PaymentLink.js', () => ({ default: generalModelMock }));
 vi.mock('../models/BatteryTradeIn.js', () => ({ default: generalModelMock }));
 vi.mock('../models/MemberPolicy.js', () => ({ default: generalModelMock }));
 vi.mock('../models/StockOut.js', () => ({ default: generalModelMock }));
+vi.mock('../models/Warranty.js', () => ({ default: generalModelMock }));
 
 vi.mock('../models/Order.js', () => ({ default: orderMock }));
 vi.mock('../models/Cart.js', () => ({ default: cartMock }));
@@ -214,6 +215,10 @@ vi.mock('../libs/rbacHelpers.js', () => ({ assignDefaultRole: vi.fn() }));
 vi.mock('../utils/stockOutCode.js', () => ({ generateStockOutCode: vi.fn(() => 'SO-123') }));
 vi.mock('../controllers/warrantyController.js', () => warrantyMock);
 vi.mock('bcryptjs', () => ({ default: { hash: vi.fn(() => 'hashed_pw') } }));
+vi.mock('../libs/orderNotificationHelper.js', () => ({
+    notifyOrderCustomerStatusChange: vi.fn().mockResolvedValue(undefined),
+    resolveOrderNotificationRecipient: vi.fn(),
+}));
 
 // Import controllers
 import {

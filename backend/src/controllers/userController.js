@@ -581,53 +581,61 @@ export const assignRoles = async (req, res) => {
         user.roles = [role._id];
         await user.save();
 
-        // Xử lý Employee record cho seller/manager roles
-        const staffRoles = ['seller', 'manager'];
-        if (staffRoles.includes(roleName)) {
-            // Validate locationId
-            if (!locationId) {
+        /** seller / manager / warehouse_manager: giữ bản ghi Employee (chi nhánh). Dùng resolvedRoleName, không dùng alias thô. */
+        const staffRolesWithEmployee = ['seller', 'manager', 'warehouse_manager'];
+        const isStaffWithEmployee = staffRolesWithEmployee.includes(resolvedRoleName);
+
+        if (isStaffWithEmployee) {
+            let employee = await Employee.findOne({ user: user._id, isDeleted: false });
+            let effectiveLocationId = locationId;
+
+            if (!effectiveLocationId) {
+                if (employee?.primaryLocation) {
+                    effectiveLocationId = employee.primaryLocation;
+                } else if (employee?.locations?.length) {
+                    effectiveLocationId = employee.locations[0];
+                }
+            }
+
+            if (!effectiveLocationId) {
                 return res.status(400).json({ message: 'Vui lòng chọn cơ sở cho nhân viên' });
             }
 
-            // Verify location exists
-            const location = await Location.findById(locationId);
+            const location = await Location.findById(effectiveLocationId);
             if (!location) {
                 return res.status(400).json({ message: 'Cơ sở không tồn tại' });
             }
 
-            // Tìm hoặc tạo Employee record
-            let employee = await Employee.findOne({ user: user._id, isDeleted: false });
-
             if (employee) {
-                // Cập nhật employee hiện có
-                employee.primaryLocation = locationId;
-                employee.locations = [locationId]; // Gán cơ sở làm việc
+                employee.primaryLocation = effectiveLocationId;
+                const existing = (employee.locations || []).map((id) => String(id));
+                const eff = String(effectiveLocationId);
+                if (!existing.length) {
+                    employee.locations = [effectiveLocationId];
+                } else if (!existing.includes(eff)) {
+                    employee.locations = [...employee.locations, effectiveLocationId];
+                }
+                employee.isDeleted = false;
                 employee.isActive = true;
                 await employee.save();
             } else {
-                // Tạo mới employee record
-                // Kiểm tra xem có record đã xóa mềm không
                 const deletedEmployee = await Employee.findOne({ user: user._id, isDeleted: true });
                 if (deletedEmployee) {
-                    // Khôi phục record đã xóa
                     deletedEmployee.isDeleted = false;
                     deletedEmployee.isActive = true;
-                    deletedEmployee.primaryLocation = locationId;
-                    deletedEmployee.locations = [locationId];
+                    deletedEmployee.primaryLocation = effectiveLocationId;
+                    deletedEmployee.locations = [effectiveLocationId];
                     await deletedEmployee.save();
-                    employee = deletedEmployee;
                 } else {
-                    // Tạo mới
-                    employee = await Employee.create({
+                    await Employee.create({
                         user: user._id,
-                        primaryLocation: locationId,
-                        locations: [locationId],
+                        primaryLocation: effectiveLocationId,
+                        locations: [effectiveLocationId],
                         isActive: true,
                     });
                 }
             }
         } else {
-            // Nếu không phải staff role, xóa soft employee record (nếu có)
             const employee = await Employee.findOne({ user: user._id, isDeleted: false });
             if (employee) {
                 employee.isDeleted = true;

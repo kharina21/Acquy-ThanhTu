@@ -11,7 +11,6 @@ import {
 } from '@/services/stockInService';
 import { getNextStockReturnCode, createStockReturn } from '@/services/stockReturnService';
 import { getProducts } from '@/services/productService';
-import { getLocations } from '@/services/locationService';
 import { createSupplier, updateSupplier, getNextSupplierCode, getSuppliers } from '@/services/supplierService';
 import { useBranchStore } from '@/stores/useBranchStore';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
@@ -80,7 +79,6 @@ const ImportGoodsPage = () => {
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
     const [filters, setFilters] = useState({ fromDate: '', toDate: '', status: '', code: '', supplierId: '' });
     const [debouncedCode, setDebouncedCode] = useState('');
-    const [locations, setLocations] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createCode, setCreateCode] = useState('');
@@ -108,7 +106,7 @@ const ImportGoodsPage = () => {
     const [returnRows, setReturnRows] = useState([]);
     const [returnSubmitting, setReturnSubmitting] = useState(false);
 
-    const currentLocationId = useBranchStore((s) => s.currentLocationId);
+    const { currentLocationId, locations, loaded: branchLocationsLoaded, fetchLocations } = useBranchStore();
 
     const printFrameRef = useRef(null);
     const [printSrcDoc, setPrintSrcDoc] = useState('');
@@ -139,14 +137,11 @@ const ImportGoodsPage = () => {
     };
 
     useEffect(() => {
-        const loadLocations = async () => {
-            const res = await getLocations();
-            if (res.success && res.data?.locations) {
-                setLocations(res.data.locations.filter((l) => l.isActive !== false));
-            }
-        };
-        loadLocations();
-    }, []);
+        if (!branchLocationsLoaded) {
+            // AdminLayout thường đã tải sẵn, nhưng đảm bảo khi vào trực tiếp route kho.
+            fetchLocations({ scope: 'mine' });
+        }
+    }, [branchLocationsLoaded, fetchLocations]);
 
     useEffect(() => {
         const loadSuppliers = async () => {

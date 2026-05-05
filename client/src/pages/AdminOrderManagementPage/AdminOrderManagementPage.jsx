@@ -9,19 +9,22 @@ import {
     MapPin,
     Package,
     Printer,
+    Receipt,
     ShoppingCart,
     Store,
+    Trash2,
     User,
     UserCircle,
 } from 'lucide-react';
 import { useBranchStore } from '@/stores/useBranchStore';
-import { getMyOrders, updateOrder, deletePreOrder } from '@/services/orderService';
+import { getMyOrders, updateOrder, deletePreOrder, deleteStoreInvoice, deleteOrder } from '@/services/orderService';
 import { printVatInvoiceForOrderId } from '@/lib/vatInvoicePrint';
 import { toast } from 'sonner';
 import { STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/components/order/StatusBadge';
 import { useUserRole } from '@/hooks/useUserRole';
 import LegacyInvoiceImportModal from './LegacyInvoiceImportModal';
 import { FilterToolbar, FilterToolbarField } from '@/components/common/FilterToolbar';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
 
 const STATUS_LABELS = {
     pending: 'Chờ xử lý',
@@ -109,6 +112,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
     const [deletingId, setDeletingId] = useState(null);
     const [printingInvoiceId, setPrintingInvoiceId] = useState(null);
     const [legacyImportOpen, setLegacyImportOpen] = useState(false);
+    const [invoiceDeleteTarget, setInvoiceDeleteTarget] = useState(null);
 
     useEffect(() => {
         if (!branchLocationsLoaded) {
@@ -219,6 +223,26 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
         }
     };
 
+    const confirmDeleteStoreInvoice = () => {
+        const order = invoiceDeleteTarget;
+        if (!order?._id) return;
+        setDeletingId(order._id);
+        // Ưu tiên API xóa an toàn cho đơn chờ xử lý + chưa thanh toán (áp dụng cả online).
+        const useSafeDelete = order.status === 'pending' && order.paymentStatus === 'pending';
+        const deleteFn = useSafeDelete ? deleteOrder : deleteStoreInvoice;
+        deleteFn(order._id)
+            .then(() => {
+                toast.success('Đã xóa hóa đơn');
+                fetchOrders();
+            })
+            .catch((err) => {
+                toast.error(err.response?.data?.message || 'Không xóa được hóa đơn');
+            })
+            .finally(() => {
+                setDeletingId(null);
+            });
+    };
+
     const handleViewPrintInvoice = async (order) => {
         if (!order?._id || (type !== 'invoices' && type !== 'returns')) return;
         setPrintingInvoiceId(order._id);
@@ -258,6 +282,16 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                 : 'Quản lý đơn hàng'}
                     </h1>
                     <div className='flex flex-wrap items-center gap-2'>
+                        {type === 'returns' && (
+                            <Link
+                                to='/admin/orders/invoices'
+                                className='btn btn-outline btn-sm shrink-0 gap-2 rounded-xl shadow-sm sm:btn-md'
+                                title='Tìm hóa đơn bán tại quầy hoặc online trước khi hủy — đơn hủy đã thanh toán sẽ xuất hiện ở đây'
+                            >
+                                <Receipt className='h-4 w-4' />
+                                Danh sách hóa đơn
+                            </Link>
+                        )}
                         {type === 'pre-orders' && (
                             <button
                                 type='button'
@@ -290,7 +324,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                         <p className='font-medium text-base-content'>Đơn cần xử lý trả / hoàn tiền</p>
                         <p className='mt-1 leading-relaxed'>
                             Danh sách gồm đơn <strong>đã hủy</strong> nhưng <strong>khách đã thanh toán</strong> (chờ hoàn tiền) và đơn{' '}
-                            <strong>đã hoàn tiền</strong>. Mở chi tiết để tạo VietQR hoàn tiền hoặc xác nhận đã chuyển khoản.
+                            <strong>đã hoàn tiền</strong>. Nhân viên tại quầy bấm <strong>Trả hàng</strong> trên dòng đơn (hoặc mở rộng
+                            dòng → Chi tiết &amp; hoàn tiền) để nhập STK hoàn tiền, tạo VietQR hoặc xác nhận đã chuyển khoản.
                         </p>
                     </div>
                 )}
@@ -312,8 +347,8 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                 disabled={locations.length <= 1}
                                 title={
                                     locations.length <= 1
-                                        ? 'Bạn chỉ được phân một chi nhánh — không đổi cơ sở tại đây.'
-                                        : 'Chỉ các chi nhánh bạn được phân công (admin: mọi cơ sở). Đồng bộ với cơ sở trên thanh điều hướng.'
+                                        ? 'Chỉ cho phép đổi cơ sở khi có từ hai chi nhánh trở lên trong phạm vi tài khoản.'
+                                        : 'Các chi nhánh trong phạm vi tài khoản (admin: mọi cơ sở). Đồng bộ với thanh điều hướng.'
                                 }
                             >
                                 {locations.length === 0 ? (
@@ -413,7 +448,7 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     ) : (
                         <>
                             <div className='overflow-x-auto overflow-y-auto max-h-[700px]'>
-                                <table className='table table-pin-rows w-full min-w-[920px]'>
+                                <table className={`table table-pin-rows w-full ${type === 'returns' ? 'min-w-[1000px]' : 'min-w-[920px]'}`}>
                                     <thead className='sticky top-0 z-20 bg-base-200/95 backdrop-blur-md border-b border-base-300/80'>
                                         <tr className='text-[11px] font-semibold uppercase tracking-wider text-base-content/50'>
                                             <th className='w-10 py-3.5 bg-transparent' />
@@ -537,7 +572,11 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr key={`${order._id}-detail`} className='border-b border-base-200/80 bg-linear-to-b from-base-200/25 to-base-100'>
-                                                            <td colSpan={10} className='p-3 sm:p-4 align-top' onClick={(e) => e.stopPropagation()}>
+                                                            <td
+                                                                colSpan={10}
+                                                                className='p-3 sm:p-4 align-top'
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
                                                                 <div className='rounded-xl border border-base-300/70 bg-base-100 p-4 sm:p-5 shadow-sm'>
                                                                     <div className='grid gap-6 sm:grid-cols-2'>
                                                                         <div className='space-y-4'>
@@ -719,6 +758,21 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                                                                                 )}
                                                                                 {printingInvoiceId === order._id ? 'Đang mở in…' : 'Xem & in hóa đơn'}
                                                                             </button>
+                                                                            {type === 'invoices' && (
+                                                                                <button
+                                                                                    type='button'
+                                                                                    className='btn btn-sm btn-ghost gap-1.5 rounded-xl text-error hover:bg-error/10'
+                                                                                    disabled={deletingId === order._id}
+                                                                                    onClick={() => setInvoiceDeleteTarget(order)}
+                                                                                >
+                                                                                    {deletingId === order._id ? (
+                                                                                        <span className='loading loading-spinner loading-xs' />
+                                                                                    ) : (
+                                                                                        <Trash2 className='h-3.5 w-3.5' />
+                                                                                    )}
+                                                                                    Xóa hóa đơn
+                                                                                </button>
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -776,6 +830,22 @@ export default function AdminOrderManagementPage({ type = 'invoices' }) {
                     currentLocationId && currentLocationId !== 'all' ? currentLocationId : locations[0]?._id
                 }
                 onSuccess={fetchOrders}
+            />
+            <ConfirmationModal
+                isOpen={!!invoiceDeleteTarget}
+                onClose={() => setInvoiceDeleteTarget(null)}
+                onConfirm={confirmDeleteStoreInvoice}
+                title='Xóa hóa đơn?'
+                message={
+                    invoiceDeleteTarget
+                        ? invoiceDeleteTarget.status === 'pending' && invoiceDeleteTarget.paymentStatus === 'pending'
+                            ? `Đơn ${invoiceDeleteTarget.code} sẽ bị xóa vĩnh viễn. Giữ chỗ tồn (nếu có) sẽ được hoàn lại. Thao tác không hoàn tác.`
+                            : `Hóa đơn ${invoiceDeleteTarget.code} sẽ bị xóa vĩnh viễn. Tồn kho và tích lũy khách (nếu đã ghi nhận) sẽ được hoàn lại. Thao tác không hoàn tác.`
+                        : ''
+                }
+                confirmText='Xóa hóa đơn'
+                cancelText='Hủy'
+                variant='danger'
             />
         </div>
     );

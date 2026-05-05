@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '../UserManagementPage/Header';
 import {
     getEmployees,
@@ -9,17 +9,28 @@ import {
     getEmployeeLinkedUserIds,
 } from '@/services/employeeService';
 import { getLocations } from '@/services/locationService';
-import { getUsers, updateUser, resetUserPassword } from '@/services/userService';
+import { getUsers, updateUser, resetUserPassword, assignRoles } from '@/services/userService';
 import { toast } from 'sonner';
 import { Plus, ChevronRight, ChevronLeft, ChevronDown, User, UserCircle, Pencil, Trash2, Eye, EyeOff } from 'lucide-react';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
-import { rolesMeetsAny } from '@/utils/roleMatch';
+import { roleMeets, rolesMeetsAny } from '@/utils/roleMatch';
+import { useUserRole } from '@/hooks/useUserRole';
 import { ROLE_LABELS } from '@/config/roleConfig';
 
 /** Tài khoản được chọn khi tạo hồ sơ nhân viên (đồng bộ backend kind=staff & createEmployee). */
 const EMPLOYEE_ACCOUNT_ROLES = ['seller', 'manager', 'warehouse_manager'];
 
 const ROLE_OBJECT_ID_HEX = /^[a-fA-F0-9]{24}$/;
+
+/** Slug vai trò tài khoản nhân viên (seller | manager | warehouse_manager). */
+function getStaffRoleSlugFromUser(user) {
+    if (!user?.roles?.length) return 'seller';
+    const names = user.roles.map((r) => r?.name).filter(Boolean);
+    for (const slug of EMPLOYEE_ACCOUNT_ROLES) {
+        if (roleMeets(names, slug)) return slug;
+    }
+    return 'seller';
+}
 
 function roleLabelForStaffTable(role) {
     if (!role) return '';
@@ -45,6 +56,13 @@ const STAFF_TABLE_ROLE_FILTER_OPTIONS = [
 ];
 
 const StaffManagementPage = () => {
+    const { isAdmin } = useUserRole();
+
+    const staffRoleEditOptions = useMemo(() => {
+        const opts = STAFF_TABLE_ROLE_FILTER_OPTIONS.filter((o) => o.value);
+        if (isAdmin) return opts;
+        return opts.filter((o) => o.value === 'seller' || o.value === 'warehouse_manager');
+    }, [isAdmin]);
 
     const [employees, setEmployees] = useState([]);
     const [locations, setLocations] = useState([]);
@@ -75,6 +93,7 @@ const StaffManagementPage = () => {
     const [savingUser, setSavingUser] = useState(false);
     const [savingPassword, setSavingPassword] = useState(false);
     const [expandedTab, setExpandedTab] = useState('info');
+    const [expandedStaffRole, setExpandedStaffRole] = useState('seller');
     const [editingInfo, setEditingInfo] = useState(false);
     const [editingAccount, setEditingAccount] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
@@ -326,6 +345,7 @@ const StaffManagementPage = () => {
             username: emp.user?.username || '',
             email: emp.user?.email || '',
         });
+        setExpandedStaffRole(getStaffRoleSlugFromUser(emp.user));
         setExpandedTab('info');
         setEditingInfo(false);
         setEditingAccount(false);
@@ -341,8 +361,22 @@ const StaffManagementPage = () => {
             toast.error('Vui lòng chọn ít nhất một chi nhánh làm việc');
             return;
         }
+        const empRow = employees.find((row) => row._id === expandedId);
+        if (!empRow?.user?._id) {
+            toast.error('Không tìm thấy tài khoản liên kết với nhân viên');
+            return;
+        }
         setSavingEmp(true);
         try {
+            const prevSlug = getStaffRoleSlugFromUser(empRow.user);
+            if (expandedStaffRole !== prevSlug) {
+                const primaryLoc = expandedEmpForm.locations[0];
+                const roleRes = await assignRoles(empRow.user._id, [expandedStaffRole], primaryLoc);
+                if (!roleRes?.success) {
+                    toast.error(roleRes?.message || 'Không thể cập nhật vai trò');
+                    return;
+                }
+            }
             const res = await updateEmployee(expandedId, {
                 empCode: (expandedEmpForm.empCode || '').trim() || undefined,
                 hireDate: expandedEmpForm.hireDate || null,
@@ -351,7 +385,11 @@ const StaffManagementPage = () => {
                 isActive: expandedEmpForm.isActive,
             });
             if (res.success) {
-                toast.success('Cập nhật thông tin nhân viên thành công');
+                toast.success(
+                    expandedStaffRole !== prevSlug
+                        ? 'Đã cập nhật vai trò và thông tin nhân viên'
+                        : 'Cập nhật thông tin nhân viên thành công',
+                );
                 setEditingInfo(false);
                 fetchEmployees();
             }
@@ -700,6 +738,12 @@ const StaffManagementPage = () => {
                                                                                                 <p className="font-medium">{expandedEmpForm.isActive ? 'Đang làm' : 'Ngừng làm'}</p>
                                                                                             </div>
                                                                                             <div>
+                                                                                                <span className="text-base-content/60">Vai trò:</span>
+                                                                                                <p className="font-medium">
+                                                                                                    {ROLE_LABELS[getStaffRoleSlugFromUser(expEmp?.user)] || '—'}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                            <div>
                                                                                                 <span className="text-base-content/60">Đơn ({salesFilter.month}/{salesFilter.year}):</span>
                                                                                                 <p className="font-medium">{(expEmp?.sales?.orderCount || 0).toLocaleString('vi-VN')}</p>
                                                                                             </div>
@@ -723,7 +767,16 @@ const StaffManagementPage = () => {
                                                                                             </div>
                                                                                         )}
                                                                                         <div className="flex gap-2">
-                                                                                            <button type="button" className="btn btn-outline btn-sm gap-2" onClick={() => setEditingInfo(true)}>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="btn btn-outline btn-sm gap-2"
+                                                                                                onClick={() => {
+                                                                                                    if (expEmp) {
+                                                                                                        setExpandedStaffRole(getStaffRoleSlugFromUser(expEmp.user));
+                                                                                                    }
+                                                                                                    setEditingInfo(true);
+                                                                                                }}
+                                                                                            >
                                                                                                 <Pencil className="w-4 h-4" />
                                                                                                 Chỉnh sửa
                                                                                             </button>
@@ -748,6 +801,27 @@ const StaffManagementPage = () => {
                                                                                             onChange={(e) => setExpandedEmpForm((p) => ({ ...p, empCode: e.target.value }))}
                                                                                             maxLength={10}
                                                                                         />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="label">
+                                                                                            <span className="label-text font-semibold">Vai trò tài khoản</span>
+                                                                                        </label>
+                                                                                        <select
+                                                                                            className="select select-bordered select-sm w-full max-w-md"
+                                                                                            value={expandedStaffRole}
+                                                                                            onChange={(e) => setExpandedStaffRole(e.target.value)}
+                                                                                        >
+                                                                                            {staffRoleEditOptions.map((o) => (
+                                                                                                <option key={o.value} value={o.value}>
+                                                                                                    {o.label}
+                                                                                                </option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                        {!isAdmin && (
+                                                                                            <p className="text-xs text-base-content/60 mt-1">
+                                                                                                Quản lý chi nhánh chỉ được đổi sang Nhân viên bán hàng hoặc Quản lý kho.
+                                                                                            </p>
+                                                                                        )}
                                                                                     </div>
                                                                                     <div className="grid grid-cols-2 gap-4">
                                                                                         <div>
@@ -825,7 +899,24 @@ const StaffManagementPage = () => {
                                                                                         <button type="submit" className="btn btn-primary btn-sm" disabled={savingEmp}>
                                                                                             {savingEmp ? 'Đang lưu...' : 'Lưu'}
                                                                                         </button>
-                                                                                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingInfo(false)}>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            className="btn btn-ghost btn-sm"
+                                                                                            onClick={() => {
+                                                                                                const e = employees.find((x) => x._id === expandedId);
+                                                                                                if (e) {
+                                                                                                    setExpandedStaffRole(getStaffRoleSlugFromUser(e.user));
+                                                                                                    setExpandedEmpForm({
+                                                                                                        empCode: e.empCode || '',
+                                                                                                        hireDate: e.hireDate ? String(e.hireDate).split('T')[0] : '',
+                                                                                                        locations: (e.locations || []).map((l) => l._id || l),
+                                                                                                        note: e.note || '',
+                                                                                                        isActive: e.isActive !== false,
+                                                                                                    });
+                                                                                                }
+                                                                                                setEditingInfo(false);
+                                                                                            }}
+                                                                                        >
                                                                                             Hủy
                                                                                         </button>
                                                                                     </div>

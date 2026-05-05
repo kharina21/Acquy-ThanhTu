@@ -45,8 +45,16 @@ export const getManagerAllowedLocationIds = async (userId) => {
         const id = normalizeLocationObjectId(raw);
         if (id && !ids.includes(id)) ids.push(id);
     };
-    push(emp.primaryLocation);
-    (emp.locations || []).forEach((loc) => push(loc));
+    const locs = Array.isArray(emp.locations) ? emp.locations : [];
+    // Nếu có danh sách locations thì đó là nguồn phạm vi chính.
+    // Tránh trường hợp primaryLocation cũ bị sót lại làm "lộ" thêm chi nhánh.
+    locs.forEach((loc) => push(loc));
+    const primaryNorm = normalizeLocationObjectId(emp.primaryLocation);
+    if (primaryNorm) {
+        if (ids.length === 0 || ids.includes(primaryNorm)) {
+            push(primaryNorm);
+        }
+    }
     return ids;
 };
 

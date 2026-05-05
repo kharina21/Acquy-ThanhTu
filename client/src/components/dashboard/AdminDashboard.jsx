@@ -40,6 +40,7 @@ import {
     Legend,
 } from 'recharts';
 import { useBranchStore } from '@/stores/useBranchStore';
+import { useUserRole } from '@/hooks/useUserRole';
 import { getDashboardStats, getDashboardChartData } from '@/services/dashboardService';
 import { formatVND } from '@/lib/utils';
 
@@ -289,8 +290,20 @@ const InvoiceDistributionChart = ({ data }) => {
     );
 };
 
+const emptyDashboardStats = () => ({
+    revenue: { total: 0, period: 'tháng này', changePercent: 0 },
+    paidOrderCount: 0,
+    pendingCount: 0,
+    totalCustomers: 0,
+    totalProducts: 0,
+    topCustomers: [],
+    topProducts: [],
+    ordersByStatus: { pending: 0, confirmed: 0, paid: 0, cancelled: 0 },
+});
+
 const AdminDashboard = () => {
-    const { currentLocationId, locations } = useBranchStore();
+    const { currentLocationId, locations, loaded: branchLocationsLoaded } = useBranchStore();
+    const { isAdmin } = useUserRole();
     const currentLocation = locations?.find((l) => l._id === currentLocationId);
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState('month');
@@ -306,18 +319,24 @@ const AdminDashboard = () => {
     const [chartData, setChartData] = useState({ dailyRevenue: [], invoiceDistribution: [] });
 
     useEffect(() => {
+        if (!branchLocationsLoaded) return;
+
         const fetchData = async () => {
             setLoading(true);
             try {
+                if (!isAdmin && locations.length === 0) {
+                    setStats(emptyDashboardStats());
+                    setChartData({ dailyRevenue: [], invoiceDistribution: [] });
+                    return;
+                }
                 const params = {
                     period,
-                    locationId: currentLocationId || undefined,
+                    ...(currentLocationId ? { locationId: currentLocationId } : {}),
                 };
                 const [statsData, chartRes] = await Promise.all([
                     getDashboardStats(params),
                     getDashboardChartData(params),
                 ]);
-                console.log('[Dashboard Chart Data]', period, chartRes);
                 setStats(statsData);
                 setChartData(chartRes || { dailyRevenue: [], invoiceDistribution: [] });
             } catch (error) {
@@ -327,14 +346,14 @@ const AdminDashboard = () => {
             }
         };
         fetchData();
-    }, [period, currentLocationId]);
+    }, [period, currentLocationId, branchLocationsLoaded, locations.length, isAdmin]);
 
     const { revenue, paidOrderCount, pendingCount, totalCustomers, totalProducts, topCustomers, topProducts } = stats;
     const grossSales = revenue?.grossSales ?? revenue?.revenueOrders ?? 0;
     const tradeInExpense = revenue?.tradeInExpense ?? revenue?.revenueBatteryTradeIn ?? 0;
     const netSales = revenue?.netSales ?? (grossSales - tradeInExpense);
 
-    if (loading && !stats.revenue?.period) {
+    if (!branchLocationsLoaded || (loading && !stats.revenue?.period)) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-[50vh]">
                 <span className="loading loading-spinner loading-lg text-primary" />
@@ -352,6 +371,12 @@ const AdminDashboard = () => {
                             <BarChart3 className="w-6 h-6 text-primary" />
                             Tổng quan Dashboard
                         </h1>
+                        {!isAdmin && locations.length === 0 && (
+                            <div className="mt-2 text-sm rounded-lg bg-warning/15 text-warning-content border border-warning/30 px-3 py-2 text-left max-w-xl">
+                                Bạn chưa được phân công chi nhánh trên hồ sơ nhân viên. Liên hệ quản trị viên để gán chi
+                                nhánh — sau đó tổng quan và báo cáo mới có dữ liệu.
+                            </div>
+                        )}
                         {currentLocation ? (
                             <p className="text-sm text-base-content/70 mt-0.5">
                                 Chi nhánh: {currentLocation.code} - {currentLocation.name}

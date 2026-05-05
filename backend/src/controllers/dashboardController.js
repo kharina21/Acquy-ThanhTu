@@ -47,7 +47,22 @@ export const getDashboardChartData = async (req, res) => {
         let locationId = req.query.locationId || '';
         const allowAll = !locationId || locationId === 'all';
         const allowedIds = await getManagerAllowedLocationIds(userId);
-        
+
+        if (allowedIds !== null && allowedIds.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    dailyRevenue: [],
+                    invoiceDistribution: [
+                        { name: 'Bán POS', value: 0, count: 0 },
+                        { name: 'Thu cũ', value: 0, count: 0 },
+                        { name: 'Bán Online', value: 0, count: 0 },
+                    ],
+                    summary: { totalRevenue: 0, totalOrders: 0, totalTradeIn: 0 },
+                },
+            });
+        }
+
         if (allowedIds !== null) {
             if (!locationId || locationId === 'all') {
                 locationId = '';

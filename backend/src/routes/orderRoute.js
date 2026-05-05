@@ -9,6 +9,8 @@ import {
     updateOrder,
     updatePreOrder,
     deletePreOrder,
+    deleteStoreInvoice,
+    deleteOrder,
     updateOrderByCustomer,
     cancelOrderByCustomer,
     confirmWarehouseOutbound,
@@ -104,6 +106,11 @@ router.put(
     hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     updateOrder,
 );
+router.delete(
+    '/:id',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    deleteOrder,
+);
 
 // Đơn đặt trước: chỉnh sửa / xóa (cùng quyền cập nhật đơn tại quầy)
 router.put(
@@ -115,6 +122,11 @@ router.delete(
     '/:id/pre-order',
     hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
     deletePreOrder,
+);
+router.delete(
+    '/:id/invoice',
+    hasRole('admin', 'manager', 'seller', 'Quản lý chi nhánh', 'staff', 'Nhân viên bán hàng'),
+    deleteStoreInvoice,
 );
 
 export default router;

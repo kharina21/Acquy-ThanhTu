@@ -90,6 +90,10 @@ vi.mock('../models/Order.js', () => ({ default: orderModelMock }));
 vi.mock('../models/Customer.js', () => ({ default: customerModelMock }));
 vi.mock('../models/PaymentLink.js', () => ({ default: paymentLinkMock }));
 vi.mock('../libs/payosHelper.js', () => payosHelperMock);
+vi.mock('../libs/orderNotificationHelper.js', () => ({
+    notifyOrderCustomerStatusChange: vi.fn().mockResolvedValue(undefined),
+    resolveOrderNotificationRecipient: vi.fn(),
+}));
 
 // Import controller
 import { handlePayOSWebhook } from '../controllers/paymentController.js';

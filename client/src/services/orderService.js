@@ -54,6 +54,18 @@ export const deletePreOrder = async (id) => {
     return res.data;
 };
 
+/** Xóa hóa đơn bán tại cửa hàng (hoàn tồn / tích lũy khi đã ghi nhận). Đơn online không dùng API này. */
+export const deleteStoreInvoice = async (id) => {
+    const res = await api.delete(`/orders/${id}/invoice`);
+    return res.data;
+};
+
+/** Xóa đơn an toàn (chỉ khi pending + chưa thanh toán). */
+export const deleteOrder = async (id) => {
+    const res = await api.delete(`/orders/${id}`);
+    return res.data;
+};
+
 /**
  * Khách hàng chỉnh sửa đơn (địa chỉ, ghi chú) - chỉ khi chưa thanh toán
  */

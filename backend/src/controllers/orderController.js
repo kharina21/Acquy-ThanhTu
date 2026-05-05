@@ -14,6 +14,7 @@ import PaymentLink from '../models/PaymentLink.js';
 import BatteryTradeIn from '../models/BatteryTradeIn.js';
 import MemberPolicy from '../models/MemberPolicy.js';
 import StockOut from '../models/StockOut.js';
+import Warranty from '../models/Warranty.js';
 import { getStockAtLocation } from './productStockController.js';
 import { generateStockOutCode } from '../utils/stockOutCode.js';
 import { assignDefaultRole } from '../libs/rbacHelpers.js';
@@ -2954,6 +2955,144 @@ export const deletePreOrder = async (req, res) => {
         console.error('deletePreOrder error:', error.message);
         return res.status(500).json({
             message: 'Lỗi khi xóa đơn đặt hàng',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * DELETE /api/orders/:id/invoice – Xóa hóa đơn bán tại cửa hàng (không áp dụng đơn online).
+ * Hoàn tồn / hoàn tích lũy (nếu đã cộng), gỡ phiếu xuất gắn đơn, soft-delete bảo hành, xóa link thanh toán PayOS.
+ * Chứng từ cũ (isLegacyImport): chỉ xóa bản ghi đơn — không đụng tồn / tích lũy.
+ */
+export const deleteStoreInvoice = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+        if (order.isPreOrder === true) {
+            return res.status(400).json({
+                message: 'Đơn đặt trước — dùng thao tác xóa trong danh sách «Đặt trước»',
+            });
+        }
+        if (order.channel !== 'in_store') {
+            return res.status(400).json({
+                message:
+                    'Chỉ xóa được hóa đơn bán tại cửa hàng. Đơn online vui lòng dùng quy trình hủy / hoàn tiền.',
+            });
+        }
+
+        const blockedByWarranty = await Warranty.exists({
+            orderId: order._id,
+            isDeleted: false,
+            $or: [{ status: 'claimed' }, { 'claims.0': { $exists: true } }],
+        });
+        if (blockedByWarranty) {
+            return res.status(400).json({
+                message: 'Đơn đã có yêu cầu bảo hành — không xóa được. Xử lý bảo hành trước.',
+            });
+        }
+
+        const { valid } = await validateLocationForUser(userId, order.location);
+        if (!valid) {
+            return res.status(403).json({ message: 'Bạn không có quyền thao tác đơn tại chi nhánh này' });
+        }
+
+        if (
+            order.isLegacyImport !== true &&
+            order.paymentStatus === 'paid' &&
+            order.customerProfile &&
+            order.status !== 'cancelled'
+        ) {
+            await Customer.findByIdAndUpdate(order.customerProfile, {
+                $inc: { accumulatedAmount: -(order.totalAmount || 0) },
+            });
+        }
+        if (order.status !== 'cancelled') {
+            await restoreInventoryOnOrderCancel(order);
+        }
+
+        await Warranty.updateMany({ orderId: order._id, isDeleted: false }, { $set: { isDeleted: true } });
+        await PaymentLink.deleteMany({ order: order._id });
+        await Order.findByIdAndDelete(id);
+
+        return res.status(200).json({ success: true, message: 'Đã xóa hóa đơn' });
+    } catch (error) {
+        console.error('deleteStoreInvoice error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi xóa hóa đơn',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * DELETE /api/orders/:id – Xóa đơn an toàn (áp dụng cho danh sách hóa đơn).
+ * Chỉ cho phép khi đơn còn "pending" + "paymentStatus=pending" và chưa có StockOut.
+ * Mục tiêu: xóa nhầm đơn chưa thanh toán / chưa xuất kho (online hoặc tại quầy).
+ */
+export const deleteOrder = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        if (order.isPreOrder === true) {
+            return res.status(400).json({ message: 'Đơn đặt trước — dùng thao tác xóa trong danh sách «Đặt trước»' });
+        }
+
+        const { valid } = await validateLocationForUser(userId, order.location);
+        if (!valid) {
+            return res.status(403).json({ message: 'Bạn không có quyền thao tác đơn tại chi nhánh này' });
+        }
+
+        if (order.status !== 'pending' || order.paymentStatus !== 'pending') {
+            return res.status(400).json({
+                message: 'Chỉ xóa được đơn khi đang chờ xử lý và chưa thanh toán.',
+            });
+        }
+
+        const hasStockOut = await StockOut.exists({ order: order._id });
+        if (hasStockOut) {
+            return res.status(400).json({
+                message: 'Đơn đã có phiếu xuất kho — không xóa trực tiếp; dùng hủy/hoàn kho theo quy trình.',
+            });
+        }
+
+        // Hoàn giữ chỗ tồn (reservedOnlineQty) nếu đang active (đơn online / hóa đơn tại quầy chưa xuất kho)
+        if (order.status !== 'cancelled') {
+            await restoreInventoryOnOrderCancel(order);
+        }
+
+        // Xóa các link thanh toán (PayOS / VietQR) nếu có
+        await PaymentLink.deleteMany({ order: order._id });
+
+        await Order.findByIdAndDelete(id);
+        return res.status(200).json({ success: true, message: 'Đã xóa đơn' });
+    } catch (error) {
+        console.error('deleteOrder error:', error.message);
+        return res.status(500).json({
+            message: 'Lỗi khi xóa đơn',
             error: error.message,
         });
     }

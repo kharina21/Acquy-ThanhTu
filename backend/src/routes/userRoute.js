@@ -30,7 +30,16 @@ router.get('/roles', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getAl
 router.get('/', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getAllUsers);
 router.get('/:id', hasRole('admin', 'manager', 'Quản lý chi nhánh'), getUserById);
 
-// Thao tác ghi: chỉ admin
+// Gán vai trò: admin hoặc quản lý chi nhánh (controller chặn quản lý chỉ seller / warehouse_manager)
+router.post(
+    '/:id/roles',
+    hasRole('admin', 'manager', 'Quản lý chi nhánh'),
+    assignRolesValidation,
+    handleValidationErrors,
+    assignRoles
+);
+
+// Thao tác ghi khác: chỉ admin
 router.use(hasRole('admin'));
 
 // Tạo user mới
@@ -51,14 +60,6 @@ router.put(
 
 // Xóa user
 router.delete('/:id', deleteUser);
-
-// Gán roles cho user
-router.post(
-    '/:id/roles',
-    assignRolesValidation,
-    handleValidationErrors,
-    assignRoles
-);
 
 // Xóa roles khỏi user
 router.delete(

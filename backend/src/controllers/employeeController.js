@@ -333,8 +333,42 @@ export const updateEmployee = async (req, res) => {
                 emp.empCode = null;
             }
         }
-        if (primaryLocation !== undefined) emp.primaryLocation = primaryLocation || null;
-        if (Array.isArray(locations)) emp.locations = locations;
+        // Đồng bộ primaryLocation với danh sách locations để tránh "cơ sở cũ" vẫn còn quyền thao tác.
+        // Quy tắc:
+        // - Nếu gửi locations: emp.locations = normalized unique valid IDs
+        // - Nếu không gửi primaryLocation: primaryLocation = locations[0] (hoặc null nếu rỗng)
+        // - Nếu có primaryLocation: đảm bảo primaryLocation nằm trong emp.locations
+        const normalizeId = (raw) => {
+            if (raw == null || raw === '') return null;
+            const id = typeof raw === 'object' && raw !== null && '_id' in raw ? String(raw._id) : String(raw);
+            return mongoose.isValidObjectId(id) ? id : null;
+        };
+        const unique = (arr) => {
+            const out = [];
+            for (const x of arr) {
+                if (x && !out.includes(x)) out.push(x);
+            }
+            return out;
+        };
+
+        let normalizedLocations = null;
+        if (Array.isArray(locations)) {
+            normalizedLocations = unique((locations || []).map(normalizeId).filter(Boolean));
+            emp.locations = normalizedLocations;
+        }
+
+        if (primaryLocation !== undefined) {
+            emp.primaryLocation = primaryLocation ? normalizeId(primaryLocation) : null;
+        } else if (normalizedLocations !== null) {
+            emp.primaryLocation = normalizedLocations.length > 0 ? normalizedLocations[0] : null;
+        }
+
+        if (normalizedLocations !== null) {
+            const p = normalizeId(emp.primaryLocation);
+            if (p && !emp.locations.map(String).includes(String(p))) {
+                emp.locations = unique([p, ...emp.locations.map((x) => String(x))]);
+            }
+        }
         if (hireDate !== undefined) emp.hireDate = hireDate ? new Date(hireDate) : null;
         if (note !== undefined) emp.note = note;
         if (isActive !== undefined) emp.isActive = !!isActive;

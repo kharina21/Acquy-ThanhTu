@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, Package, Truck } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getStockInLinesReport, getStockOutLinesReport } from '@/services/inventoryReportService';
-import { getLocations } from '@/services/locationService';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { toast } from 'sonner';
 
@@ -99,8 +98,7 @@ function exportLinesExcel({ variant, rows, fromDate, toDate, locationName }) {
 
 export default function WarehouseStockLinesReportPage({ variant }) {
     const v = VARIANTS[variant] || VARIANTS.in;
-    const currentLocationId = useBranchStore((s) => s.currentLocationId);
-    const [locations, setLocations] = useState([]);
+    const { currentLocationId, locations, loaded: branchLocationsLoaded, fetchLocations } = useBranchStore();
     const [locationId, setLocationId] = useState('');
     const [fromDate, setFromDate] = useState(firstOfMonthStr());
     const [toDate, setToDate] = useState(todayStr());
@@ -114,12 +112,10 @@ export default function WarehouseStockLinesReportPage({ variant }) {
     );
 
     useEffect(() => {
-        getLocations().then((res) => {
-            if (res.success && res.data?.locations) {
-                setLocations((res.data.locations || []).filter((l) => l.isActive !== false));
-            }
-        });
-    }, []);
+        if (!branchLocationsLoaded) {
+            fetchLocations({ scope: 'mine' });
+        }
+    }, [branchLocationsLoaded, fetchLocations]);
 
     useEffect(() => {
         if (currentLocationId && !locationId) setLocationId(currentLocationId);

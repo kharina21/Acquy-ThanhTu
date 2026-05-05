@@ -219,7 +219,7 @@ export default function CreateInvoicePage() {
     };
     const { hasAnyRole } = useUserRole();
     const { currentLocationId: storeLocationId, setCurrentLocationId } = useBranchStore();
-    /** Chỉ admin được chọn người bán khác / đổi chi nhánh trên POS */
+    /** Chỉ admin được chọn người bán khác. Đổi chi nhánh trên POS: xem canChangePosLocation (≥ 2 cơ sở trong phạm vi). */
     const canSelectSeller = hasAnyRole('admin');
     const isPosAdmin = hasAnyRole('admin');
     const searchInputRef = useRef(null);
@@ -243,8 +243,8 @@ export default function CreateInvoicePage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [locations, setLocations] = useState([]);
-    /** Admin: đổi mọi chi nhánh active. NV được phân nhiều cơ sở: đổi trong danh sách được phân. */
-    const canChangePosLocation = isPosAdmin || locations.length > 1;
+    /** Chỉ cho đổi cơ sở POS khi tài khoản có từ hai chi nhánh trở lên trong phạm vi (admin: mọi cơ sở active). */
+    const canChangePosLocation = locations.length > 1;
     const [customerPaid, setCustomerPaid] = useState('');
     /** Tồn bán được theo chi nhánh: quantity − reservedOnlineQty (ObjectId → string). */
     const [stocksByProduct, setStocksByProduct] = useState({});
@@ -2122,9 +2122,7 @@ export default function CreateInvoicePage() {
                             disabled={pendingTransferHoldsLocation || !canChangePosLocation}
                             title={
                                 !canChangePosLocation
-                                    ? isPosAdmin
-                                      ? 'Không có chi nhánh khác để chọn.'
-                                      : 'Tài khoản của bạn chỉ được phân tại một chi nhánh. Liên hệ quản trị nếu cần thêm cơ sở.'
+                                    ? 'Chỉ cho phép đổi cơ sở khi được phân hoặc quản lý từ hai chi nhánh trở lên.'
                                     : undefined
                             }
                             onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}

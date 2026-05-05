@@ -42,7 +42,7 @@ export const handlePayOSWebhook = async (req, res) => {
 
         const paymentLink = await PaymentLink.findOne({ orderCode: orderCodeNum }).lean();
         if (!paymentLink) {
-            console.warn('PayOS webhook: PaymentLink not found for orderCode', orderCode);
+            console.warn('PayOS webhook: PaymentLink not found for orderCode', rawOrderCode);
             return res.status(200).json({ code: '00', desc: 'OK' }); // Trả 200 để PayOS không retry
         }
 

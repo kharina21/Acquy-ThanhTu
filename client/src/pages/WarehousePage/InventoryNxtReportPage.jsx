@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileSpreadsheet, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getNxtReport } from '@/services/inventoryReportService';
-import { getLocations } from '@/services/locationService';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { nxtPeriodInbound, nxtPeriodOutbound, formatNxtQtyCell } from '@/utils/nxtReportDisplay';
 import { toast } from 'sonner';
@@ -40,8 +39,7 @@ function exportNxtExcel({ rows, fromDate, toDate, locationName }) {
 }
 
 export default function InventoryNxtReportPage() {
-    const currentLocationId = useBranchStore((s) => s.currentLocationId);
-    const [locations, setLocations] = useState([]);
+    const { currentLocationId, locations, loaded: branchLocationsLoaded, fetchLocations } = useBranchStore();
     const [locationId, setLocationId] = useState('');
     const [fromDate, setFromDate] = useState(firstOfMonthStr());
     const [toDate, setToDate] = useState(todayStr());
@@ -55,13 +53,10 @@ export default function InventoryNxtReportPage() {
     );
 
     useEffect(() => {
-        getLocations().then((res) => {
-            if (res.success && res.data?.locations) {
-                const list = (res.data.locations || []).filter((l) => l.isActive !== false);
-                setLocations(list);
-            }
-        });
-    }, []);
+        if (!branchLocationsLoaded) {
+            fetchLocations({ scope: 'mine' });
+        }
+    }, [branchLocationsLoaded, fetchLocations]);
 
     useEffect(() => {
         if (currentLocationId && !locationId) setLocationId(currentLocationId);

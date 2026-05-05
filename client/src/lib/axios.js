@@ -35,11 +35,11 @@ api.interceptors.response.use(
 
         originalRequest._retryCount = originalRequest._retryCount || 0;
 
-        // Chỉ refresh khi có accessToken trong store (đã đăng nhập) và nhận 401/403
+        // Chỉ refresh khi 401 (token hết hạn). 403 = không đủ quyền / phạm vi — refresh không giúp.
         const hasAccessToken = useAuthStore.getState().accessToken;
         if (
             hasAccessToken &&
-            (err.response?.status === 401 || err.response?.status === 403) &&
+            err.response?.status === 401 &&
             originalRequest._retryCount < 4
         ) {
             //thử 4 lần k được => refreshToken hết hạn => đăng nhập lại
